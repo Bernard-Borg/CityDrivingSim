@@ -262,7 +262,7 @@ export class RoadGenerator {
         curveLength: number
     ): void {
         const tunnelHeight = 3; // Height of tunnel interior
-        const wallThickness = 0.5; // Thickness of tunnel walls
+        const wallThickness = 1; // Thickness of tunnel walls
         const roadY = 0.01;
         const halfWidth = roadWidth / 2;
 
