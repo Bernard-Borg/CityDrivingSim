@@ -11,9 +11,32 @@ export class RoadGenerator {
         this.roadGroup = new THREE.Group();
         this.labelsGroup = new THREE.Group();
         this.tunnelGroup = new THREE.Group();
+
+        // Mark groups so they're not removed during scene clearing
+        this.roadGroup.userData.isRoadGroup = true;
+        this.labelsGroup.userData.isRoadGroup = true;
+        this.tunnelGroup.userData.isRoadGroup = true;
+
         this.scene.add(this.roadGroup);
         this.scene.add(this.labelsGroup);
         this.scene.add(this.tunnelGroup);
+    }
+
+    /**
+     * Clear all roads, labels, and tunnels from the groups
+     */
+    clear(): void {
+        // Clear all children from groups
+        while (this.roadGroup.children.length > 0) {
+            this.roadGroup.remove(this.roadGroup.children[0]);
+        }
+        while (this.labelsGroup.children.length > 0) {
+            this.labelsGroup.remove(this.labelsGroup.children[0]);
+        }
+        while (this.tunnelGroup.children.length > 0) {
+            this.tunnelGroup.remove(this.tunnelGroup.children[0]);
+        }
+        this.roads = [];
     }
 
     /**

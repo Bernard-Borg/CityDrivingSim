@@ -1,31 +1,41 @@
 import * as THREE from 'three';
 import { RoadGenerator } from './RoadGenerator';
 import type { AmsterdamGeoJSON } from '@/types';
+import { CityManager } from '@/utils/cityManager';
 
 export class SceneManager {
     private roadGenerator: RoadGenerator;
     private startPosition: THREE.Vector3;
     private centerLat: number = 0;
     private centerLon: number = 0;
+    private currentCity: string = '';
 
     constructor(private scene: THREE.Scene) {
         this.roadGenerator = new RoadGenerator(scene);
         this.startPosition = new THREE.Vector3(0, 1, 0);
     }
 
-    async loadCityMap(): Promise<void> {
+    async loadCityMap(city: string, savedPosition?: { x: number; y: number; z: number; }): Promise<void> {
         try {
-            // Load Amsterdam GeoJSON data
-            const response = await fetch('/data/amsterdam.json');
+            const cityConfig = CityManager.getCityConfig(city);
+            if (!cityConfig) {
+                throw new Error(`City config not found: ${city}`);
+            }
+
+            this.currentCity = city;
+            this.centerLat = cityConfig.centerLat;
+            this.centerLon = cityConfig.centerLon;
+
+            // Load city GeoJSON data
+            const response = await fetch(`/data/${cityConfig.file}`);
             if (!response.ok) {
-                throw new Error(`Failed to load amsterdam.json: ${response.status}`);
+                throw new Error(`Failed to load ${cityConfig.file}: ${response.status}`);
             }
 
             const geoJSON: AmsterdamGeoJSON = await response.json();
 
-            // Amsterdam center coordinates (used for coordinate conversion)
-            this.centerLat = 52.3676;
-            this.centerLon = 4.9041;
+            // Clear existing scene (except lights)
+            this.clearScene();
 
             // Create ground plane
             this.createGround();
@@ -33,8 +43,13 @@ export class SceneManager {
             // Generate roads from GeoJSON
             this.roadGenerator.generateRoadsFromGeoJSON(geoJSON, this.centerLat, this.centerLon);
 
-            // Set starting position from first feature
-            if (geoJSON.features.length > 0) {
+            // Set starting position
+            if (savedPosition) {
+                // Use saved position
+                this.startPosition.set(savedPosition.x, savedPosition.y, savedPosition.z);
+                console.log(`Restored position: (${savedPosition.x.toFixed(2)}, ${savedPosition.y.toFixed(2)}, ${savedPosition.z.toFixed(2)})`);
+            } else if (geoJSON.features.length > 0) {
+                // Use first feature coordinate
                 const firstFeature = geoJSON.features[0];
                 if (firstFeature.geometry.type === 'LineString' && firstFeature.geometry.coordinates.length > 0) {
                     const [lon, lat] = firstFeature.geometry.coordinates[0];
@@ -44,11 +59,31 @@ export class SceneManager {
                 }
             }
 
-            console.log(`Loaded ${geoJSON.features.length} road features from Amsterdam`);
+            console.log(`Loaded ${geoJSON.features.length} road features from ${cityConfig.name}`);
         } catch (error) {
-            console.error('Failed to load Amsterdam data:', error);
+            console.error(`Failed to load ${city} data:`, error);
             throw error;
         }
+    }
+
+    private clearScene(): void {
+        // Clear road groups instead of removing them (they're needed by RoadGenerator)
+        // Clear the road generator's groups
+        this.roadGenerator.clear();
+
+        // Remove other meshes and groups, but keep lights, camera, and road groups
+        const objectsToRemove: THREE.Object3D[] = [];
+        this.scene.children.forEach((child) => {
+            // Keep lights, camera, and road groups (they're managed by RoadGenerator)
+            if (!(child instanceof THREE.Light) &&
+                !(child instanceof THREE.Camera) &&
+                !(child instanceof THREE.Group && child.userData.isRoadGroup)) {
+                objectsToRemove.push(child);
+            }
+        });
+        objectsToRemove.forEach((obj) => {
+            this.scene.remove(obj);
+        });
     }
 
     private createGround(): void {
@@ -86,5 +121,9 @@ export class SceneManager {
 
     getStartPosition(): THREE.Vector3 {
         return this.startPosition.clone();
+    }
+
+    getCurrentCity(): string {
+        return this.currentCity;
     }
 }

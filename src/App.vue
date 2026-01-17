@@ -3,6 +3,51 @@
     <!-- Three.js Canvas Container -->
     <div ref="canvasContainer" class="absolute inset-0"></div>
 
+    <!-- City Selection Menu -->
+    <div v-if="showCityMenu" class="absolute inset-0 z-50 flex items-center justify-center bg-black/90">
+      <div class="bg-gray-900/95 backdrop-blur-md p-8 rounded-2xl border border-white/20 max-w-2xl w-full mx-4">
+        <h2 class="text-3xl font-bold text-white mb-6 text-center">Select a City</h2>
+        <div v-if="availableCities.length === 0" class="text-center text-gray-400">
+          Loading cities...
+        </div>
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <button
+            v-for="city in availableCities"
+            :key="city"
+            @click="selectCity(city)"
+            class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-lg transition-colors text-lg"
+          >
+            {{ getCityName(city) }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- City Switcher Button (when in game) -->
+    <div v-if="!showCityMenu && !isLoading" class="absolute bottom-8 right-8 z-10">
+      <button
+        @click="showCitySwitcher = !showCitySwitcher"
+        class="bg-black/60 hover:bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20 text-white text-sm transition-colors"
+      >
+        Switch City
+      </button>
+      
+      <!-- City Switcher Dropdown -->
+      <div v-if="showCitySwitcher" class="absolute bottom-full right-0 mb-2 bg-gray-900/95 backdrop-blur-md rounded-lg border border-white/20 overflow-hidden min-w-[150px]">
+        <button
+          v-for="city in availableCities"
+          :key="city"
+          @click="switchCity(city)"
+          :class="[
+            'block w-full text-left px-4 py-2 hover:bg-blue-600 text-white text-sm transition-colors',
+            city === currentCity ? 'bg-blue-700' : ''
+          ]"
+        >
+          {{ getCityName(city) }}
+        </button>
+      </div>
+    </div>
+
     <!-- UI Overlay -->
     <div class="absolute top-5 left-5 z-10">
       <div class="bg-black/60 backdrop-blur-md p-4 rounded-lg border border-white/20">
@@ -90,6 +135,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { DrivingSimulator } from './core/DrivingSimulator'
+import { CityManager } from './utils/cityManager'
 import type { Ref } from 'vue'
 
 const canvasContainer: Ref<HTMLElement | null> = ref(null)
@@ -98,25 +144,40 @@ const fps = ref(0)
 const heading = ref(0)
 const displayedHeading = ref(0)
 const isLoading = ref(true)
+const showCityMenu = ref(false)
+const showCitySwitcher = ref(false)
+const availableCities = ref<string[]>([])
+const currentCity = ref<string | null>(null)
 
 let simulator: DrivingSimulator | null = null
 
-onMounted(() => {
-  if (!canvasContainer.value) return
+const getCityName = (city: string): string => {
+  const config = CityManager.getCityConfig(city)
+  return config?.name || city
+}
 
-  simulator = new DrivingSimulator(canvasContainer.value)
+const selectCity = async (city: string) => {
+  currentCity.value = city
+  CityManager.setSelectedCity(city)
+  showCityMenu.value = false
+  isLoading.value = true
   
-  // Subscribe to speed updates
+  if (simulator) {
+    simulator.dispose()
+  }
+  
+  const savedPos = CityManager.getSavedPosition(city)
+  simulator = new DrivingSimulator(canvasContainer.value!)
+  
+  // Subscribe to all callbacks
   simulator.onSpeedUpdate((newSpeed: number) => {
     speed.value = newSpeed
   })
-
-  // Subscribe to FPS updates
+  
   simulator.onFpsUpdate((newFps: number) => {
     fps.value = newFps
   })
-
-  // Subscribe to heading updates with smooth interpolation to prevent sudden jumps
+  
   simulator.onHeadingUpdate((newHeading: number) => {
     heading.value = newHeading
     
@@ -138,12 +199,51 @@ onMounted(() => {
     // Update displayed heading (smooth interpolation)
     displayedHeading.value = normalizeAngle(current + diff)
   })
-
+  
   simulator.onLoadComplete(() => {
     isLoading.value = false
   })
+  
+  await simulator.init(city, savedPos ? { x: savedPos.x, y: savedPos.y, z: savedPos.z } : undefined)
+}
 
-  simulator.init()
+const switchCity = async (city: string) => {
+  if (city === currentCity.value) {
+    showCitySwitcher.value = false
+    return
+  }
+  
+  showCitySwitcher.value = false
+  isLoading.value = true
+  
+  const savedPos = CityManager.getSavedPosition(city)
+  currentCity.value = city
+  CityManager.setSelectedCity(city)
+  
+  if (simulator) {
+    await simulator.reloadCity(city)
+  }
+  
+  isLoading.value = false
+}
+
+onMounted(async () => {
+  if (!canvasContainer.value) return
+
+  // Detect available cities
+  availableCities.value = await CityManager.detectAvailableCities()
+  
+  // Check if user has a saved city preference
+  const savedCity = CityManager.getSelectedCity()
+  
+  if (savedCity && availableCities.value.includes(savedCity)) {
+    // Load saved city
+    await selectCity(savedCity)
+  } else {
+    // Show city selection menu
+    showCityMenu.value = true
+    isLoading.value = false
+  }
 })
 
 onUnmounted(() => {
