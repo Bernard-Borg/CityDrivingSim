@@ -135,6 +135,11 @@ export class RoadGenerator {
         // Tunnels use the same rendering as regular roads, just with darker color
         this.createRoadMeshAlongCurve(curve, roadWidth, numSegments, isTunnel);
 
+        // Create 3D tunnel structure above the road if it's a tunnel
+        if (isTunnel) {
+            this.createTunnelStructureAlongCurve(curve, roadWidth, numSegments, curveLength);
+        }
+
         // Create yellow edge lines along the curve
         this.createEdgeLinesAlongCurve(curve, roadWidth, numSegments, curveLength);
 
@@ -245,6 +250,109 @@ export class RoadGenerator {
             this.roadGroup.add(roadMesh);
         }
         this.roads.push(roadMesh);
+    }
+
+    /**
+     * Create 3D tunnel structure (walls and ceiling) above the road along a curve
+     */
+    private createTunnelStructureAlongCurve(
+        curve: THREE.CatmullRomCurve3,
+        roadWidth: number,
+        numSegments: number,
+        curveLength: number
+    ): void {
+        const tunnelHeight = 3; // Height of tunnel interior
+        const wallThickness = 0.5; // Thickness of tunnel walls
+        const roadY = 0.01;
+        const halfWidth = roadWidth / 2;
+
+        const ceilingMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4a4a4a, // Slightly darker ceiling
+            roughness: 0.8,
+            metalness: 0.2,
+            side: THREE.DoubleSide
+        });
+
+        // Create tunnel structure segments along the curve
+        for (let i = 0; i < numSegments; i++) {
+            const t1 = i / numSegments;
+            const t2 = (i + 1) / numSegments;
+
+            const point1 = curve.getPoint(t1);
+            const point2 = curve.getPoint(t2);
+            const tangent1 = curve.getTangent(t1);
+            const tangent2 = curve.getTangent(t2);
+
+            // Average tangent for this segment
+            const tangent = tangent1.clone().add(tangent2).normalize();
+            const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+            const segmentLength = point1.distanceTo(point2);
+            if (segmentLength < 0.1) continue;
+
+            const midpoint = point1.clone().add(point2).multiplyScalar(0.5);
+            const yawAngle = Math.atan2(tangent.x, tangent.z);
+
+            // Create semi-circular arch ceiling
+            const archRadius = tunnelHeight; // Radius of the arch
+            const numArchSegments = 16; // Number of segments for smooth arch
+            const archLengthSegments = 2; // Split each tunnel segment along length for smoother curve following
+
+            // Create arch vertices and indices
+            const archVertices: number[] = [];
+            const archIndices: number[] = [];
+
+            // Create vertices for arch along width (semi-circle) and length
+            for (let lenSeg = 0; lenSeg <= archLengthSegments; lenSeg++) {
+                const lenT = lenSeg / archLengthSegments;
+                const archPoint = point1.clone().lerp(point2, lenT);
+
+                // Get tangent at this point along the curve
+                const t = t1 + (t2 - t1) * lenT;
+                const curveTangent = curve.getTangent(t);
+                const curvePerp = new THREE.Vector3(-curveTangent.z, 0, curveTangent.x).normalize();
+
+                for (let w = 0; w <= numArchSegments; w++) {
+                    const widthT = w / numArchSegments; // 0 to 1 across the width
+                    const archAngle = widthT * Math.PI; // 0 to PI (semi-circle)
+
+                    // Calculate position along arch curve (semi-circle)
+                    const archY = Math.sin(archAngle) * archRadius;
+
+                    // Calculate position across road width
+                    const leftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth - wallThickness));
+                    const rightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth + wallThickness));
+                    const archPos = leftEdge.clone().lerp(rightEdge, widthT);
+                    archPos.y = roadY + archY;
+
+                    archVertices.push(archPos.x, archPos.y, archPos.z);
+                }
+            }
+
+            // Create triangles for arch surface
+            const widthVerts = numArchSegments + 1;
+            for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
+                for (let w = 0; w < numArchSegments; w++) {
+                    const base = lenSeg * widthVerts + w;
+                    const nextBase = (lenSeg + 1) * widthVerts + w;
+
+                    // Two triangles per quad
+                    archIndices.push(base, base + 1, nextBase);
+                    archIndices.push(base + 1, nextBase + 1, nextBase);
+                }
+            }
+
+            if (archVertices.length >= 6 && archIndices.length >= 3) {
+                const archGeometry = new THREE.BufferGeometry();
+                archGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(archVertices), 3));
+                archGeometry.setIndex(new THREE.BufferAttribute(new Uint16Array(archIndices), 1));
+                archGeometry.computeVertexNormals();
+
+                const archCeiling = new THREE.Mesh(archGeometry, ceilingMaterial);
+                archCeiling.receiveShadow = true;
+                this.tunnelGroup.add(archCeiling);
+            }
+        }
     }
 
     /**
@@ -462,322 +570,6 @@ export class RoadGenerator {
     }
 
     /**
-     * Create tunnel along a curve (simplified - uses the same ribbon approach)
-     */
-    private createTunnelAlongCurve(
-        curve: THREE.CatmullRomCurve3,
-        roadWidth: number,
-        numSegments: number,
-        curveLength: number,
-        layer: number
-    ): void {
-        // Tunnels use the same ribbon approach as regular roads
-        // The road surface should be at the same Y level as regular roads
-        const roadY = 0.01;
-        // Tunnels are at the same level as roads - the "tunnel" property just means they have tunnel structure
-        // Layer can be used for multi-level roads, but default is same as regular roads
-        const depthOffset = layer <= 0 ? Math.abs(layer) * 2 : 0;
-        const tunnelY = roadY - depthOffset;
-
-        const halfWidth = roadWidth / 2;
-        const vertices: number[] = [];
-        const indices: number[] = [];
-
-        // Generate vertices along the curve (same as regular road but with Y offset)
-        for (let i = 0; i <= numSegments; i++) {
-            const t = i / numSegments;
-            const point = curve.getPoint(t);
-            const tangent = curve.getTangent(t);
-            const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-
-            const leftPoint = point.clone().add(perp.clone().multiplyScalar(halfWidth));
-            leftPoint.y = tunnelY;
-            const rightPoint = point.clone().add(perp.clone().multiplyScalar(-halfWidth));
-            rightPoint.y = tunnelY;
-
-            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
-            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
-        }
-
-        // Validate we have enough vertices
-        if (vertices.length < 6) {
-            console.warn('Tunnel geometry has too few vertices, skipping');
-            return;
-        }
-
-        // Create triangle indices (same winding order fix as regular roads)
-        // Winding order: counter-clockwise when viewed from above (positive Y)
-        for (let i = 0; i < numSegments; i++) {
-            const base = i * 2;
-
-            // Validate indices are within bounds
-            const maxIndex = (numSegments + 1) * 2 - 1;
-            if (base + 3 > maxIndex) continue;
-
-            // First triangle: left(i) -> left(i+1) -> right(i) (counter-clockwise from above)
-            indices.push(base, base + 2, base + 1);
-            // Second triangle: left(i+1) -> right(i+1) -> right(i) (counter-clockwise from above)
-            indices.push(base + 2, base + 3, base + 1);
-        }
-
-        // Validate we have indices
-        if (indices.length < 3) {
-            console.warn('Tunnel geometry has too few indices, skipping');
-            return;
-        }
-
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-        geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
-
-        // Compute normals from geometry (don't set manually, let Three.js calculate them)
-        geometry.computeVertexNormals();
-
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            color: 0x444444,
-            roughness: 0.9,
-            metalness: 0.1,
-            side: THREE.DoubleSide
-        });
-
-        const roadMesh = new THREE.Mesh(geometry, roadMaterial);
-        roadMesh.receiveShadow = true;
-        roadMesh.frustumCulled = false; // Ensure it's not culled
-
-        // Debug: log tunnel creation
-        console.log(`Created tunnel mesh: ${vertices.length / 3} vertices, ${indices.length / 3} triangles, Y=${tunnelY.toFixed(2)}, layer=${layer}`);
-
-        this.tunnelGroup.add(roadMesh);
-        this.roads.push(roadMesh);
-    }
-
-    /**
-     * Create a 3D tunnel segment with walls and ceiling
-     */
-    private createTunnelSegment(
-        start: THREE.Vector3,
-        end: THREE.Vector3,
-        direction: THREE.Vector3,
-        length: number,
-        roadWidth: number,
-        layer: number
-    ): void {
-        const tunnelHeight = 6; // Height of tunnel interior
-        const wallThickness = 0.5; // Thickness of tunnel walls
-        const roadY = 0.01; // Road surface at ground level
-
-        // Calculate depth offset based on layer (negative layers = deeper)
-        const depthOffset = layer <= 0 ? Math.abs(layer) * 2 : 0;
-        const tunnelY = roadY - depthOffset; // Slightly below ground for visibility
-
-        const midpoint = start.clone().add(end).multiplyScalar(0.5);
-        const yawAngle = Math.atan2(direction.x, direction.z);
-        const perp = new THREE.Vector3(-direction.z, 0, direction.x); // Perpendicular vector
-
-        // Tunnel materials
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            color: 0x444444, // Darker road surface
-            roughness: 0.9,
-            metalness: 0.1
-        });
-
-        const wallMaterial = new THREE.MeshStandardMaterial({
-            color: 0x555555, // Concrete grey
-            roughness: 0.8,
-            metalness: 0.2
-        });
-
-        const ceilingMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4a4a4a, // Slightly darker ceiling
-            roughness: 0.8,
-            metalness: 0.2
-        });
-
-        // 1. Road surface (floor of tunnel)
-        const roadGeometry = new THREE.PlaneGeometry(roadWidth, length);
-        const road = new THREE.Mesh(roadGeometry, roadMaterial);
-        road.position.copy(midpoint);
-        road.position.y = tunnelY;
-        road.rotation.set(-Math.PI / 2, yawAngle, 0, 'YXZ');
-        this.tunnelGroup.add(road);
-
-        // 2. Left wall
-        const leftWallGeometry = new THREE.PlaneGeometry(wallThickness, length);
-        const leftWall = new THREE.Mesh(leftWallGeometry, wallMaterial);
-        const leftOffset = perp.clone().multiplyScalar(roadWidth / 2);
-        leftWall.position.copy(midpoint).add(leftOffset);
-        leftWall.position.y = tunnelY + tunnelHeight / 2;
-        leftWall.rotation.set(0, yawAngle + Math.PI / 2, 0, 'YXZ');
-        this.tunnelGroup.add(leftWall);
-
-        // 3. Right wall
-        const rightWallGeometry = new THREE.PlaneGeometry(wallThickness, length);
-        const rightWall = new THREE.Mesh(rightWallGeometry, wallMaterial);
-        const rightOffset = perp.clone().multiplyScalar(-roadWidth / 2);
-        rightWall.position.copy(midpoint).add(rightOffset);
-        rightWall.position.y = tunnelY + tunnelHeight / 2;
-        rightWall.rotation.set(0, yawAngle + Math.PI / 2, 0, 'YXZ');
-        this.tunnelGroup.add(rightWall);
-
-        // 4. Ceiling
-        const ceilingGeometry = new THREE.PlaneGeometry(roadWidth + wallThickness * 2, length);
-        const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
-        ceiling.position.copy(midpoint);
-        ceiling.position.y = tunnelY + tunnelHeight;
-        ceiling.rotation.set(-Math.PI / 2, yawAngle, 0, 'YXZ');
-        this.tunnelGroup.add(ceiling);
-
-        // 5. Top cover (ground above tunnel) - semi-transparent so tunnel is visible
-        const coverWidth = roadWidth + wallThickness * 2 + 2; // Slightly wider than tunnel
-        const coverGeometry = new THREE.PlaneGeometry(coverWidth, length);
-        const coverMaterial = new THREE.MeshStandardMaterial({
-            color: 0x7CB342, // Green grass
-            roughness: 0.8,
-            metalness: 0,
-            transparent: true,
-            opacity: 0.6 // Semi-transparent so tunnel is visible from above
-        });
-        const cover = new THREE.Mesh(coverGeometry, coverMaterial);
-        cover.position.copy(midpoint);
-        cover.position.y = 0.1; // Just above ground
-        cover.rotation.set(-Math.PI / 2, yawAngle, 0, 'YXZ');
-        this.tunnelGroup.add(cover);
-    }
-
-    /**
-     * Create yellow edge lines for the road
-     */
-    private createEdgeLines(
-        start: THREE.Vector3,
-        end: THREE.Vector3,
-        direction: THREE.Vector3,
-        length: number,
-        roadWidth: number
-    ): void {
-        const lineMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFFFF00, // Yellow color
-            emissive: 0xFFFF00,
-            emissiveIntensity: 0.5
-        });
-
-        const lineWidth = 0.15;
-        const lineHeight = 0.015; // Slightly above road surface
-        const halfWidth = roadWidth / 2;
-
-        // Perpendicular vector for offset
-        const perp = new THREE.Vector3(-direction.z, 0, direction.x);
-
-        // Left edge line
-        const leftOffset = perp.clone().multiplyScalar(halfWidth);
-        const leftStart = start.clone().add(leftOffset);
-        leftStart.y = lineHeight;
-        const leftEnd = end.clone().add(leftOffset);
-        leftEnd.y = lineHeight;
-
-        const leftLineGeometry = new THREE.PlaneGeometry(lineWidth, length);
-        const leftLine = new THREE.Mesh(leftLineGeometry, lineMaterial);
-        const leftMidpoint = leftStart.clone().add(leftEnd).multiplyScalar(0.5);
-        leftLine.position.copy(leftMidpoint);
-
-        // Use same rotation approach as createRoadSegment: 'YXZ' Euler order
-        const yawAngle = Math.atan2(direction.x, direction.z);
-        const leftEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
-        leftLine.rotation.copy(leftEuler);
-        this.roadGroup.add(leftLine);
-
-        // Right edge line
-        const rightOffset = perp.clone().multiplyScalar(-halfWidth);
-        const rightStart = start.clone().add(rightOffset);
-        rightStart.y = lineHeight;
-        const rightEnd = end.clone().add(rightOffset);
-        rightEnd.y = lineHeight;
-
-        const rightLineGeometry = new THREE.PlaneGeometry(lineWidth, length);
-        const rightLine = new THREE.Mesh(rightLineGeometry, lineMaterial);
-        const rightMidpoint = rightStart.clone().add(rightEnd).multiplyScalar(0.5);
-        rightLine.position.copy(rightMidpoint);
-
-        // Use same rotation approach as createRoadSegment: 'YXZ' Euler order
-        const rightEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
-        rightLine.rotation.copy(rightEuler);
-        this.roadGroup.add(rightLine);
-    }
-
-    /**
-     * Create lane divider lines for multi-lane roads
-     */
-    private createLaneDividers(
-        start: THREE.Vector3,
-        end: THREE.Vector3,
-        direction: THREE.Vector3,
-        length: number,
-        roadWidth: number,
-        lanesCount: number
-    ): void {
-        const dividerMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFFFFFF, // White color for lane dividers
-            emissive: 0xFFFFFF,
-            emissiveIntensity: 0.3
-        });
-
-        const dividerWidth = 0.1; // Narrow divider line
-        const dividerHeight = 0.02; // Slightly above road surface
-        const yawAngle = Math.atan2(direction.x, direction.z);
-
-        // Perpendicular vector for offset
-        const perp = new THREE.Vector3(-direction.z, 0, direction.x);
-
-        // Calculate lane width
-        const laneWidth = roadWidth / lanesCount;
-
-        // Create dividers between lanes (not at edges)
-        // For n lanes, we need n-1 dividers
-        for (let i = 1; i < lanesCount; i++) {
-            // Calculate offset from center (0 is center, positive is right, negative is left)
-            // For 2 lanes: divider at 0 (center)
-            // For 3 lanes: dividers at -laneWidth/2 and +laneWidth/2
-            // For 4 lanes: dividers at -laneWidth, 0, +laneWidth
-            const offsetFromCenter = (i - lanesCount / 2) * laneWidth;
-            const offset = perp.clone().multiplyScalar(offsetFromCenter);
-
-            // Create dashed line effect by creating multiple segments
-            const dashLength = 2.0; // Length of each dash
-            const gapLength = 1.0; // Length of gap between dashes
-            const segmentLength = dashLength + gapLength;
-            const numSegments = Math.ceil(length / segmentLength);
-
-            for (let seg = 0; seg < numSegments; seg++) {
-                const segmentStart = seg * segmentLength;
-                const segmentEnd = Math.min(segmentStart + dashLength, length);
-
-                if (segmentEnd <= segmentStart) continue;
-
-                // Calculate positions along the road
-                const tStart = segmentStart / length;
-                const tEnd = segmentEnd / length;
-
-                const segmentStartPos = start.clone().lerp(end, tStart).add(offset);
-                segmentStartPos.y = dividerHeight;
-                const segmentEndPos = start.clone().lerp(end, tEnd).add(offset);
-                segmentEndPos.y = dividerHeight;
-
-                const segmentLengthActual = segmentEndPos.distanceTo(segmentStartPos);
-                if (segmentLengthActual < 0.1) continue;
-
-                const segmentMidpoint = segmentStartPos.clone().add(segmentEndPos).multiplyScalar(0.5);
-
-                const dividerGeometry = new THREE.PlaneGeometry(dividerWidth, segmentLengthActual);
-                const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
-                divider.position.copy(segmentMidpoint);
-
-                const dividerEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
-                divider.rotation.copy(dividerEuler);
-                this.roadGroup.add(divider);
-            }
-        }
-    }
-
-    /**
      * Get road width based on highway type and number of lanes
      * Each lane must be at least car width (1.9m) + 20% = 2.28m, rounded to 2.5m for comfort
      */
@@ -842,7 +634,6 @@ export class RoadGenerator {
         // Measure text to center it
         const metrics = context.measureText(name);
         const textWidth = metrics.width;
-        const textHeight = fontSize;
 
         // Draw shadow/background for better readability
         context.fillStyle = 'rgba(0, 0, 0, 0.7)';
