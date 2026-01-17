@@ -1,10 +1,14 @@
 import * as THREE from 'three';
 import { RoadGenerator } from './RoadGenerator';
+import { TreeGenerator } from './TreeGenerator';
+import { BuildingGenerator } from './BuildingGenerator';
 import type { GeoJSON } from '@/types';
 import { CityManager } from '@/utils/cityManager';
 
 export class SceneManager {
     private roadGenerator: RoadGenerator;
+    private treeGenerator: TreeGenerator;
+    private buildingGenerator: BuildingGenerator;
     private startPosition: THREE.Vector3;
     private centerLat: number = 0;
     private centerLon: number = 0;
@@ -13,6 +17,8 @@ export class SceneManager {
 
     constructor(private scene: THREE.Scene) {
         this.roadGenerator = new RoadGenerator(scene);
+        this.treeGenerator = new TreeGenerator(scene);
+        this.buildingGenerator = new BuildingGenerator(scene);
         this.startPosition = new THREE.Vector3(0, 1, 0);
     }
 
@@ -43,6 +49,32 @@ export class SceneManager {
 
             // Generate roads from GeoJSON
             this.roadGenerator.generateRoadsFromGeoJSON(geoJSON, this.centerLat, this.centerLon);
+
+            // Load and generate trees
+            try {
+                const treeResponse = await fetch(`/data/trees/${cityConfig.file}`);
+                if (treeResponse.ok) {
+                    const treeGeoJSON: GeoJSON = await treeResponse.json();
+                    this.treeGenerator.generateTreesFromGeoJSON(treeGeoJSON, this.centerLat, this.centerLon);
+                } else {
+                    console.log(`No tree data found for ${cityConfig.name}`);
+                }
+            } catch (error) {
+                console.warn(`Failed to load tree data for ${city}:`, error);
+            }
+
+            // Load and generate buildings
+            try {
+                const buildingResponse = await fetch(`/data/buildings/${cityConfig.file}`);
+                if (buildingResponse.ok) {
+                    const buildingGeoJSON: GeoJSON = await buildingResponse.json();
+                    this.buildingGenerator.generateBuildingsFromGeoJSON(buildingGeoJSON, this.centerLat, this.centerLon);
+                } else {
+                    console.log(`No building data found for ${cityConfig.name}`);
+                }
+            } catch (error) {
+                console.warn(`Failed to load building data for ${city}:`, error);
+            }
 
             // Clear GeoJSON reference to allow garbage collection
             // (The geoJSON object will be garbage collected after this scope)
@@ -88,13 +120,19 @@ export class SceneManager {
         // Clear the road generator's groups
         this.roadGenerator.clear();
 
-        // Remove other meshes and groups, but keep lights, camera, and road groups
+        // Clear trees
+        this.treeGenerator.clear();
+
+        // Clear buildings
+        this.buildingGenerator.clear();
+
+        // Remove other meshes and groups, but keep lights, camera, road groups, tree groups, and building groups
         const objectsToRemove: THREE.Object3D[] = [];
         this.scene.children.forEach((child) => {
-            // Keep lights, camera, and road groups (they're managed by RoadGenerator)
+            // Keep lights, camera, road groups, tree groups, and building groups
             if (!(child instanceof THREE.Light) &&
                 !(child instanceof THREE.Camera) &&
-                !(child instanceof THREE.Group && child.userData.isRoadGroup)) {
+                !(child instanceof THREE.Group && (child.userData.isRoadGroup || child.userData.isTreeGroup || child.userData.isBuildingGroup))) {
                 objectsToRemove.push(child);
             }
         });

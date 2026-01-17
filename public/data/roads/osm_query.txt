@@ -1,0 +1,4 @@
+[out:json][timeout:25];
+area["name"="Amsterdam"]->.a;
+way["highway" !~ "footway|path|cycleway|pedestrian|track"](area.a);
+out geom;

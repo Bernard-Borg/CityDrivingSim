@@ -134,18 +134,6 @@ export class RoadGenerator {
         let roadsCreated = 0;
         let roadsSkipped = 0;
 
-        // Filter out minor roads to improve performance
-        const highwayTypePriority: Record<string, number> = {
-            'motorway': 1,
-            'trunk': 2,
-            'primary': 3,
-            'secondary': 4,
-            'tertiary': 5,
-            'residential': 6,
-            'service': 7,
-            'unclassified': 6
-        };
-
         geoJSON.features.forEach((feature: Feature) => {
             if (feature.geometry.type === 'LineString' && feature.properties.highway) {
                 const highwayType = feature.properties.highway;
