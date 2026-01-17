@@ -24,7 +24,7 @@
     </div>
 
     <!-- City Switcher Button (when in game) -->
-    <div v-if="!showCityMenu && !isLoading" class="absolute bottom-8 right-8 z-10">
+    <div v-if="!showCityMenu && !isLoading" class="absolute bottom-24 right-8 z-10">
       <button
         @click="showCitySwitcher = !showCitySwitcher"
         class="bg-black/60 hover:bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20 text-white text-sm transition-colors"
@@ -142,6 +142,29 @@
       </div>
     </div>
 
+    <!-- Street Names Toggle -->
+    <div v-if="!showCityMenu && !isLoading" class="absolute bottom-8 right-8 z-10">
+      <button
+        @click="toggleStreetNames"
+        :class="[
+          'bg-black/70 hover:bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border-2 transition-colors text-sm font-medium',
+          showStreetNames 
+            ? 'border-green-500/50 text-green-400' 
+            : 'border-white/20 text-gray-300'
+        ]"
+      >
+        <span class="flex items-center gap-2">
+          <svg v-if="showStreetNames" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+          Street Names
+        </span>
+      </button>
+    </div>
+
     <!-- Loading Screen -->
     <div v-if="isLoading" class="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
       <div class="text-white text-2xl">Loading City Map...</div>
@@ -166,6 +189,7 @@ const showCityMenu = ref(false)
 const showCitySwitcher = ref(false)
 const availableCities = ref<string[]>([])
 const currentCity = ref<string | null>(null)
+const showStreetNames = ref(true)
 
 let simulator: DrivingSimulator | null = null
 
@@ -224,9 +248,20 @@ const selectCity = async (city: string) => {
   
   simulator.onLoadComplete(() => {
     isLoading.value = false
+    // Initialize street names visibility state
+    if (simulator) {
+      showStreetNames.value = simulator.getLabelsVisible()
+    }
   })
   
   await simulator.init(city, savedPos ? { x: savedPos.x, y: savedPos.y, z: savedPos.z } : undefined)
+}
+
+const toggleStreetNames = () => {
+  if (simulator) {
+    showStreetNames.value = !showStreetNames.value
+    simulator.setLabelsVisible(showStreetNames.value)
+  }
 }
 
 const switchCity = async (city: string) => {
@@ -244,6 +279,8 @@ const switchCity = async (city: string) => {
   
   if (simulator) {
     await simulator.reloadCity(city)
+    // Restore street names visibility state after city reload
+    simulator.setLabelsVisible(showStreetNames.value)
   }
   
   isLoading.value = false

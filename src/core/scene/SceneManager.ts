@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoadGenerator } from './RoadGenerator';
-import type { AmsterdamGeoJSON } from '@/types';
+import type { GeoJSON } from '@/types';
 import { CityManager } from '@/utils/cityManager';
 
 export class SceneManager {
@@ -32,7 +32,7 @@ export class SceneManager {
                 throw new Error(`Failed to load ${cityConfig.file}: ${response.status}`);
             }
 
-            const geoJSON: AmsterdamGeoJSON = await response.json();
+            const geoJSON: GeoJSON = await response.json();
 
             // Clear existing scene (except lights)
             this.clearScene();
@@ -91,21 +91,20 @@ export class SceneManager {
         const groundSize = 50000; // 50km x 50km
         const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
         const groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0x7CB342, // Green grass color
+            color: new THREE.Color(0, 255, 0), // Green grass color
             roughness: 0.8,
             metalness: 0,
-            side: THREE.DoubleSide // Render both sides
         });
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+
         // Rotate to lay flat on XZ plane (Y is up)
+        const { x, z } = this.latLonToLocal(this.centerLat, this.centerLon);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.set(0, 0, 0); // Center at origin
+        ground.position.set(x, 0, z); // Center at origin
         ground.receiveShadow = true;
         // Ensure ground is not culled
         ground.frustumCulled = false;
         this.scene.add(ground);
-
-        console.log('Ground created at y=0, size:', groundSize);
     }
 
     private latLonToLocal(lat: number, lon: number): { x: number; z: number; } {
@@ -125,5 +124,19 @@ export class SceneManager {
 
     getCurrentCity(): string {
         return this.currentCity;
+    }
+
+    /**
+     * Toggle visibility of street name labels
+     */
+    setLabelsVisible(visible: boolean): void {
+        this.roadGenerator.setLabelsVisible(visible);
+    }
+
+    /**
+     * Get current visibility state of street name labels
+     */
+    getLabelsVisible(): boolean {
+        return this.roadGenerator.getLabelsVisible();
     }
 }

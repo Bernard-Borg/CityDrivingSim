@@ -1,7 +1,7 @@
 // Type definitions for the city driving simulator
 
-// GeoJSON FeatureCollection types for Amsterdam data
-export interface AmsterdamFeatureProperties {
+// GeoJSON FeatureCollection types for  data
+export interface FeatureProperties {
   '@id': string
   highway?: string
   lanes?: string
@@ -22,24 +22,24 @@ export interface AmsterdamFeatureProperties {
   [key: string]: string | undefined
 }
 
-export interface AmsterdamLineStringGeometry {
+export interface LineStringGeometry {
   type: 'LineString'
   coordinates: Array<[number, number]> // [longitude, latitude]
 }
 
-export interface AmsterdamFeature {
+export interface Feature {
   type: 'Feature'
   id?: string | number
-  properties: AmsterdamFeatureProperties
-  geometry: AmsterdamLineStringGeometry
+  properties: FeatureProperties
+  geometry: LineStringGeometry
 }
 
-export interface AmsterdamGeoJSON {
+export interface GeoJSON {
   type: 'FeatureCollection'
   generator?: string
   copyright?: string
   timestamp?: string
-  features: AmsterdamFeature[]
+  features: Feature[]
 }
 
 // OSM format types (native OpenStreetMap structure)

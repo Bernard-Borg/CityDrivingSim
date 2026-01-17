@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { AmsterdamGeoJSON, AmsterdamFeature } from '@/types';
+import type { GeoJSON, Feature } from '@/types';
 
 export class RoadGenerator {
     private roads: THREE.Mesh[] = [];
@@ -40,9 +40,9 @@ export class RoadGenerator {
     }
 
     /**
-     * Generate roads from Amsterdam GeoJSON data
+     * Generate roads from GeoJSON data
      */
-    generateRoadsFromGeoJSON(geoJSON: AmsterdamGeoJSON, centerLat: number, centerLon: number): void {
+    generateRoadsFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number): void {
         if (!geoJSON || !geoJSON.features) {
             console.warn('No GeoJSON features provided');
             return;
@@ -53,7 +53,7 @@ export class RoadGenerator {
         let roadsCreated = 0;
         let roadsSkipped = 0;
 
-        geoJSON.features.forEach((feature: AmsterdamFeature) => {
+        geoJSON.features.forEach((feature: Feature) => {
             if (feature.geometry.type === 'LineString' && feature.properties.highway) {
                 const coordinates = feature.geometry.coordinates;
 
@@ -116,32 +116,52 @@ export class RoadGenerator {
         // Tunnels: render at ground level with 3D structure
         const roadY = 0.01;
 
-        // Create segments between consecutive points
-        for (let i = 0; i < points.length - 1; i++) {
-            const start = new THREE.Vector3(points[i].x, roadY, points[i].z);
-            const end = new THREE.Vector3(points[i + 1].x, roadY, points[i + 1].z);
+        if (points.length < 2) return;
 
-            const direction = new THREE.Vector3().subVectors(end, start);
+        // Create segments with rounded corners at junctions
+        for (let i = 0; i < points.length - 1; i++) {
+            const prevPoint = i > 0 ? new THREE.Vector3(points[i - 1].x, roadY, points[i - 1].z) : null;
+            const currentPoint = new THREE.Vector3(points[i].x, roadY, points[i].z);
+            const nextPoint = new THREE.Vector3(points[i + 1].x, roadY, points[i + 1].z);
+            const nextNextPoint = i < points.length - 2 ? new THREE.Vector3(points[i + 2].x, roadY, points[i + 2].z) : null;
+
+            // Calculate direction for this segment
+            const direction = new THREE.Vector3().subVectors(nextPoint, currentPoint);
             const length = direction.length();
 
             if (length < 0.1) continue; // Skip very short segments
 
-            direction.normalize();
+            const normalizedDirection = direction.clone().normalize();
+
+            // Create rounded corner at the start (junction with previous segment)
+            if (prevPoint) {
+                const prevDir = new THREE.Vector3().subVectors(currentPoint, prevPoint).normalize();
+                const angle = Math.acos(Math.max(-1, Math.min(1, prevDir.dot(normalizedDirection))));
+
+                // Create corner if there's a significant angle change
+                if (angle > 0.15 && angle < Math.PI - 0.15) {
+                    const segmentLength1 = prevPoint.distanceTo(currentPoint);
+                    const segmentLength2 = length;
+                    const cornerRadius = Math.min(roadWidth * 0.4, Math.min(segmentLength1, segmentLength2) * 0.25);
+
+                    this.createRoundedCorner(currentPoint, prevDir.clone(), normalizedDirection.clone(), roadWidth, cornerRadius, isTunnel, layer);
+                }
+            }
 
             if (isTunnel) {
                 // Create 3D tunnel structure
-                this.createTunnelSegment(start, end, direction, length, roadWidth, layer);
+                this.createTunnelSegment(currentPoint, nextPoint, normalizedDirection, length, roadWidth, layer);
             } else {
                 // Create regular road surface
-                this.createRoadSegment(start, end, direction, length, roadWidth, false);
+                this.createRoadSegment(currentPoint, nextPoint, normalizedDirection, length, roadWidth, false);
             }
 
             // Create yellow edge lines
-            this.createEdgeLines(start, end, direction, length, roadWidth);
+            this.createEdgeLines(currentPoint, nextPoint, normalizedDirection, length, roadWidth);
 
             // Create lane dividers if multiple lanes
             if (lanesCount > 1) {
-                this.createLaneDividers(start, end, direction, length, roadWidth, lanesCount);
+                this.createLaneDividers(currentPoint, nextPoint, normalizedDirection, length, roadWidth, lanesCount);
             }
         }
 
@@ -153,6 +173,87 @@ export class RoadGenerator {
             const labelDirection = Math.atan2(nextPoint.x - midPoint.x, nextPoint.z - midPoint.z);
             this.createStreetLabel(midPoint, labelDirection, roadName);
         }
+    }
+
+    /**
+     * Create a rounded corner patch at a road junction to fill gaps
+     */
+    private createRoundedCorner(
+        cornerPoint: THREE.Vector3,
+        incomingDir: THREE.Vector3,
+        outgoingDir: THREE.Vector3,
+        roadWidth: number,
+        cornerRadius: number,
+        isTunnel: boolean = false,
+        layer: number = 0
+    ): void {
+        const roadY = 0.01;
+
+        // Calculate the angle between incoming and outgoing directions
+        const angle = Math.acos(Math.max(-1, Math.min(1, incomingDir.dot(outgoingDir))));
+
+        // Skip if the angle is too small or too large (almost straight or reverse)
+        if (angle < 0.1 || angle > Math.PI - 0.1) return;
+
+        // Calculate perpendicular vectors for each direction
+        const incomingPerp = new THREE.Vector3(-incomingDir.z, 0, incomingDir.x);
+        const outgoingPerp = new THREE.Vector3(-outgoingDir.z, 0, outgoingDir.x);
+
+        // Calculate offset distance based on the angle and desired corner radius
+        // This ensures the corner patch extends enough to cover gaps
+        const offsetDistance = Math.min(cornerRadius, roadWidth * 0.3);
+
+        // Calculate points along each edge where we'll create the corner
+        const halfWidth = roadWidth / 2;
+        const innerStart = cornerPoint.clone().add(incomingDir.clone().multiplyScalar(-offsetDistance))
+            .add(incomingPerp.clone().multiplyScalar(-halfWidth));
+        const innerEnd = cornerPoint.clone().add(outgoingDir.clone().multiplyScalar(offsetDistance))
+            .add(outgoingPerp.clone().multiplyScalar(-halfWidth));
+        const outerStart = cornerPoint.clone().add(incomingDir.clone().multiplyScalar(-offsetDistance))
+            .add(incomingPerp.clone().multiplyScalar(halfWidth));
+        const outerEnd = cornerPoint.clone().add(outgoingDir.clone().multiplyScalar(offsetDistance))
+            .add(outgoingPerp.clone().multiplyScalar(halfWidth));
+
+        // Create a quad (two triangles) to fill the corner gap
+        const geometry = new THREE.BufferGeometry();
+
+        // Create vertices forming a quadrilateral
+        const vertices = new Float32Array([
+            innerStart.x, roadY, innerStart.z,  // 0: Inner start
+            innerEnd.x, roadY, innerEnd.z,      // 1: Inner end
+            outerEnd.x, roadY, outerEnd.z,      // 2: Outer end
+            outerStart.x, roadY, outerStart.z   // 3: Outer start
+        ]);
+
+        // Create indices for two triangles (quad)
+        const indices = new Uint16Array([
+            0, 1, 2,  // First triangle: inner start, inner end, outer end
+            0, 2, 3   // Second triangle: inner start, outer end, outer start
+        ]);
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+        geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+        geometry.computeVertexNormals();
+
+        // Create material
+        const roadMaterial = new THREE.MeshStandardMaterial({
+            color: isTunnel ? 0x333333 : 0x666666,
+            roughness: 0.9,
+            metalness: 0.1,
+            side: THREE.DoubleSide // Render both sides
+        });
+
+        const cornerMesh = new THREE.Mesh(geometry, roadMaterial);
+        cornerMesh.receiveShadow = true;
+
+        if (isTunnel) {
+            // Adjust Y for tunnel depth
+            cornerMesh.position.y = -(layer <= 0 ? Math.abs(layer) * 2 : 0);
+            this.tunnelGroup.add(cornerMesh);
+        } else {
+            this.roadGroup.add(cornerMesh);
+        }
+        this.roads.push(cornerMesh);
     }
 
     /**
@@ -523,5 +624,19 @@ export class RoadGenerator {
 
     getRoads(): THREE.Mesh[] {
         return this.roads;
+    }
+
+    /**
+     * Toggle visibility of street name labels
+     */
+    setLabelsVisible(visible: boolean): void {
+        this.labelsGroup.visible = visible;
+    }
+
+    /**
+     * Get current visibility state of street name labels
+     */
+    getLabelsVisible(): boolean {
+        return this.labelsGroup.visible;
     }
 }

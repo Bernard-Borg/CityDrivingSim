@@ -262,6 +262,20 @@ export class DrivingSimulator {
         return angle;
     }
 
+    /**
+     * Toggle visibility of street name labels
+     */
+    setLabelsVisible(visible: boolean): void {
+        this.sceneManager.setLabelsVisible(visible);
+    }
+
+    /**
+     * Get current visibility state of street name labels
+     */
+    getLabelsVisible(): boolean {
+        return this.sceneManager.getLabelsVisible();
+    }
+
     setupEventListeners(): void {
         window.addEventListener('resize', this.handleResize);
         this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
