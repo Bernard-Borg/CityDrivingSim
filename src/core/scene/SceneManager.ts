@@ -100,7 +100,7 @@ export class SceneManager {
         // Rotate to lay flat on XZ plane (Y is up)
         const { x, z } = this.latLonToLocal(this.centerLat, this.centerLon);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.set(x, 0, z); // Center at origin
+        ground.position.set(x, -1, z); // Center at origin
         ground.receiveShadow = true;
         // Ensure ground is not culled
         ground.frustumCulled = false;

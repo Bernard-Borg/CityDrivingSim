@@ -573,11 +573,11 @@ export class RoadGenerator {
         if (!context) return;
 
         // Set canvas size
-        canvas.width = 256;
-        canvas.height = 64;
+        canvas.width = 192;
+        canvas.height = 14;
 
         // Draw text with shadow for better visibility
-        const fontSize = 12;
+        const fontSize = 10;
         context.font = `${fontSize}px Arial`;
 
         // Measure text to center it
@@ -610,7 +610,7 @@ export class RoadGenerator {
         const sprite = new THREE.Sprite(spriteMaterial);
 
         // Scale sprite (adjust size as needed)
-        const scale = 5; // Size of the label in world units
+        const scale = 2; // Size of the label in world units
         sprite.scale.set(scale * (textWidth / fontSize), scale, 1);
 
         // Position sprite above the road
