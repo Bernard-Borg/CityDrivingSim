@@ -71,8 +71,11 @@ export class RoadGenerator {
                 const isTunnel = feature.properties.tunnel === 'yes' || feature.properties.tunnel === 'building_passage';
                 const layer = feature.properties.layer ? parseInt(feature.properties.layer, 10) : 0;
 
+                // Parse lanes count (default to 1 if not specified)
+                const lanesCount = feature.properties.lanes ? parseInt(feature.properties.lanes, 10) : 1;
+
                 // Create road from points
-                this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name, isTunnel, layer);
+                this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name, isTunnel, layer, lanesCount);
                 roadsCreated++;
             } else {
                 roadsSkipped++;
@@ -104,9 +107,10 @@ export class RoadGenerator {
         highwayType: string,
         roadName?: string,
         isTunnel: boolean = false,
-        layer: number = 0
+        layer: number = 0,
+        lanesCount: number = 1
     ): void {
-        const roadWidth = this.getRoadWidth(highwayType);
+        const roadWidth = this.getRoadWidth(highwayType, lanesCount);
 
         // Regular roads: slightly above ground (0.01)
         // Tunnels: render at ground level with 3D structure
@@ -134,6 +138,11 @@ export class RoadGenerator {
 
             // Create yellow edge lines
             this.createEdgeLines(start, end, direction, length, roadWidth);
+
+            // Create lane dividers if multiple lanes
+            if (lanesCount > 1) {
+                this.createLaneDividers(start, end, direction, length, roadWidth, lanesCount);
+            }
         }
 
         // Add street name label on the middle segment of the road
@@ -335,28 +344,122 @@ export class RoadGenerator {
     }
 
     /**
-     * Get road width based on highway type
+     * Create lane divider lines for multi-lane roads
      */
-    private getRoadWidth(highwayType: string): number {
-        const widths: Record<string, number> = {
-            'motorway': 10,
-            'trunk': 8,
-            'primary': 7,
-            'secondary': 6,
-            'tertiary': 5,
-            'residential': 4,
-            'service': 3,
-            'unclassified': 4
+    private createLaneDividers(
+        start: THREE.Vector3,
+        end: THREE.Vector3,
+        direction: THREE.Vector3,
+        length: number,
+        roadWidth: number,
+        lanesCount: number
+    ): void {
+        const dividerMaterial = new THREE.MeshStandardMaterial({
+            color: 0xFFFFFF, // White color for lane dividers
+            emissive: 0xFFFFFF,
+            emissiveIntensity: 0.3
+        });
+
+        const dividerWidth = 0.1; // Narrow divider line
+        const dividerHeight = 0.02; // Slightly above road surface
+        const yawAngle = Math.atan2(direction.x, direction.z);
+
+        // Perpendicular vector for offset
+        const perp = new THREE.Vector3(-direction.z, 0, direction.x);
+
+        // Calculate lane width
+        const laneWidth = roadWidth / lanesCount;
+
+        // Create dividers between lanes (not at edges)
+        // For n lanes, we need n-1 dividers
+        for (let i = 1; i < lanesCount; i++) {
+            // Calculate offset from center (0 is center, positive is right, negative is left)
+            // For 2 lanes: divider at 0 (center)
+            // For 3 lanes: dividers at -laneWidth/2 and +laneWidth/2
+            // For 4 lanes: dividers at -laneWidth, 0, +laneWidth
+            const offsetFromCenter = (i - lanesCount / 2) * laneWidth;
+            const offset = perp.clone().multiplyScalar(offsetFromCenter);
+
+            // Create dashed line effect by creating multiple segments
+            const dashLength = 2.0; // Length of each dash
+            const gapLength = 1.0; // Length of gap between dashes
+            const segmentLength = dashLength + gapLength;
+            const numSegments = Math.ceil(length / segmentLength);
+
+            for (let seg = 0; seg < numSegments; seg++) {
+                const segmentStart = seg * segmentLength;
+                const segmentEnd = Math.min(segmentStart + dashLength, length);
+
+                if (segmentEnd <= segmentStart) continue;
+
+                // Calculate positions along the road
+                const tStart = segmentStart / length;
+                const tEnd = segmentEnd / length;
+
+                const segmentStartPos = start.clone().lerp(end, tStart).add(offset);
+                segmentStartPos.y = dividerHeight;
+                const segmentEndPos = start.clone().lerp(end, tEnd).add(offset);
+                segmentEndPos.y = dividerHeight;
+
+                const segmentLengthActual = segmentEndPos.distanceTo(segmentStartPos);
+                if (segmentLengthActual < 0.1) continue;
+
+                const segmentMidpoint = segmentStartPos.clone().add(segmentEndPos).multiplyScalar(0.5);
+
+                const dividerGeometry = new THREE.PlaneGeometry(dividerWidth, segmentLengthActual);
+                const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
+                divider.position.copy(segmentMidpoint);
+
+                const dividerEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
+                divider.rotation.copy(dividerEuler);
+                this.roadGroup.add(divider);
+            }
+        }
+    }
+
+    /**
+     * Get road width based on highway type and number of lanes
+     * Each lane must be at least car width (1.9m) + 20% = 2.28m, rounded to 2.5m for comfort
+     */
+    private getRoadWidth(highwayType: string, lanesCount: number = 1): number {
+        // Car width is 1.9 units, so minimum lane width is 1.9 * 1.2 = 2.28
+        // We'll use 2.5 as a comfortable minimum lane width
+        const carWidth = 1.9;
+        const minLaneWidth = carWidth * 1.2; // At least car width + 20%
+        const comfortableLaneWidth = 2.5; // Comfortable lane width for navigation
+
+        // Minimum road widths per highway type (for single-lane roads)
+        const minWidths: Record<string, number> = {
+            'motorway': 5.2,
+            'trunk': 4.5,
+            'primary': 4.2,
+            'secondary': 3.9,
+            'tertiary': 3.75,
+            'residential': 3.6,
+            'service': 3.4,
+            'unclassified': 3.6
         };
 
-        // Check for type in highway string
-        for (const [type, width] of Object.entries(widths)) {
+        // Get minimum width for this highway type
+        let minRoadWidth = minWidths['residential']; // Default
+        for (const [type, width] of Object.entries(minWidths)) {
             if (highwayType.toLowerCase().includes(type)) {
-                return width;
+                minRoadWidth = width;
+                break;
             }
         }
 
-        return widths['residential']; // Default width
+        // Calculate lane width - use comfortable width for multi-lane roads, 
+        // but ensure minimum is respected
+        const laneWidth = Math.max(minLaneWidth, comfortableLaneWidth);
+
+        // For single-lane roads, use the highway-specific minimum width
+        // For multi-lane roads, use lane width * number of lanes
+        if (lanesCount === 1) {
+            return Math.max(minRoadWidth, laneWidth);
+        } else {
+            return lanesCount * laneWidth;
+        }
     }
 
     /**
