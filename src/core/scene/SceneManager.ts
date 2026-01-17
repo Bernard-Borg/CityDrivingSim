@@ -83,7 +83,7 @@ export class SceneManager {
             if (savedPosition) {
                 // Convert saved lat/lon position to local coordinates
                 const local = this.latLonToLocal(savedPosition.lat, savedPosition.lon);
-                this.startPosition.set(local.x, savedPosition.y ?? 1, local.z);
+                this.startPosition.set(local.x, 0.25, local.z);
                 console.log(`Restored position: Lat ${savedPosition.lat.toFixed(6)}, Lon ${savedPosition.lon.toFixed(6)} -> Local (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
             } else if (geoJSON.features.length > 0) {
                 // Use first feature coordinate
@@ -91,7 +91,7 @@ export class SceneManager {
                 if (firstFeature.geometry.type === 'LineString' && firstFeature.geometry.coordinates.length > 0) {
                     const [lon, lat] = firstFeature.geometry.coordinates[0];
                     const local = this.latLonToLocal(lat, lon);
-                    this.startPosition.set(local.x, 1, local.z);
+                    this.startPosition.set(local.x, 0.25, local.z);
                     console.log(`Starting position: (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
                 }
             }

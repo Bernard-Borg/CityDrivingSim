@@ -31,11 +31,13 @@ export class Car {
 
     constructor(scene: THREE.Scene) {
         this.scene = scene;
-        this.position = new THREE.Vector3(0, 1, 0);
+        this.position = new THREE.Vector3(0, 0.25, 0);
         this.rotation = new THREE.Quaternion();
 
         this.mesh = this.createCarMesh();
         this.mesh.position.copy(this.position);
+        // Scale car down by 25% (0.75 = 75% of original size)
+        this.mesh.scale.set(0.75, 0.75, 0.75);
         scene.add(this.mesh);
     }
 
