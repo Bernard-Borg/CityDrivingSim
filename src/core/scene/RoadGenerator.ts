@@ -625,8 +625,8 @@ export class RoadGenerator {
                 const leftEdge = edgePoint.clone().add(perp.clone().multiplyScalar(-halfLineWidth * offsetMultiplier));
                 const rightEdge = edgePoint.clone().add(perp.clone().multiplyScalar(halfLineWidth * offsetMultiplier));
 
-                vertices.push(leftEdge.x, leftEdge.y, leftEdge.z);
-                vertices.push(rightEdge.x, rightEdge.y, rightEdge.z);
+                vertices.push(leftEdge.x, leftEdge.y - 0.01, leftEdge.z);
+                vertices.push(rightEdge.x, rightEdge.y - 0.01, rightEdge.z);
             }
 
             if (vertices.length < 6) return null;
