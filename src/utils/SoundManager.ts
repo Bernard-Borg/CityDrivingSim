@@ -35,21 +35,24 @@ export class SoundManager {
 
     /**
      * Play a sound (if loaded)
-     * Returns the audio element for looping sounds (so it can be stopped later)
+     * Returns the audio element for external control.
+     * Reuses the same element to avoid creating too many WebMediaPlayers.
      */
     play(name: string, volume: number = 1.0, loop: boolean = false): HTMLAudioElement | null {
         if (!this.isEnabled) return null;
 
         const audio = this.sounds.get(name);
         if (audio) {
-            const clonedAudio = audio.cloneNode() as HTMLAudioElement;
-            clonedAudio.volume = this.masterVolume * volume;
-            clonedAudio.loop = loop;
-            clonedAudio.play().catch((err) => {
+            // Reuse the same element to avoid WebMediaPlayer exhaustion
+            audio.pause();
+            audio.currentTime = 0;
+            audio.volume = this.masterVolume * volume;
+            audio.loop = loop;
+            audio.play().catch((err) => {
                 // Autoplay policies may prevent this, that's okay
                 console.debug(`Could not play sound ${name}:`, err);
             });
-            return clonedAudio;
+            return audio;
         }
         return null;
     }
