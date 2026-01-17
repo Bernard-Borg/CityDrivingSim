@@ -68,7 +68,7 @@ export class RoadGenerator {
         const dLon = (lon - centerLon) * Math.PI / 180;
 
         const x = dLon * R * Math.cos(centerLat * Math.PI / 180);
-        const z = dLat * R;
+        const z = -dLat * R;
 
         return { x, z };
     }
