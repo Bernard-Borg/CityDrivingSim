@@ -19,7 +19,7 @@ export class SceneManager {
         this.roadGenerator = new RoadGenerator(scene);
         this.treeGenerator = new TreeGenerator(scene);
         this.buildingGenerator = new BuildingGenerator(scene);
-        this.startPosition = new THREE.Vector3(0, 1, 0);
+        this.startPosition = new THREE.Vector3(0, 0.41, 0);
     }
 
     async loadCityMap(city: string, savedPosition?: { lat: number; lon: number; y?: number; }): Promise<void> {
@@ -83,7 +83,7 @@ export class SceneManager {
             if (savedPosition) {
                 // Convert saved lat/lon position to local coordinates
                 const local = this.latLonToLocal(savedPosition.lat, savedPosition.lon);
-                this.startPosition.set(local.x, 0.25, local.z);
+                this.startPosition.set(local.x, 0.41, local.z);
                 console.log(`Restored position: Lat ${savedPosition.lat.toFixed(6)}, Lon ${savedPosition.lon.toFixed(6)} -> Local (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
             } else if (geoJSON.features.length > 0) {
                 // Use first feature coordinate
@@ -91,7 +91,7 @@ export class SceneManager {
                 if (firstFeature.geometry.type === 'LineString' && firstFeature.geometry.coordinates.length > 0) {
                     const [lon, lat] = firstFeature.geometry.coordinates[0];
                     const local = this.latLonToLocal(lat, lon);
-                    this.startPosition.set(local.x, 0.25, local.z);
+                    this.startPosition.set(local.x, 0.41, local.z);
                     console.log(`Starting position: (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
                 }
             }
@@ -207,7 +207,7 @@ export class SceneManager {
         // Convert centerLat/centerLon to local coordinates
         // This ensures the center position matches where the ground is positioned
         const local = this.latLonToLocal(this.centerLat, this.centerLon);
-        return new THREE.Vector3(local.x, 1, local.z);
+        return new THREE.Vector3(local.x, 0.41, local.z);
     }
 
     getCurrentCity(): string {
