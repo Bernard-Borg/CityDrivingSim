@@ -9,6 +9,7 @@ export class SceneManager {
     private centerLat: number = 0;
     private centerLon: number = 0;
     private currentCity: string = '';
+    private groundMesh: THREE.Mesh | null = null;
 
     constructor(private scene: THREE.Scene) {
         this.roadGenerator = new RoadGenerator(scene);
@@ -43,6 +44,9 @@ export class SceneManager {
             // Generate roads from GeoJSON
             this.roadGenerator.generateRoadsFromGeoJSON(geoJSON, this.centerLat, this.centerLon);
 
+            // Clear GeoJSON reference to allow garbage collection
+            // (The geoJSON object will be garbage collected after this scope)
+
             // Set starting position
             if (savedPosition) {
                 // Use saved position
@@ -67,6 +71,18 @@ export class SceneManager {
     }
 
     private clearScene(): void {
+        // Dispose ground mesh if it exists
+        if (this.groundMesh) {
+            if (this.groundMesh.geometry) {
+                this.groundMesh.geometry.dispose();
+            }
+            if (this.groundMesh.material instanceof THREE.Material) {
+                this.groundMesh.material.dispose();
+            }
+            this.scene.remove(this.groundMesh);
+            this.groundMesh = null;
+        }
+
         // Clear road groups instead of removing them (they're needed by RoadGenerator)
         // Clear the road generator's groups
         this.roadGenerator.clear();
@@ -104,6 +120,7 @@ export class SceneManager {
         ground.receiveShadow = true;
         // Ensure ground is not culled
         ground.frustumCulled = false;
+        this.groundMesh = ground; // Store reference for disposal
         this.scene.add(ground);
     }
 

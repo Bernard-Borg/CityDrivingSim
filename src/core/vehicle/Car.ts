@@ -3,6 +3,7 @@ import * as THREE from 'three';
 export class Car {
     private mesh: THREE.Group;
     private wheels: THREE.Group[] = [];
+    private scene: THREE.Scene;
 
     // Physics properties
     private position: THREE.Vector3;
@@ -30,6 +31,7 @@ export class Car {
     public readonly boostRegenRate: number = 15; // Per second
 
     constructor(scene: THREE.Scene) {
+        this.scene = scene;
         this.position = new THREE.Vector3(0, 1, 0);
         this.rotation = new THREE.Quaternion();
 
@@ -441,5 +443,39 @@ export class Car {
     setPosition(x: number, y: number, z: number): void {
         this.position.set(x, y, z);
         this.mesh.position.copy(this.position);
+    }
+
+    /**
+     * Dispose of car mesh resources (geometries and materials)
+     */
+    dispose(): void {
+        const disposeObject = (object: THREE.Object3D): void => {
+            if (object instanceof THREE.Mesh) {
+                // Dispose geometry
+                if (object.geometry) {
+                    object.geometry.dispose();
+                }
+
+                // Dispose material(s)
+                if (object.material) {
+                    if (Array.isArray(object.material)) {
+                        object.material.forEach(material => {
+                            if (material.map) material.map.dispose();
+                            material.dispose();
+                        });
+                    } else {
+                        if (object.material.map) object.material.map.dispose();
+                        object.material.dispose();
+                    }
+                }
+            } else if (object instanceof THREE.Group) {
+                // Recursively dispose children
+                const children = [...object.children];
+                children.forEach(child => disposeObject(child));
+            }
+        };
+
+        disposeObject(this.mesh);
+        this.scene.remove(this.mesh);
     }
 }

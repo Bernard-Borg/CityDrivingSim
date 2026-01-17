@@ -84,7 +84,8 @@ export class DrivingSimulator {
                 this.carControls = null;
             }
             if (this.car) {
-                // Car mesh is added to scene in constructor, will be cleaned by scene.clearScene()
+                // Dispose car mesh resources before removing
+                this.car.dispose();
                 this.car = null;
             }
 

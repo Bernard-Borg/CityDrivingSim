@@ -6,6 +6,41 @@ export class RoadGenerator {
     private roadGroup: THREE.Group;
     private labelsGroup: THREE.Group;
     private tunnelGroup: THREE.Group;
+    private labelTextures: THREE.CanvasTexture[] = [];
+
+    // Shared materials to avoid creating duplicates
+    private sharedMaterials = {
+        roadMaterial: new THREE.MeshStandardMaterial({
+            color: 0x666666,
+            roughness: 0.9,
+            metalness: 0.1,
+            side: THREE.DoubleSide
+        }),
+        tunnelMaterial: new THREE.MeshStandardMaterial({
+            color: 0x444444,
+            roughness: 0.9,
+            metalness: 0.1,
+            side: THREE.DoubleSide
+        }),
+        edgeLineMaterial: new THREE.MeshStandardMaterial({
+            color: 0xFFFF00,
+            emissive: 0xFFFF00,
+            emissiveIntensity: 0.5,
+            side: THREE.DoubleSide
+        }),
+        laneDividerMaterial: new THREE.MeshStandardMaterial({
+            color: 0xFFFFFF,
+            emissive: 0xFFFFFF,
+            emissiveIntensity: 0.3,
+            side: THREE.DoubleSide
+        }),
+        ceilingMaterial: new THREE.MeshStandardMaterial({
+            color: 0x4a4a4a,
+            roughness: 0.8,
+            metalness: 0.2,
+            side: THREE.DoubleSide
+        })
+    };
 
     constructor(private scene: THREE.Scene) {
         this.roadGroup = new THREE.Group();
@@ -23,19 +58,65 @@ export class RoadGenerator {
     }
 
     /**
-     * Clear all roads, labels, and tunnels from the groups
+     * Dispose of Three.js resources (geometries, materials, textures)
+     */
+    private disposeObject(object: THREE.Object3D): void {
+        if (object instanceof THREE.Mesh) {
+            // Dispose geometry
+            if (object.geometry) {
+                object.geometry.dispose();
+            }
+
+            // Dispose material(s)
+            if (object.material) {
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => {
+                        if (material.map) material.map.dispose();
+                        material.dispose();
+                    });
+                } else {
+                    if (object.material.map) object.material.map.dispose();
+                    // Only dispose if not a shared material
+                    const materialId = (object.material as any).uuid;
+                    const isShared = Object.values(this.sharedMaterials).some(m => m.uuid === materialId);
+                    if (!isShared) {
+                        object.material.dispose();
+                    }
+                }
+            }
+        } else if (object instanceof THREE.Sprite) {
+            // Dispose sprite material and texture
+            if (object.material) {
+                if (object.material.map) {
+                    object.material.map.dispose();
+                }
+                object.material.dispose();
+            }
+        } else if (object instanceof THREE.Group) {
+            // Recursively dispose children
+            const children = [...object.children];
+            children.forEach(child => this.disposeObject(child));
+        }
+    }
+
+    /**
+     * Clear all roads, labels, and tunnels from the groups and dispose resources
      */
     clear(): void {
-        // Clear all children from groups
-        while (this.roadGroup.children.length > 0) {
-            this.roadGroup.remove(this.roadGroup.children[0]);
-        }
-        while (this.labelsGroup.children.length > 0) {
-            this.labelsGroup.remove(this.labelsGroup.children[0]);
-        }
-        while (this.tunnelGroup.children.length > 0) {
-            this.tunnelGroup.remove(this.tunnelGroup.children[0]);
-        }
+        // Dispose all label textures
+        this.labelTextures.forEach(texture => texture.dispose());
+        this.labelTextures = [];
+
+        // Dispose all objects in groups before removing them
+        const groups = [this.roadGroup, this.labelsGroup, this.tunnelGroup];
+        groups.forEach(group => {
+            while (group.children.length > 0) {
+                const child = group.children[0];
+                this.disposeObject(child);
+                group.remove(child);
+            }
+        });
+
         this.roads = [];
     }
 
@@ -53,8 +134,31 @@ export class RoadGenerator {
         let roadsCreated = 0;
         let roadsSkipped = 0;
 
+        // Filter out minor roads to improve performance
+        const highwayTypePriority: Record<string, number> = {
+            'motorway': 1,
+            'trunk': 2,
+            'primary': 3,
+            'secondary': 4,
+            'tertiary': 5,
+            'residential': 6,
+            'service': 7,
+            'unclassified': 6
+        };
+
         geoJSON.features.forEach((feature: Feature) => {
             if (feature.geometry.type === 'LineString' && feature.properties.highway) {
+                const highwayType = feature.properties.highway;
+
+                // Skip service roads and footpaths for performance
+                if (highwayType === 'service' ||
+                    highwayType === 'footway' ||
+                    highwayType === 'path' ||
+                    highwayType === 'steps') {
+                    roadsSkipped++;
+                    return;
+                }
+
                 const coordinates = feature.geometry.coordinates;
 
                 if (coordinates.length < 2) {
@@ -231,14 +335,8 @@ export class RoadGenerator {
         geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
         geometry.computeVertexNormals();
 
-        // Create material - use DoubleSide to ensure visibility from both sides
-        // Tunnels use darker color to appear shaded
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            color: isTunnel ? 0x444444 : 0x666666, // Darker grey for tunnels
-            roughness: 0.9,
-            metalness: 0.1,
-            side: THREE.DoubleSide
-        });
+        // Use shared material to avoid memory leaks
+        const roadMaterial = isTunnel ? this.sharedMaterials.tunnelMaterial : this.sharedMaterials.roadMaterial;
 
         const roadMesh = new THREE.Mesh(geometry, roadMaterial);
         roadMesh.receiveShadow = true;
@@ -266,12 +364,8 @@ export class RoadGenerator {
         const roadY = 0.01;
         const halfWidth = roadWidth / 2;
 
-        const ceilingMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4a4a4a, // Slightly darker ceiling
-            roughness: 0.8,
-            metalness: 0.2,
-            side: THREE.DoubleSide
-        });
+        // Use shared material
+        const ceilingMaterial = this.sharedMaterials.ceilingMaterial;
 
         // Create tunnel structure segments along the curve
         for (let i = 0; i < numSegments; i++) {
@@ -481,13 +575,8 @@ export class RoadGenerator {
         geometry.setIndex(new THREE.BufferAttribute(indices, 1));
         geometry.computeVertexNormals();
 
-        // Create material
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            color: isTunnel ? 0x333333 : 0x666666,
-            roughness: 0.9,
-            metalness: 0.1,
-            side: THREE.DoubleSide // Render both sides
-        });
+        // Use shared material
+        const roadMaterial = isTunnel ? this.sharedMaterials.tunnelMaterial : this.sharedMaterials.roadMaterial;
 
         const cornerMesh = new THREE.Mesh(geometry, roadMaterial);
         cornerMesh.receiveShadow = true;
@@ -503,7 +592,7 @@ export class RoadGenerator {
     }
 
     /**
-     * Create edge lines along a curve
+     * Create edge lines along a curve - optimized with reduced segments and no shadows
      */
     private createEdgeLinesAlongCurve(
         curve: THREE.CatmullRomCurve3,
@@ -511,66 +600,62 @@ export class RoadGenerator {
         numSegments: number,
         curveLength: number
     ): void {
-        const lineMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFFFF00,
-            emissive: 0xFFFF00,
-            emissiveIntensity: 0.5
-        });
-
+        // Use far fewer segments for edge lines (they don't need high detail)
+        // Max 20 segments per road, or one per 5 meters, whichever is less
+        const edgeLineSegments = Math.min(20, Math.max(2, Math.floor(curveLength / 5)));
         const lineWidth = 0.15;
         const lineHeight = 0.015;
         const halfWidth = roadWidth / 2;
 
-        // Create edge lines along the curve as small segments
-        for (let i = 0; i < numSegments; i++) {
-            const t1 = i / numSegments;
-            const t2 = (i + 1) / numSegments;
+        // Build merged geometry for left and right edge lines
+        const leftVertices: number[] = [];
+        const rightVertices: number[] = [];
+        const leftIndices: number[] = [];
+        const rightIndices: number[] = [];
 
-            const point1 = curve.getPoint(t1);
-            const point2 = curve.getPoint(t2);
-            const tangent = curve.getTangent(t1);
+        for (let i = 0; i < edgeLineSegments; i++) {
+            const t = i / edgeLineSegments;
+            const point = curve.getPoint(t);
+            const tangent = curve.getTangent(t);
             const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
-            const segmentLength = point1.distanceTo(point2);
-            if (segmentLength < 0.1) continue;
+            const leftPoint = point.clone().add(perp.clone().multiplyScalar(halfWidth));
+            leftPoint.y = lineHeight;
+            const rightPoint = point.clone().add(perp.clone().multiplyScalar(-halfWidth));
+            rightPoint.y = lineHeight;
 
-            // Left edge line
-            const leftOffset = perp.clone().multiplyScalar(halfWidth);
-            const leftPoint1 = point1.clone().add(leftOffset);
-            leftPoint1.y = lineHeight;
-            const leftPoint2 = point2.clone().add(leftOffset);
-            leftPoint2.y = lineHeight;
-            const leftMidpoint = leftPoint1.clone().add(leftPoint2).multiplyScalar(0.5);
+            // Add vertex for line strip
+            leftVertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
+            rightVertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
+        }
 
-            const leftLineGeometry = new THREE.PlaneGeometry(lineWidth, segmentLength);
-            const leftLine = new THREE.Mesh(leftLineGeometry, lineMaterial);
-            leftLine.position.copy(leftMidpoint);
-
-            const yawAngle = Math.atan2(tangent.x, tangent.z);
-            const leftEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
-            leftLine.rotation.copy(leftEuler);
+        // Create line segments using THREE.LineSegments (much more efficient)
+        // Left edge line
+        if (leftVertices.length >= 6) {
+            const leftGeometry = new THREE.BufferGeometry();
+            leftGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(leftVertices), 3));
+            // Use line segments (no indices needed, just sequential vertices)
+            const leftLine = new THREE.Line(leftGeometry, new THREE.LineBasicMaterial({
+                color: 0xFFFF00,
+                linewidth: 2
+            }));
             this.roadGroup.add(leftLine);
+        }
 
-            // Right edge line
-            const rightOffset = perp.clone().multiplyScalar(-halfWidth);
-            const rightPoint1 = point1.clone().add(rightOffset);
-            rightPoint1.y = lineHeight;
-            const rightPoint2 = point2.clone().add(rightOffset);
-            rightPoint2.y = lineHeight;
-            const rightMidpoint = rightPoint1.clone().add(rightPoint2).multiplyScalar(0.5);
-
-            const rightLineGeometry = new THREE.PlaneGeometry(lineWidth, segmentLength);
-            const rightLine = new THREE.Mesh(rightLineGeometry, lineMaterial);
-            rightLine.position.copy(rightMidpoint);
-
-            const rightEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
-            rightLine.rotation.copy(rightEuler);
+        // Right edge line
+        if (rightVertices.length >= 6) {
+            const rightGeometry = new THREE.BufferGeometry();
+            rightGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rightVertices), 3));
+            const rightLine = new THREE.Line(rightGeometry, new THREE.LineBasicMaterial({
+                color: 0xFFFF00,
+                linewidth: 2
+            }));
             this.roadGroup.add(rightLine);
         }
     }
 
     /**
-     * Create lane dividers along a curve
+     * Create lane dividers along a curve - optimized with reduced dashes and no shadows
      */
     private createLaneDividersAlongCurve(
         curve: THREE.CatmullRomCurve3,
@@ -579,13 +664,9 @@ export class RoadGenerator {
         numSegments: number,
         curveLength: number
     ): void {
-        const dividerMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFFFFFF,
-            emissive: 0xFFFFFF,
-            emissiveIntensity: 0.3
-        });
+        // Only create dividers for roads with 2+ lanes, and skip if too short
+        if (lanesCount < 2 || curveLength < 5) return;
 
-        const dividerWidth = 0.1;
         const dividerHeight = 0.02;
         const laneWidth = roadWidth / lanesCount;
 
@@ -593,11 +674,15 @@ export class RoadGenerator {
         for (let i = 1; i < lanesCount; i++) {
             const offsetFromCenter = (i - lanesCount / 2) * laneWidth;
 
-            // Create dashed line effect along the curve
-            const dashLength = 2.0;
-            const gapLength = 1.0;
+            // Create dashed line effect - use fewer dashes for performance
+            const dashLength = 3.0; // Longer dashes
+            const gapLength = 2.0; // Longer gaps
             const segmentLength = dashLength + gapLength;
-            const numDashes = Math.ceil(curveLength / segmentLength);
+            const numDashes = Math.min(50, Math.ceil(curveLength / segmentLength)); // Cap at 50 dashes per divider
+
+            // Build merged geometry for all dashes on this divider
+            const vertices: number[] = [];
+            const indices: number[] = [];
 
             for (let dash = 0; dash < numDashes; dash++) {
                 const dashStart = dash * segmentLength;
@@ -605,7 +690,6 @@ export class RoadGenerator {
 
                 if (dashEnd <= dashStart) continue;
 
-                // Get curve positions for this dash
                 const tStart = dashStart / curveLength;
                 const tEnd = dashEnd / curveLength;
                 const point1 = curve.getPoint(tStart);
@@ -614,22 +698,42 @@ export class RoadGenerator {
                 const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
                 const dashLengthActual = point1.distanceTo(point2);
-                if (dashLengthActual < 0.1) continue;
+                if (dashLengthActual < 0.2) continue;
 
                 const offset = perp.clone().multiplyScalar(offsetFromCenter);
                 const dashPoint1 = point1.clone().add(offset);
                 dashPoint1.y = dividerHeight;
                 const dashPoint2 = point2.clone().add(offset);
                 dashPoint2.y = dividerHeight;
-                const dashMidpoint = dashPoint1.clone().add(dashPoint2).multiplyScalar(0.5);
 
-                const dividerGeometry = new THREE.PlaneGeometry(dividerWidth, dashLengthActual);
-                const divider = new THREE.Mesh(dividerGeometry, dividerMaterial);
-                divider.position.copy(dashMidpoint);
+                // Add vertices for dash quad
+                const dividerWidth = 0.1;
+                const halfWidth = dividerWidth / 2;
+                const baseIndex = vertices.length / 3;
 
-                const yawAngle = Math.atan2(tangent.x, tangent.z);
-                const dividerEuler = new THREE.Euler(-Math.PI / 2, yawAngle, 0, 'YXZ');
-                divider.rotation.copy(dividerEuler);
+                vertices.push(
+                    dashPoint1.x - perp.x * halfWidth, dividerHeight, dashPoint1.z - perp.z * halfWidth,
+                    dashPoint1.x + perp.x * halfWidth, dividerHeight, dashPoint1.z + perp.z * halfWidth,
+                    dashPoint2.x - perp.x * halfWidth, dividerHeight, dashPoint2.z - perp.z * halfWidth,
+                    dashPoint2.x + perp.x * halfWidth, dividerHeight, dashPoint2.z + perp.z * halfWidth
+                );
+
+                // Add indices for quad
+                indices.push(
+                    baseIndex, baseIndex + 1, baseIndex + 2,
+                    baseIndex + 1, baseIndex + 3, baseIndex + 2
+                );
+            }
+
+            // Create single merged mesh for all dashes on this divider
+            if (vertices.length >= 6) {
+                const dividerGeometry = new THREE.BufferGeometry();
+                dividerGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+                dividerGeometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+                dividerGeometry.computeVertexNormals();
+                const divider = new THREE.Mesh(dividerGeometry, this.sharedMaterials.laneDividerMaterial);
+                divider.castShadow = false;
+                divider.receiveShadow = false;
                 this.roadGroup.add(divider);
             }
         }
@@ -714,6 +818,7 @@ export class RoadGenerator {
         // Create texture from canvas
         const texture = new THREE.CanvasTexture(canvas);
         texture.needsUpdate = true;
+        this.labelTextures.push(texture); // Track for disposal
 
         // Create sprite material
         const spriteMaterial = new THREE.SpriteMaterial({
