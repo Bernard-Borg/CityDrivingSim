@@ -35,9 +35,10 @@ export class SoundManager {
 
     /**
      * Play a sound (if loaded)
+     * Returns the audio element for looping sounds (so it can be stopped later)
      */
-    play(name: string, volume: number = 1.0, loop: boolean = false): void {
-        if (!this.isEnabled) return;
+    play(name: string, volume: number = 1.0, loop: boolean = false): HTMLAudioElement | null {
+        if (!this.isEnabled) return null;
 
         const audio = this.sounds.get(name);
         if (audio) {
@@ -48,7 +49,9 @@ export class SoundManager {
                 // Autoplay policies may prevent this, that's okay
                 console.debug(`Could not play sound ${name}:`, err);
             });
+            return clonedAudio;
         }
+        return null;
     }
 
     /**

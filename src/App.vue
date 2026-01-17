@@ -92,9 +92,10 @@
               <div class="absolute left-0.5 top-1/2 -translate-y-1/2 text-white/70 font-bold text-xs">W</div>
               
               <!-- Direction indicator (rotating needle) -->
+              <!-- Compass arrow rotates opposite to car heading to show North relative to car -->
               <div 
                 class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out"
-                :style="{ transform: `translate(-50%, -50%) rotate(${displayedHeading}deg)` }"
+                :style="{ transform: `translate(-50%, -50%) rotate(${-displayedHeading}deg)` }"
               >
                 <!-- Arrow pointing up (North) -->
                 <div class="relative">

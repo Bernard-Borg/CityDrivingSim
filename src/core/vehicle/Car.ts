@@ -12,14 +12,13 @@ export class Car {
     public readonly maxSpeed: number = 60; // m/s (~216 km/h)
     private acceleration: number = 0;
     public readonly maxAcceleration: number = 12; // m/s² (improved acceleration)
-    private readonly coastFriction: number = 0.92; // Minimal friction when coasting
+    private readonly friction: number = 0.99; // Minimal friction when coasting
     private steeringAngle: number = 0;
     public readonly maxSteeringAngle: number = Math.PI / 4; // 45 degrees
     private readonly turningRadius: number = 10; // Improved turning
 
     // Drift/handbrake propertiesssssss
     private handbrakeActive: boolean = false;
-    private readonly driftFriction: number = 0.88; // Reduced friction during drift
     private readonly driftSteeringMultiplier: number = 1.5; // More steering response during drift
 
     // Boost properties
@@ -172,36 +171,55 @@ export class Car {
         group.add(rearBumper);
 
         // Wheels - more realistic car wheels
-        const wheelGeometry = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 24);
+        // CylinderGeometry creates cylinder along Y axis, rotate 90° around Z to make horizontal
+        const wheelRadius = 0.4;
+        const wheelWidth = 0.3;
+        const wheelGeometry = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 24);
         const wheelMaterial = new THREE.MeshStandardMaterial({
             color: 0x0a0a0a,
             roughness: 0.95
         });
-        const rimGeometry = new THREE.CylinderGeometry(0.25, 0.25, 0.32, 16);
+        const rimRadius = 0.25;
+        const rimWidth = 0.32;
+        const rimGeometry = new THREE.CylinderGeometry(rimRadius, rimRadius, rimWidth, 16);
         const rimMaterial = new THREE.MeshStandardMaterial({
             color: 0xd4d4d4,
             metalness: 0.9,
             roughness: 0.3
         });
 
+        // Wheel positions relative to car body
+        // Lower body is at y=0.3 with height 0.6, so bottom is at y=0
+        // Wheels should be positioned so they're visible below the car body
+        // Position at y=0.15 so wheel center is at 0.15, bottom at -0.25, top at 0.55
+        // This makes them clearly visible below the car body
+        const wheelYPosition = 0.15; // Lower than before for better visibility
         const wheelPositions: Array<[number, number, number]> = [
-            [-0.7, 0.4, 1.25],   // Front left
-            [0.7, 0.4, 1.25],    // Front right
-            [-0.7, 0.4, -1.25],  // Rear left
-            [0.7, 0.4, -1.25]    // Rear right
+            [-0.7, wheelYPosition, 1.25],   // Front left
+            [0.7, wheelYPosition, 1.25],    // Front right
+            [-0.7, wheelYPosition, -1.25],  // Rear left
+            [0.7, wheelYPosition, -1.25]    // Rear right
         ];
 
-        wheelPositions.forEach((pos) => {
+        wheelPositions.forEach((pos, index) => {
             const wheelGroup = new THREE.Group();
 
+            // Tire (outer wheel)
             const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+            // Rotate 90° around Z axis to make cylinder horizontal (wheel axis along Y)
             wheel.rotation.z = Math.PI / 2;
+            wheel.castShadow = true;
+            wheel.receiveShadow = true;
             wheelGroup.add(wheel);
 
+            // Rim (inner wheel)
             const rim = new THREE.Mesh(rimGeometry, rimMaterial);
+            // Rotate 90° around Z axis to align with tire
             rim.rotation.z = Math.PI / 2;
+            rim.castShadow = true;
             wheelGroup.add(rim);
 
+            // Position wheel group
             wheelGroup.position.set(pos[0], pos[1], pos[2]);
             wheelGroup.castShadow = true;
             group.add(wheelGroup);
@@ -279,9 +297,6 @@ export class Car {
         // Determine effective max speed (with boost)
         const effectiveMaxSpeed = this.isBoosting ? this.boostMaxSpeed : this.maxSpeed;
 
-        // Improved acceleration/deceleration physics
-        // During handbrake, apply reduced friction for sliding
-        const currentFriction = this.handbrakeActive ? this.driftFriction : this.coastFriction;
 
         if (this.acceleration !== 0) {
             // Apply acceleration with smoother curve
@@ -295,7 +310,7 @@ export class Car {
             this.speed += Math.sign(speedDiff) * Math.min(Math.abs(speedDiff), accelerationRate * accelFactor);
         } else {
             // Apply friction when not accelerating (coasting/drifting)
-            this.speed *= currentFriction;
+            this.speed *= this.friction;
         }
 
         // During handbrake, apply sideways sliding effect

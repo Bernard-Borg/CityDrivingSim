@@ -15,6 +15,10 @@ export class CarControls {
     };
 
     private soundManager: SoundManager;
+    private currentAcceleratingSound: HTMLAudioElement | null = null;
+    private currentStartupSound: HTMLAudioElement | null = null;
+    private previousWasAccelerating: boolean = false;
+    private previousForwardPressedAtStandstill: boolean = false;
 
     private mouse: MouseState = {
         x: 0,
@@ -55,10 +59,13 @@ export class CarControls {
     }
 
     private async initSounds(): Promise<void> {
-        // Load sound files (if they exist)
-        // You can add sound files to public/sounds/ directory
-        // Example: await this.soundManager.loadSound('engine', '/sounds/engine.mp3')
-        // For now, we'll use placeholders that won't break if files don't exist
+        // Load sound files from public/sounds/ directory
+        try {
+            await this.soundManager.loadSound('startup', '/sounds/startup.wav');
+            await this.soundManager.loadSound('accelerating', '/sounds/accelerating.wav');
+        } catch (error) {
+            console.warn('Failed to load some sound files:', error);
+        }
     }
 
     private setupEventListeners(): void {
@@ -182,12 +189,21 @@ export class CarControls {
     }
 
     update(delta: number): void {
+        // Check if startup sound is still playing - if so, prevent movement
+        const isStartupPlaying = this.currentStartupSound &&
+            !this.currentStartupSound.paused &&
+            !this.currentStartupSound.ended &&
+            this.currentStartupSound.currentTime < this.currentStartupSound.duration;
+
         // Acceleration with smoother input response
         let acceleration = 0;
-        if (this.keys.forward) {
-            acceleration = 1;
-        } else if (this.keys.backward) {
-            acceleration = -0.6; // Reverse speed
+        // Don't allow acceleration while startup sound is playing
+        if (!isStartupPlaying) {
+            if (this.keys.forward) {
+                acceleration = 1;
+            } else if (this.keys.backward) {
+                acceleration = -0.6; // Reverse speed
+            }
         }
 
         // Braking - improved gradual braking
@@ -206,8 +222,61 @@ export class CarControls {
         const wasBoosting = this.car.isBoostActive();
         this.car.setBoost(this.keys.boost && this.car.getBoostAmount() > 0);
 
+        // Sound effects for acceleration
+        const currentSpeed = Math.abs(this.car.getSpeed());
+        const isAtStandstill = currentSpeed < 0.1;
+        const isAccelerating = this.keys.forward && acceleration > 0 && !this.car.isBoostActive();
+
+        // Play startup sound when at standstill and gas is pressed (only once when key is first pressed)
+        const forwardPressedAtStandstill = isAtStandstill && this.keys.forward;
+        if (forwardPressedAtStandstill && !this.previousForwardPressedAtStandstill) {
+            // Stop any existing startup sound
+            if (this.currentStartupSound) {
+                this.currentStartupSound.pause();
+                this.currentStartupSound.currentTime = 0;
+            }
+            // Play startup sound and store reference
+            this.currentStartupSound = this.soundManager.play('startup', 0.7, false);
+
+            // Clean up startup sound reference when it finishes
+            if (this.currentStartupSound) {
+                this.currentStartupSound.addEventListener('ended', () => {
+                    this.currentStartupSound = null;
+                });
+            }
+        }
+        this.previousForwardPressedAtStandstill = forwardPressedAtStandstill;
+
+        // Play accelerating sound when accelerating (not at standstill, not boosting)
+        if (isAccelerating && !isAtStandstill) {
+            if (!this.previousWasAccelerating || !this.currentAcceleratingSound || this.currentAcceleratingSound.paused || this.currentAcceleratingSound.ended) {
+                // Stop previous sound if playing
+                if (this.currentAcceleratingSound) {
+                    this.currentAcceleratingSound.pause();
+                    this.currentAcceleratingSound.currentTime = 0;
+                }
+                // Play new looping sound
+                this.currentAcceleratingSound = this.soundManager.play('accelerating', 0.6, true);
+            }
+            this.previousWasAccelerating = true;
+        } else {
+            // Stop accelerating sound when not accelerating
+            if (this.previousWasAccelerating && this.currentAcceleratingSound) {
+                this.currentAcceleratingSound.pause();
+                this.currentAcceleratingSound.currentTime = 0;
+                this.currentAcceleratingSound = null;
+            }
+            this.previousWasAccelerating = false;
+        }
+
         // Play boost sound effect if boost state changed
         if (this.car.isBoostActive() && !wasBoosting) {
+            // Stop accelerating sound when boost starts
+            if (this.currentAcceleratingSound) {
+                this.currentAcceleratingSound.pause();
+                this.currentAcceleratingSound.currentTime = 0;
+                this.currentAcceleratingSound = null;
+            }
             // this.soundManager.play('boost', 0.8, true)
         } else if (!this.car.isBoostActive() && wasBoosting) {
             // this.soundManager.stop('boost')
@@ -231,7 +300,7 @@ export class CarControls {
         }
 
         // Improved steering - speed-dependent with smoother curve
-        const currentSpeed = Math.abs(this.car.getSpeed());
+        // Reuse currentSpeed already calculated above
         const speedFactor = Math.max(0.4, 1 - (currentSpeed / 40) * 0.5); // 100% at 0, 50% at 40 m/s
         this.car.setSteering(steering * this.car.maxSteeringAngle * speedFactor);
 
@@ -240,6 +309,18 @@ export class CarControls {
     }
 
     dispose(): void {
+        // Stop any playing sounds
+        if (this.currentAcceleratingSound) {
+            this.currentAcceleratingSound.pause();
+            this.currentAcceleratingSound.currentTime = 0;
+            this.currentAcceleratingSound = null;
+        }
+        if (this.currentStartupSound) {
+            this.currentStartupSound.pause();
+            this.currentStartupSound.currentTime = 0;
+            this.currentStartupSound = null;
+        }
+
         document.removeEventListener('keydown', this.keyDownHandler);
         document.removeEventListener('keyup', this.keyUpHandler);
         document.removeEventListener('mouseup', this.mouseUpHandler);
