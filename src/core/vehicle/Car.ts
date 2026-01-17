@@ -14,11 +14,11 @@ export class Car {
     private rotation: THREE.Quaternion;
     private speed: number = 0; // m/s
     public readonly maxSpeed: number = 160; // m/s (~324 km/h)
-    public readonly maxAcceleration: number = 40; // m/s²
+    public readonly maxAcceleration: number = 24; // m/s²
     private throttleInput: number = 0;
     private brakeInput: number = 0;
     private steeringAngle: number = 0;
-    public readonly maxSteeringAngle: number = Math.PI / 6; // 30 degrees
+    public readonly maxSteeringAngle: number = Math.PI / 4; // 30 degrees
     private readonly wheelBase: number = 2.6;
     private readonly dragCoefficient: number = 0.02;
     private readonly rollingResistance: number = 0.2;
