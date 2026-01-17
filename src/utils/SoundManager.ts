@@ -82,6 +82,18 @@ export class SoundManager {
         }
     }
 
+    getEnabled(): boolean {
+        return this.isEnabled;
+    }
+
+    toggleMute(): boolean {
+        this.isEnabled = !this.isEnabled;
+        if (!this.isEnabled) {
+            this.stopAll();
+        }
+        return this.isEnabled;
+    }
+
     setMasterVolume(volume: number): void {
         this.masterVolume = Math.max(0, Math.min(1, volume));
     }

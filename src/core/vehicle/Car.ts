@@ -460,6 +460,30 @@ export class Car {
         this.mesh.position.copy(this.position);
     }
 
+    setRotation(y: number): void {
+        // Reset rotation to default (facing forward/North)
+        // y is rotation around Y-axis in radians
+        this.rotation.setFromAxisAngle(new THREE.Vector3(0, 1, 0), y);
+        this.mesh.setRotationFromQuaternion(this.rotation);
+        this.steeringAngle = 0;
+    }
+
+    setSpeed(speed: number): void {
+        this.speed = speed;
+        this.acceleration = 0;
+    }
+
+    /**
+     * Reset car physics state (speed, steering, etc.)
+     */
+    resetPhysics(): void {
+        this.speed = 0;
+        this.acceleration = 0;
+        this.steeringAngle = 0;
+        this.handbrakeActive = false;
+        this.isBoosting = false;
+    }
+
     /**
      * Dispose of car mesh resources (geometries and materials)
      */

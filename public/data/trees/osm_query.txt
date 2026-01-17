@@ -1,0 +1,6 @@
+[out:json][timeout:300];
+
+area[name="Ir-Rabat"]->.a;
+
+node["natural"="tree"](area.a);
+out;

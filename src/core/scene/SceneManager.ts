@@ -28,7 +28,7 @@ export class SceneManager {
             this.centerLon = cityConfig.centerLon;
 
             // Load city GeoJSON data
-            const response = await fetch(`/data/${cityConfig.file}`);
+            const response = await fetch(`/data/roads/${cityConfig.file}`);
             if (!response.ok) {
                 throw new Error(`Failed to load ${cityConfig.file}: ${response.status}`);
             }
@@ -160,6 +160,16 @@ export class SceneManager {
 
     getStartPosition(): THREE.Vector3 {
         return this.startPosition.clone();
+    }
+
+    /**
+     * Get the center position of the map (default spawn location when no saved position)
+     */
+    getCenterPosition(): THREE.Vector3 {
+        // Convert centerLat/centerLon to local coordinates
+        // This ensures the center position matches where the ground is positioned
+        const local = this.latLonToLocal(this.centerLat, this.centerLon);
+        return new THREE.Vector3(local.x, 1, local.z);
     }
 
     getCurrentCity(): string {

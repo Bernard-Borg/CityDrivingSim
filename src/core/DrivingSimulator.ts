@@ -296,6 +296,30 @@ export class DrivingSimulator {
         return this.sceneManager.getLabelsVisible();
     }
 
+    /**
+     * Reset car to map center position (default spawn location)
+     */
+    resetCarPosition(): void {
+        if (!this.car || !this.sceneManager) return;
+
+        // Use map center position (default spawn location when no saved position)
+        const centerPosition = this.sceneManager.getCenterPosition();
+        this.car.setPosition(centerPosition.x, centerPosition.y, centerPosition.z);
+
+        // Reset car rotation to default (facing forward/North)
+        this.car.setRotation(0);
+
+        // Reset car physics (speed, steering, etc.)
+        this.car.resetPhysics();
+
+        // Reset camera position behind car
+        const carPos = this.car.getPosition();
+        const carDir = this.car.getDirection();
+        const cameraOffset = carDir.clone().multiplyScalar(-10); // Behind car
+        cameraOffset.y = 5; // Height above car
+        this.camera.position.copy(carPos).add(cameraOffset);
+    }
+
     setupEventListeners(): void {
         window.addEventListener('resize', this.handleResize);
         this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
