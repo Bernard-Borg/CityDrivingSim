@@ -4,10 +4,13 @@ import type { AmsterdamGeoJSON, AmsterdamFeature } from '@/types';
 export class RoadGenerator {
   private roads: THREE.Mesh[] = [];
   private roadGroup: THREE.Group;
+  private labelsGroup: THREE.Group;
 
   constructor(private scene: THREE.Scene) {
     this.roadGroup = new THREE.Group();
+    this.labelsGroup = new THREE.Group();
     this.scene.add(this.roadGroup);
+    this.scene.add(this.labelsGroup);
   }
 
   /**
@@ -39,7 +42,7 @@ export class RoadGenerator {
         });
 
         // Create road from points
-        this.createRoadFromPoints(points, feature.properties.highway);
+        this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name);
         roadsCreated++;
       } else {
         roadsSkipped++;
@@ -66,7 +69,7 @@ export class RoadGenerator {
   /**
    * Create road geometry from array of points
    */
-  private createRoadFromPoints(points: Array<{ x: number; z: number }>, highwayType: string): void {
+  private createRoadFromPoints(points: Array<{ x: number; z: number }>, highwayType: string, roadName?: string): void {
     const roadWidth = this.getRoadWidth(highwayType);
     const roadHeight = 0.01; // Slightly above ground to avoid z-fighting
 
@@ -87,6 +90,15 @@ export class RoadGenerator {
 
       // Create yellow edge lines
     //   this.createEdgeLines(start, end, direction, length, roadWidth);
+    }
+    
+    // Add street name label on the middle segment of the road
+    if (roadName && points.length >= 2) {
+      const middleIndex = Math.floor(points.length / 2);
+      const midPoint = points[middleIndex];
+      const nextPoint = points[Math.min(middleIndex + 1, points.length - 1)];
+      const labelDirection = Math.atan2(nextPoint.x - midPoint.x, nextPoint.z - midPoint.z);
+      this.createStreetLabel(midPoint, labelDirection, roadName);
     }
   }
 
@@ -204,6 +216,65 @@ export class RoadGenerator {
     }
 
     return widths['residential']; // Default width
+  }
+
+  /**
+   * Create a street name label as a sprite
+   */
+  private createStreetLabel(position: { x: number; z: number }, rotation: number, name: string): void {
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) return;
+
+    // Set canvas size
+    canvas.width = 256;
+    canvas.height = 64;
+
+    // Draw text with shadow for better visibility
+    const fontSize = 12;
+    context.font = `${fontSize}px Arial`;
+    
+    // Measure text to center it
+    const metrics = context.measureText(name);
+    const textWidth = metrics.width;
+    const textHeight = fontSize;
+
+    // Draw shadow/background for better readability
+    context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw text
+    context.fillStyle = '#FFFFFF';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(name, canvas.width / 2, canvas.height / 2);
+
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    // Create sprite material
+    const spriteMaterial = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      alphaTest: 0.1
+    });
+
+    // Create sprite
+    const sprite = new THREE.Sprite(spriteMaterial);
+    
+    // Scale sprite (adjust size as needed)
+    const scale = 5; // Size of the label in world units
+    sprite.scale.set(scale * (textWidth / fontSize), scale, 1);
+
+    // Position sprite above the road
+    sprite.position.set(position.x, 3, position.z); // 3 units above ground
+
+    // Rotate sprite to face the road direction (sprite already faces camera, so just rotate Y)
+    sprite.rotation.y = rotation;
+
+    this.labelsGroup.add(sprite);
   }
 
   getRoads(): THREE.Mesh[] {
