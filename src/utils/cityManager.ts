@@ -30,6 +30,12 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         file: 'balzan.json',
         centerLat: 35.9005,
         centerLon: 14.4504
+    },
+    qrendi: {
+        name: 'Il-Qrendi',
+        file: 'qrendi.json',
+        centerLat: 35.8343,
+        centerLon: 14.4579
     }
 };
 

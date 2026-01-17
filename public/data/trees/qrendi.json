@@ -1,0 +1,113 @@
+{
+    "type": "FeatureCollection",
+    "generator": "overpass-turbo",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL.",
+    "timestamp": "2026-01-17T19:41:01Z",
+    "features": [
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/5017563792",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4502857,
+            35.827913
+          ]
+        },
+        "id": "node/5017563792"
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/8530982255",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4603705,
+            35.8337199
+          ]
+        },
+        "id": "node/8530982255"
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/8530982256",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4604071,
+            35.8337051
+          ]
+        },
+        "id": "node/8530982256"
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/8530982257",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4604742,
+            35.8336672
+          ]
+        },
+        "id": "node/8530982257"
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/8530982258",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4605453,
+            35.8337109
+          ]
+        },
+        "id": "node/8530982258"
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/8530982259",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4605809,
+            35.8337644
+          ]
+        },
+        "id": "node/8530982259"
+      },
+      {
+        "type": "Feature",
+        "properties": {
+          "@id": "node/8530982260",
+          "natural": "tree"
+        },
+        "geometry": {
+          "type": "Point",
+          "coordinates": [
+            14.4606368,
+            35.8338493
+          ]
+        },
+        "id": "node/8530982260"
+      }
+    ]
+  }
