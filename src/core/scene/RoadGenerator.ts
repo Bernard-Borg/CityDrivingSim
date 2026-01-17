@@ -5,12 +5,15 @@ export class RoadGenerator {
   private roads: THREE.Mesh[] = [];
   private roadGroup: THREE.Group;
   private labelsGroup: THREE.Group;
+  private tunnelGroup: THREE.Group;
 
   constructor(private scene: THREE.Scene) {
     this.roadGroup = new THREE.Group();
     this.labelsGroup = new THREE.Group();
+    this.tunnelGroup = new THREE.Group();
     this.scene.add(this.roadGroup);
     this.scene.add(this.labelsGroup);
+    this.scene.add(this.tunnelGroup);
   }
 
   /**
@@ -41,8 +44,12 @@ export class RoadGenerator {
           return this.latLonToLocal(lat, lon, centerLat, centerLon);
         });
 
+        // Check if this is a tunnel or bridge
+        const isTunnel = feature.properties.tunnel === 'yes' || feature.properties.tunnel === 'building_passage';
+        const layer = feature.properties.layer ? parseInt(feature.properties.layer, 10) : 0;
+
         // Create road from points
-        this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name);
+        this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name, isTunnel, layer);
         roadsCreated++;
       } else {
         roadsSkipped++;
@@ -69,14 +76,23 @@ export class RoadGenerator {
   /**
    * Create road geometry from array of points
    */
-  private createRoadFromPoints(points: Array<{ x: number; z: number }>, highwayType: string, roadName?: string): void {
+  private createRoadFromPoints(
+    points: Array<{ x: number; z: number }>, 
+    highwayType: string, 
+    roadName?: string,
+    isTunnel: boolean = false,
+    layer: number = 0
+  ): void {
     const roadWidth = this.getRoadWidth(highwayType);
-    const roadHeight = 0.01; // Slightly above ground to avoid z-fighting
+    
+    // Regular roads: slightly above ground (0.01)
+    // Tunnels: render at ground level with 3D structure
+    const roadY = 0.01;
 
     // Create segments between consecutive points
     for (let i = 0; i < points.length - 1; i++) {
-      const start = new THREE.Vector3(points[i].x, roadHeight, points[i].z);
-      const end = new THREE.Vector3(points[i + 1].x, roadHeight, points[i + 1].z);
+      const start = new THREE.Vector3(points[i].x, roadY, points[i].z);
+      const end = new THREE.Vector3(points[i + 1].x, roadY, points[i + 1].z);
       
       const direction = new THREE.Vector3().subVectors(end, start);
       const length = direction.length();
@@ -85,11 +101,16 @@ export class RoadGenerator {
       
       direction.normalize();
 
-      // Create road surface (grey)
-      this.createRoadSegment(start, end, direction, length, roadWidth);
+      if (isTunnel) {
+        // Create 3D tunnel structure
+        this.createTunnelSegment(start, end, direction, length, roadWidth, layer);
+      } else {
+        // Create regular road surface
+        this.createRoadSegment(start, end, direction, length, roadWidth, false);
+      }
 
       // Create yellow edge lines
-    //   this.createEdgeLines(start, end, direction, length, roadWidth);
+      this.createEdgeLines(start, end, direction, length, roadWidth);
     }
     
     // Add street name label on the middle segment of the road
@@ -110,10 +131,12 @@ export class RoadGenerator {
     end: THREE.Vector3,
     direction: THREE.Vector3,
     length: number,
-    width: number
+    width: number,
+    isTunnel: boolean = false
   ): void {
+    // Tunnels use darker material
     const roadMaterial = new THREE.MeshStandardMaterial({
-      color: 0x666666, // Grey color
+      color: isTunnel ? 0x333333 : 0x666666, // Darker grey for tunnels
       roughness: 0.9,
       metalness: 0.1
     });
@@ -134,6 +157,99 @@ export class RoadGenerator {
     road.receiveShadow = true;
     this.roadGroup.add(road);
     this.roads.push(road);
+  }
+
+  /**
+   * Create a 3D tunnel segment with walls and ceiling
+   */
+  private createTunnelSegment(
+    start: THREE.Vector3,
+    end: THREE.Vector3,
+    direction: THREE.Vector3,
+    length: number,
+    roadWidth: number,
+    layer: number
+  ): void {
+    const tunnelHeight = 6; // Height of tunnel interior
+    const wallThickness = 0.5; // Thickness of tunnel walls
+    const roadY = 0.01; // Road surface at ground level
+    
+    // Calculate depth offset based on layer (negative layers = deeper)
+    const depthOffset = layer <= 0 ? Math.abs(layer) * 2 : 0;
+    const tunnelY = roadY - depthOffset; // Slightly below ground for visibility
+    
+    const midpoint = start.clone().add(end).multiplyScalar(0.5);
+    const yawAngle = Math.atan2(direction.x, direction.z);
+    const perp = new THREE.Vector3(-direction.z, 0, direction.x); // Perpendicular vector
+    
+    // Tunnel materials
+    const roadMaterial = new THREE.MeshStandardMaterial({
+      color: 0x444444, // Darker road surface
+      roughness: 0.9,
+      metalness: 0.1
+    });
+    
+    const wallMaterial = new THREE.MeshStandardMaterial({
+      color: 0x555555, // Concrete grey
+      roughness: 0.8,
+      metalness: 0.2
+    });
+    
+    const ceilingMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4a4a4a, // Slightly darker ceiling
+      roughness: 0.8,
+      metalness: 0.2
+    });
+
+    // 1. Road surface (floor of tunnel)
+    const roadGeometry = new THREE.PlaneGeometry(roadWidth, length);
+    const road = new THREE.Mesh(roadGeometry, roadMaterial);
+    road.position.copy(midpoint);
+    road.position.y = tunnelY;
+    road.rotation.set(-Math.PI / 2, yawAngle, 0, 'YXZ');
+    this.tunnelGroup.add(road);
+
+    // 2. Left wall
+    const leftWallGeometry = new THREE.PlaneGeometry(wallThickness, length);
+    const leftWall = new THREE.Mesh(leftWallGeometry, wallMaterial);
+    const leftOffset = perp.clone().multiplyScalar(roadWidth / 2);
+    leftWall.position.copy(midpoint).add(leftOffset);
+    leftWall.position.y = tunnelY + tunnelHeight / 2;
+    leftWall.rotation.set(0, yawAngle + Math.PI / 2, 0, 'YXZ');
+    this.tunnelGroup.add(leftWall);
+
+    // 3. Right wall
+    const rightWallGeometry = new THREE.PlaneGeometry(wallThickness, length);
+    const rightWall = new THREE.Mesh(rightWallGeometry, wallMaterial);
+    const rightOffset = perp.clone().multiplyScalar(-roadWidth / 2);
+    rightWall.position.copy(midpoint).add(rightOffset);
+    rightWall.position.y = tunnelY + tunnelHeight / 2;
+    rightWall.rotation.set(0, yawAngle + Math.PI / 2, 0, 'YXZ');
+    this.tunnelGroup.add(rightWall);
+
+    // 4. Ceiling
+    const ceilingGeometry = new THREE.PlaneGeometry(roadWidth + wallThickness * 2, length);
+    const ceiling = new THREE.Mesh(ceilingGeometry, ceilingMaterial);
+    ceiling.position.copy(midpoint);
+    ceiling.position.y = tunnelY + tunnelHeight;
+    ceiling.rotation.set(-Math.PI / 2, yawAngle, 0, 'YXZ');
+    this.tunnelGroup.add(ceiling);
+
+    // 5. Top cover (ground above tunnel) - semi-transparent so tunnel is visible
+    const coverWidth = roadWidth + wallThickness * 2 + 2; // Slightly wider than tunnel
+    const coverGeometry = new THREE.PlaneGeometry(coverWidth, length);
+    const coverMaterial = new THREE.MeshStandardMaterial({
+      color: 0x7CB342, // Green grass
+      roughness: 0.8,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.6 // Semi-transparent so tunnel is visible from above
+    });
+    const cover = new THREE.Mesh(coverGeometry, coverMaterial);
+    cover.position.copy(midpoint);
+    cover.position.y = 0.1; // Just above ground
+    cover.rotation.set(-Math.PI / 2, yawAngle, 0, 'YXZ');
+    this.tunnelGroup.add(cover);
   }
 
   /**

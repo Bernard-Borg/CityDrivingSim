@@ -16,6 +16,9 @@ export interface AmsterdamFeatureProperties {
   smoothness?: string
   service?: string
   zone?: string
+  tunnel?: string
+  bridge?: string
+  layer?: string
   [key: string]: string | undefined
 }
 

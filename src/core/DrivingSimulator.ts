@@ -32,8 +32,9 @@ export class DrivingSimulator {
       5000
     )
     
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
     this.renderer.setSize(window.innerWidth, window.innerHeight)
+    this.renderer.setClearColor(0x87CEEB, 1) // Sky blue background
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))

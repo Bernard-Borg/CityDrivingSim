@@ -52,17 +52,25 @@ export class SceneManager {
   }
 
   private createGround(): void {
-    const groundGeometry = new THREE.PlaneGeometry(20000, 20000);
+    // Create a much larger ground plane to ensure it covers all roads
+    const groundSize = 50000; // 50km x 50km
+    const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
     const groundMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x7CB342, // Bright green grass color
+      color: 0x7CB342, // Green grass color
       roughness: 0.8,
-      metalness: 0
+      metalness: 0,
+      side: THREE.DoubleSide // Render both sides
     });
     const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+    // Rotate to lay flat on XZ plane (Y is up)
     ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
+    ground.position.set(0, 0, 0); // Center at origin
     ground.receiveShadow = true;
+    // Ensure ground is not culled
+    ground.frustumCulled = false;
     this.scene.add(ground);
+    
+    console.log('Ground created at y=0, size:', groundSize);
   }
 
   private latLonToLocal(lat: number, lon: number): { x: number; z: number } {
