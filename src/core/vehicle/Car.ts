@@ -7,18 +7,16 @@ export class Car {
     // Physics properties
     private position: THREE.Vector3;
     private rotation: THREE.Quaternion;
-    private velocity: THREE.Vector3;
     private speed: number = 0; // m/s
     public readonly maxSpeed: number = 60; // m/s (~216 km/h)
     private acceleration: number = 0;
     public readonly maxAcceleration: number = 12; // m/s² (improved acceleration)
-    private readonly friction: number = 0.95; // Air resistance + rolling friction
-    private readonly coastFriction: number = 0.985; // Minimal friction when coasting
+    private readonly coastFriction: number = 0.92; // Minimal friction when coasting
     private steeringAngle: number = 0;
     public readonly maxSteeringAngle: number = Math.PI / 4; // 45 degrees
-    private readonly turningRadius: number = 18; // Improved turning
+    private readonly turningRadius: number = 10; // Improved turning
 
-    // Drift/handbrake properties
+    // Drift/handbrake propertiesssssss
     private handbrakeActive: boolean = false;
     private readonly driftFriction: number = 0.88; // Reduced friction during drift
     private readonly driftSteeringMultiplier: number = 1.5; // More steering response during drift
@@ -34,7 +32,6 @@ export class Car {
     constructor(scene: THREE.Scene) {
         this.position = new THREE.Vector3(0, 1, 0);
         this.rotation = new THREE.Quaternion();
-        this.velocity = new THREE.Vector3();
 
         this.mesh = this.createCarMesh();
         this.mesh.position.copy(this.position);

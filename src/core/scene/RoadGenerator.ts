@@ -730,7 +730,7 @@ export class RoadGenerator {
         sprite.scale.set(scale * (textWidth / fontSize), scale, 1);
 
         // Position sprite above the road
-        sprite.position.set(position.x, 3, position.z); // 3 units above ground
+        sprite.position.set(position.x, 6, position.z); // 3 units above ground
 
         // Rotate sprite to face the road direction (sprite already faces camera, so just rotate Y)
         sprite.rotation.y = rotation;
