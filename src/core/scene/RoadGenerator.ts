@@ -293,16 +293,17 @@ export class RoadGenerator {
             const midpoint = point1.clone().add(point2).multiplyScalar(0.5);
             const yawAngle = Math.atan2(tangent.x, tangent.z);
 
-            // Create semi-circular arch ceiling
-            const archRadius = tunnelHeight; // Radius of the arch
+            // Create semi-circular arch ceiling with thickness (3D structure)
+            const archRadius = tunnelHeight; // Inner radius of the arch
+            const outerArchRadius = archRadius + wallThickness; // Outer radius
             const numArchSegments = 16; // Number of segments for smooth arch
             const archLengthSegments = 2; // Split each tunnel segment along length for smoother curve following
 
-            // Create arch vertices and indices
+            // Create arch vertices and indices for thick 3D structure
             const archVertices: number[] = [];
             const archIndices: number[] = [];
 
-            // Create vertices for arch along width (semi-circle) and length
+            // Create vertices for both inner and outer arch surfaces
             for (let lenSeg = 0; lenSeg <= archLengthSegments; lenSeg++) {
                 const lenT = lenSeg / archLengthSegments;
                 const archPoint = point1.clone().lerp(point2, lenT);
@@ -312,6 +313,7 @@ export class RoadGenerator {
                 const curveTangent = curve.getTangent(t);
                 const curvePerp = new THREE.Vector3(-curveTangent.z, 0, curveTangent.x).normalize();
 
+                // Create vertices for inner surface (tunnel interior)
                 for (let w = 0; w <= numArchSegments; w++) {
                     const widthT = w / numArchSegments; // 0 to 1 across the width
                     const archAngle = widthT * Math.PI; // 0 to PI (semi-circle)
@@ -319,26 +321,89 @@ export class RoadGenerator {
                     // Calculate position along arch curve (semi-circle)
                     const archY = Math.sin(archAngle) * archRadius;
 
-                    // Calculate position across road width
-                    const leftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth - wallThickness));
-                    const rightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth + wallThickness));
-                    const archPos = leftEdge.clone().lerp(rightEdge, widthT);
-                    archPos.y = roadY + archY;
+                    // Calculate position across road width (inner edge)
+                    const innerLeftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth));
+                    const innerRightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth));
+                    const innerArchPos = innerLeftEdge.clone().lerp(innerRightEdge, widthT);
+                    innerArchPos.y = roadY + archY;
 
-                    archVertices.push(archPos.x, archPos.y, archPos.z);
+                    archVertices.push(innerArchPos.x, innerArchPos.y, innerArchPos.z);
+                }
+
+                // Create vertices for outer surface (tunnel exterior - offset by wallThickness)
+                for (let w = 0; w <= numArchSegments; w++) {
+                    const widthT = w / numArchSegments;
+                    const archAngle = widthT * Math.PI;
+
+                    // Calculate position along arch curve with outer radius
+                    const archY = Math.sin(archAngle) * outerArchRadius;
+
+                    // Calculate position across road width (outer edge)
+                    const outerLeftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth - wallThickness));
+                    const outerRightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth + wallThickness));
+                    const outerArchPos = outerLeftEdge.clone().lerp(outerRightEdge, widthT);
+                    outerArchPos.y = roadY + archY;
+
+                    archVertices.push(outerArchPos.x, outerArchPos.y, outerArchPos.z);
                 }
             }
 
-            // Create triangles for arch surface
+            // Create triangles for thick 3D structure
             const widthVerts = numArchSegments + 1;
+            const totalVertsPerLength = widthVerts * 2; // Inner + outer vertices per length segment
+
+            // Inner surface triangles (facing downward into tunnel)
             for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
                 for (let w = 0; w < numArchSegments; w++) {
-                    const base = lenSeg * widthVerts + w;
-                    const nextBase = (lenSeg + 1) * widthVerts + w;
+                    const base = lenSeg * totalVertsPerLength + w;
+                    const nextBase = (lenSeg + 1) * totalVertsPerLength + w;
 
-                    // Two triangles per quad
+                    // Inner surface (counter-clockwise when viewed from inside tunnel)
                     archIndices.push(base, base + 1, nextBase);
                     archIndices.push(base + 1, nextBase + 1, nextBase);
+                }
+            }
+
+            // Outer surface triangles (facing outward)
+            for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
+                for (let w = 0; w < numArchSegments; w++) {
+                    const base = lenSeg * totalVertsPerLength + widthVerts + w;
+                    const nextBase = (lenSeg + 1) * totalVertsPerLength + widthVerts + w;
+
+                    // Outer surface (counter-clockwise when viewed from outside)
+                    archIndices.push(base, nextBase, base + 1);
+                    archIndices.push(base + 1, nextBase, nextBase + 1);
+                }
+            }
+
+            // Side triangles connecting inner to outer surfaces (create thickness)
+            for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
+                for (let w = 0; w < numArchSegments; w++) {
+                    const innerBase = lenSeg * totalVertsPerLength + w;
+                    const innerNextBase = (lenSeg + 1) * totalVertsPerLength + w;
+                    const outerBase = lenSeg * totalVertsPerLength + widthVerts + w;
+                    const outerNextBase = (lenSeg + 1) * totalVertsPerLength + widthVerts + w;
+
+                    // Left side of arch (connect inner to outer)
+                    archIndices.push(innerBase, outerBase, innerNextBase);
+                    archIndices.push(outerBase, outerNextBase, innerNextBase);
+
+                    // Right side of arch (connect inner to outer)
+                    archIndices.push(innerBase + 1, innerNextBase + 1, outerBase + 1);
+                    archIndices.push(outerBase + 1, innerNextBase + 1, outerNextBase + 1);
+                }
+            }
+
+            // End caps (connect inner to outer at segment ends to close the structure)
+            if (i === 0 || i === numSegments - 1) {
+                const lenSeg = i === 0 ? 0 : archLengthSegments;
+                for (let w = 0; w < numArchSegments; w++) {
+                    const innerBase = lenSeg * totalVertsPerLength + w;
+                    const outerBase = lenSeg * totalVertsPerLength + widthVerts + w;
+
+                    // Create triangles connecting inner to outer at the end
+                    archIndices.push(innerBase, innerBase + 1, outerBase);
+                    archIndices.push(innerBase + 1, outerBase + 1, outerBase);
                 }
             }
 
@@ -348,9 +413,10 @@ export class RoadGenerator {
                 archGeometry.setIndex(new THREE.BufferAttribute(new Uint16Array(archIndices), 1));
                 archGeometry.computeVertexNormals();
 
-                const archCeiling = new THREE.Mesh(archGeometry, ceilingMaterial);
-                archCeiling.receiveShadow = true;
-                this.tunnelGroup.add(archCeiling);
+                const archMesh = new THREE.Mesh(archGeometry, ceilingMaterial);
+                archMesh.receiveShadow = true;
+                archMesh.castShadow = true; // Now it can cast shadows as a 3D object
+                this.tunnelGroup.add(archMesh);
             }
         }
     }
