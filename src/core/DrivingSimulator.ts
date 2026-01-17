@@ -30,7 +30,7 @@ export class DrivingSimulator {
         // Initialize Three.js core
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(
-            75,
+            50,
             window.innerWidth / window.innerHeight,
             0.1,
             5000
@@ -177,7 +177,8 @@ export class DrivingSimulator {
             const cameraHeight = 6;
 
             // Calculate camera offset using car direction rotated by camera angle
-            const baseOffset = new THREE.Vector3(0, cameraHeight, cameraDistance);
+            // Negative Z places camera behind the car (in car's local space)
+            const baseOffset = new THREE.Vector3(0, cameraHeight, -cameraDistance);
             const rotationQuaternion = new THREE.Quaternion().setFromAxisAngle(
                 new THREE.Vector3(0, 1, 0),
                 cameraAngle
