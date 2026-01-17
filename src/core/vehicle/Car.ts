@@ -13,16 +13,16 @@ export class Car {
     private position: THREE.Vector3;
     private rotation: THREE.Quaternion;
     private speed: number = 0; // m/s
-    public readonly maxSpeed: number = 60; // m/s (~216 km/h)
-    public readonly maxAcceleration: number = 10; // m/s²
+    public readonly maxSpeed: number = 160; // m/s (~324 km/h)
+    public readonly maxAcceleration: number = 40; // m/s²
     private throttleInput: number = 0;
     private brakeInput: number = 0;
     private steeringAngle: number = 0;
     public readonly maxSteeringAngle: number = Math.PI / 6; // 30 degrees
     private readonly wheelBase: number = 2.6;
-    private readonly dragCoefficient: number = 0.32;
-    private readonly rollingResistance: number = 1.6;
-    private readonly engineBraking: number = 2.8;
+    private readonly dragCoefficient: number = 0.02;
+    private readonly rollingResistance: number = 0.2;
+    private readonly engineBraking: number = 0.6;
     private readonly maxBrakeDecel: number = 18;
     private readonly maxReverseSpeed: number = 14;
 
@@ -32,7 +32,7 @@ export class Car {
 
     // Boost properties
     private isBoosting: boolean = false;
-    public readonly boostMultiplier: number = 1.5; // 50% speed increase
+    public readonly boostMultiplier: number = 2.0; // 100% accel increase
     public readonly boostMaxSpeed: number = 90; // m/s (~324 km/h) with boost
     private boostAmount: number = 100; // Boost meter (0-100)
     public readonly boostDrainRate: number = 30; // Per second
@@ -449,7 +449,7 @@ export class Car {
         // Animate wheels (rotate when moving)
         if (this.gltfWheelMeshes.length > 0) {
             if (Math.abs(this.speed) > 0.1) {
-                const wheelRotation = this.speed * delta * 2.5;
+                const wheelRotation = -this.speed * delta * 2.5;
                 this.gltfWheelMeshes.forEach(wheel => {
                     wheel.rotation.x += wheelRotation;
                 });
