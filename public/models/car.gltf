@@ -5083,7 +5083,7 @@
     },
     {
       "mesh": 26,
-      "name": "polySurface1_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0"
+      "name": "polySurface1_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0_frontL"
     },
     {
       "children": [
@@ -5135,7 +5135,7 @@
     },
     {
       "mesh": 27,
-      "name": "polySurface188_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0"
+      "name": "polySurface188_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0_frontR"
     },
     {
       "children": [
@@ -5169,7 +5169,7 @@
     },
     {
       "mesh": 28,
-      "name": "polySurface375_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0"
+      "name": "polySurface375_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0_rearL"
     },
     {
       "children": [
@@ -5221,7 +5221,7 @@
     },
     {
       "mesh": 29,
-      "name": "polySurface563_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0"
+      "name": "polySurface563_NSXLB:Honda_NSXLBWorksRewardRecycled_1992_Wheel1A_3D_3DWheel1_e2812d3_0_rearR"
     },
     {
       "children": [

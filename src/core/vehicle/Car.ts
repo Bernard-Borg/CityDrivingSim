@@ -2,8 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export class Car {
-    private mesh: THREE.Group;
-    private wheels: THREE.Group[] = [];
+    private mesh: THREE.Group = new THREE.Group();
     private scene: THREE.Scene;
     private cameraTargetOffset = new THREE.Vector3(0, 0.8, 0.3);
     private gltfWheelMeshes: THREE.Object3D[] = [];
@@ -43,12 +42,6 @@ export class Car {
         this.position = new THREE.Vector3(0, 0.25, 0);
         this.rotation = new THREE.Quaternion();
 
-        this.mesh = this.createCarMesh();
-        this.mesh.position.copy(this.position);
-        // Base scale (model-specific scaling happens after GLTF loads)
-        this.mesh.scale.set(1, 1, 1);
-        scene.add(this.mesh);
-
         this.loadCarModel();
     }
 
@@ -57,12 +50,6 @@ export class Car {
         loader.load(
             '/models/car.gltf',
             (gltf) => {
-                // Replace placeholder with GLTF model
-                while (this.mesh.children.length > 0) {
-                    this.mesh.remove(this.mesh.children[0]);
-                }
-                this.wheels = [];
-
                 const model = gltf.scene;
                 model.traverse((child) => {
                     if (child instanceof THREE.Mesh) {
@@ -86,6 +73,11 @@ export class Car {
                 model.position.sub(center);
 
                 this.mesh.add(model);
+                this.mesh.position.copy(this.position);
+
+                // Base scale (model-specific scaling happens after GLTF loads)
+                this.mesh.scale.set(1, 1, 1);
+                this.scene.add(this.mesh);
 
                 // Update camera target offset based on model bounds
                 this.cameraTargetOffset.set(
@@ -105,13 +97,7 @@ export class Car {
                 });
 
                 if (this.gltfWheelMeshes.length > 0) {
-                    // Categorize front wheels by name (e.g., "3DWheel Front L/R")
-                    this.gltfWheelMeshes.forEach(mesh => {
-                        const name = mesh.name.toLowerCase();
-                        if (name.includes('front')) {
-                            this.gltfFrontWheels.push(mesh);
-                        }
-                    });
+                    this.gltfFrontWheels = this.gltfWheelMeshes.filter(mesh => mesh.name.toLowerCase().includes('front'));
                 }
             },
             undefined,
@@ -119,250 +105,6 @@ export class Car {
                 console.warn('Failed to load GLTF car model:', error);
             }
         );
-    }
-
-    private createCarMesh(): THREE.Group {
-        const group = new THREE.Group();
-
-        // Main car body - more realistic sedan shape
-        const bodyMaterial = new THREE.MeshStandardMaterial({
-            color: 0x1a3a5c,
-            roughness: 0.4,
-            metalness: 0.7
-        });
-
-        // Lower body (wider and lower)
-        const lowerBodyGeometry = new THREE.BoxGeometry(1.9, 0.6, 4.2);
-        const lowerBody = new THREE.Mesh(lowerBodyGeometry, bodyMaterial);
-        lowerBody.position.y = 0.3;
-        lowerBody.castShadow = true;
-        lowerBody.receiveShadow = true;
-        group.add(lowerBody);
-
-        // Upper body section (hood area)
-        const hoodGeometry = new THREE.BoxGeometry(1.85, 0.4, 1.5);
-        const hood = new THREE.Mesh(hoodGeometry, bodyMaterial);
-        hood.position.set(0, 0.55, 1.3);
-        hood.castShadow = true;
-        group.add(hood);
-
-        // Trunk area
-        const trunkGeometry = new THREE.BoxGeometry(1.85, 0.4, 1.2);
-        const trunk = new THREE.Mesh(trunkGeometry, bodyMaterial);
-        trunk.position.set(0, 0.55, -1.4);
-        trunk.castShadow = true;
-        group.add(trunk);
-
-        // Car roof - more rounded appearance
-        const roofGeometry = new THREE.BoxGeometry(1.5, 0.5, 2.2);
-        const roof = new THREE.Mesh(roofGeometry, bodyMaterial);
-        roof.position.set(0, 1.15, -0.1);
-        roof.castShadow = true;
-        group.add(roof);
-
-        // Front windshield
-        const windshieldGeometry = new THREE.PlaneGeometry(1.4, 0.75);
-        const windshieldMaterial = new THREE.MeshStandardMaterial({
-            color: 0x87CEEB,
-            transparent: true,
-            opacity: 0.25,
-            roughness: 0.05,
-            metalness: 0.95
-        });
-        const windshield = new THREE.Mesh(windshieldGeometry, windshieldMaterial);
-        windshield.position.set(0, 1.05, 1.25);
-        windshield.rotation.x = -0.25;
-        group.add(windshield);
-
-        // Rear windshield
-        const rearWindshield = new THREE.Mesh(windshieldGeometry.clone(), windshieldMaterial);
-        rearWindshield.position.set(0, 1.05, -1.45);
-        rearWindshield.rotation.x = 0.25;
-        group.add(rearWindshield);
-
-        // Side windows
-        const sideWindowMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4a6fa5,
-            transparent: true,
-            opacity: 0.3,
-            roughness: 0.1,
-            metalness: 0.9
-        });
-
-        // Left side windows
-        const leftFrontWindow = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.9, 0.6),
-            sideWindowMaterial
-        );
-        leftFrontWindow.position.set(-0.76, 1.05, 0.4);
-        leftFrontWindow.rotation.y = Math.PI / 2;
-        leftFrontWindow.rotation.x = -0.1;
-        group.add(leftFrontWindow);
-
-        const leftRearWindow = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.9, 0.6),
-            sideWindowMaterial
-        );
-        leftRearWindow.position.set(-0.76, 1.05, -0.6);
-        leftRearWindow.rotation.y = Math.PI / 2;
-        leftRearWindow.rotation.x = -0.1;
-        group.add(leftRearWindow);
-
-        // Right side windows
-        const rightFrontWindow = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.9, 0.6),
-            sideWindowMaterial
-        );
-        rightFrontWindow.position.set(0.76, 1.05, 0.4);
-        rightFrontWindow.rotation.y = -Math.PI / 2;
-        rightFrontWindow.rotation.x = -0.1;
-        group.add(rightFrontWindow);
-
-        const rightRearWindow = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.9, 0.6),
-            sideWindowMaterial
-        );
-        rightRearWindow.position.set(0.76, 1.05, -0.6);
-        rightRearWindow.rotation.y = -Math.PI / 2;
-        rightRearWindow.rotation.x = -0.1;
-        group.add(rightRearWindow);
-
-        // Bumpers
-        const bumperMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2a2a2a,
-            roughness: 0.8,
-            metalness: 0.2
-        });
-
-        // Front bumper
-        const frontBumper = new THREE.Mesh(
-            new THREE.BoxGeometry(1.9, 0.25, 0.3),
-            bumperMaterial
-        );
-        frontBumper.position.set(0, 0.15, 2.2);
-        frontBumper.castShadow = true;
-        group.add(frontBumper);
-
-        // Rear bumper
-        const rearBumper = new THREE.Mesh(
-            new THREE.BoxGeometry(1.9, 0.25, 0.3),
-            bumperMaterial
-        );
-        rearBumper.position.set(0, 0.15, -2.2);
-        rearBumper.castShadow = true;
-        group.add(rearBumper);
-
-        // Wheels - more realistic car wheels
-        // CylinderGeometry creates cylinder along Y axis, rotate 90° around Z to make horizontal
-        const wheelRadius = 0.4;
-        const wheelWidth = 0.3;
-        const wheelGeometry = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelWidth, 24);
-        const wheelMaterial = new THREE.MeshStandardMaterial({
-            color: 0x0a0a0a,
-            roughness: 0.95
-        });
-        const rimRadius = 0.25;
-        const rimWidth = 0.32;
-        const rimGeometry = new THREE.CylinderGeometry(rimRadius, rimRadius, rimWidth, 16);
-        const rimMaterial = new THREE.MeshStandardMaterial({
-            color: 0xd4d4d4,
-            metalness: 0.9,
-            roughness: 0.3
-        });
-
-        // Wheel positions relative to car body
-        // Lower body is at y=0.3 with height 0.6, so bottom is at y=0
-        // Wheels should be positioned so they're visible below the car body
-        // Position at y=0.15 so wheel center is at 0.15, bottom at -0.25, top at 0.55
-        // This makes them clearly visible below the car body
-        const wheelYPosition = 0.15; // Lower than before for better visibility
-        const wheelPositions: Array<[number, number, number]> = [
-            [-0.7, wheelYPosition, 1.25],   // Front left
-            [0.7, wheelYPosition, 1.25],    // Front right
-            [-0.7, wheelYPosition, -1.25],  // Rear left
-            [0.7, wheelYPosition, -1.25]    // Rear right
-        ];
-
-        wheelPositions.forEach((pos, index) => {
-            const wheelGroup = new THREE.Group();
-
-            // Tire (outer wheel)
-            const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
-            // Rotate 90° around Z axis to make cylinder horizontal (wheel axis along Y)
-            wheel.rotation.z = Math.PI / 2;
-            wheel.castShadow = true;
-            wheel.receiveShadow = true;
-            wheelGroup.add(wheel);
-
-            // Rim (inner wheel)
-            const rim = new THREE.Mesh(rimGeometry, rimMaterial);
-            // Rotate 90° around Z axis to align with tire
-            rim.rotation.z = Math.PI / 2;
-            rim.castShadow = true;
-            wheelGroup.add(rim);
-
-            // Position wheel group
-            wheelGroup.position.set(pos[0], pos[1], pos[2]);
-            wheelGroup.castShadow = true;
-            group.add(wheelGroup);
-            this.wheels.push(wheelGroup);
-        });
-
-        // Headlights - more realistic design
-        const lightMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFFFFDD,
-            emissive: 0xFFFFAA,
-            emissiveIntensity: 0.6,
-            metalness: 0.9,
-            roughness: 0.1
-        });
-
-        // Left headlight
-        const leftLightGeometry = new THREE.CylinderGeometry(0.12, 0.15, 0.2, 12);
-        const leftLight = new THREE.Mesh(leftLightGeometry, lightMaterial);
-        leftLight.rotation.z = Math.PI / 2;
-        leftLight.position.set(-0.65, 0.5, 2.15);
-        group.add(leftLight);
-
-        // Right headlight
-        const rightLight = new THREE.Mesh(leftLightGeometry.clone(), lightMaterial);
-        rightLight.rotation.z = Math.PI / 2;
-        rightLight.position.set(0.65, 0.5, 2.15);
-        group.add(rightLight);
-
-        // Taillights
-        const tailLightMaterial = new THREE.MeshStandardMaterial({
-            color: 0xFF4444,
-            emissive: 0xFF0000,
-            emissiveIntensity: 0.4
-        });
-
-        const tailLightGeometry = new THREE.BoxGeometry(0.15, 0.2, 0.1);
-        const leftTailLight = new THREE.Mesh(tailLightGeometry, tailLightMaterial);
-        leftTailLight.position.set(-0.65, 0.5, -2.15);
-        group.add(leftTailLight);
-
-        const rightTailLight = new THREE.Mesh(tailLightGeometry.clone(), tailLightMaterial);
-        rightTailLight.position.set(0.65, 0.5, -2.15);
-        group.add(rightTailLight);
-
-        // Side mirrors
-        const mirrorMaterial = new THREE.MeshStandardMaterial({
-            color: 0x444444,
-            metalness: 0.8,
-            roughness: 0.2
-        });
-
-        const mirrorGeometry = new THREE.BoxGeometry(0.08, 0.06, 0.12);
-        const leftMirror = new THREE.Mesh(mirrorGeometry, mirrorMaterial);
-        leftMirror.position.set(-0.96, 0.9, 0.7);
-        group.add(leftMirror);
-
-        const rightMirror = new THREE.Mesh(mirrorGeometry.clone(), mirrorMaterial);
-        rightMirror.position.set(0.96, 0.9, 0.7);
-        group.add(rightMirror);
-
-        return group;
     }
 
     update(delta: number): void {
@@ -454,27 +196,12 @@ export class Car {
                     wheel.rotation.x += wheelRotation;
                 });
             }
-            // Rotate front wheels for steering
+            // Rotate front wheels for steeringad
             if (this.gltfFrontWheels.length > 0) {
                 const frontWheelAngle = this.steeringAngle * 0.7;
                 this.gltfFrontWheels.forEach(wheel => {
                     wheel.rotation.y = frontWheelAngle;
                 });
-            }
-        } else {
-            if (Math.abs(this.speed) > 0.1) {
-                const wheelRotation = this.speed * delta * 5;
-                this.wheels.forEach(wheel => {
-                    const wheelMesh = wheel.children[0] as THREE.Mesh;
-                    const rimMesh = wheel.children[1] as THREE.Mesh;
-                    wheelMesh.rotation.x += wheelRotation / 0.4; // Divide by wheel radius
-                    rimMesh.rotation.x += wheelRotation / 0.4;
-                });
-            }
-            if (this.wheels && this.wheels.length >= 2) {
-                const frontWheelAngle = this.steeringAngle * 0.7; // Front wheels turn more
-                this.wheels[0].rotation.y = frontWheelAngle; // Front left
-                this.wheels[1].rotation.y = frontWheelAngle; // Front right
             }
         }
     }
