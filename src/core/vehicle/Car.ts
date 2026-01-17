@@ -1,21 +1,30 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export class Car {
     private mesh: THREE.Group;
     private wheels: THREE.Group[] = [];
     private scene: THREE.Scene;
+    private cameraTargetOffset = new THREE.Vector3(0, 0.8, 0.3);
+    private gltfWheelMeshes: THREE.Object3D[] = [];
+    private gltfFrontWheels: THREE.Object3D[] = [];
 
     // Physics properties
     private position: THREE.Vector3;
     private rotation: THREE.Quaternion;
     private speed: number = 0; // m/s
     public readonly maxSpeed: number = 60; // m/s (~216 km/h)
-    private acceleration: number = 0;
-    public readonly maxAcceleration: number = 12; // m/s² (improved acceleration)
-    private readonly friction: number = 0.99; // Minimal friction when coasting
+    public readonly maxAcceleration: number = 10; // m/s²
+    private throttleInput: number = 0;
+    private brakeInput: number = 0;
     private steeringAngle: number = 0;
-    public readonly maxSteeringAngle: number = Math.PI / 4; // 45 degrees
-    private readonly turningRadius: number = 10; // Improved turning
+    public readonly maxSteeringAngle: number = Math.PI / 6; // 30 degrees
+    private readonly wheelBase: number = 2.6;
+    private readonly dragCoefficient: number = 0.32;
+    private readonly rollingResistance: number = 1.6;
+    private readonly engineBraking: number = 2.8;
+    private readonly maxBrakeDecel: number = 18;
+    private readonly maxReverseSpeed: number = 14;
 
     // Drift/handbrake propertiesssssss
     private handbrakeActive: boolean = false;
@@ -36,9 +45,80 @@ export class Car {
 
         this.mesh = this.createCarMesh();
         this.mesh.position.copy(this.position);
-        // Scale car down by 25% (0.75 = 75% of original size)
-        this.mesh.scale.set(0.75, 0.75, 0.75);
+        // Base scale (model-specific scaling happens after GLTF loads)
+        this.mesh.scale.set(1, 1, 1);
         scene.add(this.mesh);
+
+        this.loadCarModel();
+    }
+
+    private loadCarModel(): void {
+        const loader = new GLTFLoader();
+        loader.load(
+            '/models/car.gltf',
+            (gltf) => {
+                // Replace placeholder with GLTF model
+                while (this.mesh.children.length > 0) {
+                    this.mesh.remove(this.mesh.children[0]);
+                }
+                this.wheels = [];
+
+                const model = gltf.scene;
+                model.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                // Scale model to a reasonable car size and center it
+                const box = new THREE.Box3().setFromObject(model);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                const targetLength = 3.4; // meters
+                const scaleFactor = size.z > 0 ? targetLength / size.z : 1;
+                model.scale.setScalar(scaleFactor);
+
+                const centeredBox = new THREE.Box3().setFromObject(model);
+                const center = new THREE.Vector3();
+                const centeredSize = new THREE.Vector3();
+                centeredBox.getCenter(center);
+                centeredBox.getSize(centeredSize);
+                model.position.sub(center);
+
+                this.mesh.add(model);
+
+                // Update camera target offset based on model bounds
+                this.cameraTargetOffset.set(
+                    0,
+                    centeredSize.y * 0.5,
+                    centeredSize.z * 0.15
+                );
+
+                // Cache wheel meshes for animation (steering + spin)
+                this.gltfWheelMeshes = [];
+                this.gltfFrontWheels = [];
+                const wheelRegex = /(wheel|tire|tyre)/i;
+                model.traverse((child) => {
+                    if (child instanceof THREE.Mesh && wheelRegex.test(child.name)) {
+                        this.gltfWheelMeshes.push(child);
+                    }
+                });
+
+                if (this.gltfWheelMeshes.length > 0) {
+                    // Categorize front wheels by name (e.g., "3DWheel Front L/R")
+                    this.gltfWheelMeshes.forEach(mesh => {
+                        const name = mesh.name.toLowerCase();
+                        if (name.includes('front')) {
+                            this.gltfFrontWheels.push(mesh);
+                        }
+                    });
+                }
+            },
+            undefined,
+            (error) => {
+                console.warn('Failed to load GLTF car model:', error);
+            }
+        );
     }
 
     private createCarMesh(): THREE.Group {
@@ -300,78 +380,62 @@ export class Car {
         const effectiveMaxSpeed = this.isBoosting ? this.boostMaxSpeed : this.maxSpeed;
 
 
-        if (this.acceleration !== 0) {
-            // Apply acceleration with smoother curve
-            const targetSpeed = this.acceleration > 0 ? effectiveMaxSpeed : -this.maxSpeed * 0.5;
-            const speedDiff = targetSpeed - this.speed;
-            const accelerationRate = Math.abs(this.acceleration) * delta;
+        // Compute longitudinal acceleration (engine, drag, rolling, braking)
+        const throttle = THREE.MathUtils.clamp(this.throttleInput, -1, 1);
+        const brake = THREE.MathUtils.clamp(this.brakeInput, 0, 1);
+        const speedSign = this.speed === 0 ? (throttle >= 0 ? 1 : -1) : Math.sign(this.speed);
 
-            // Non-linear acceleration for more realistic feel
-            // During drift, acceleration is slightly reduced (wheelspin)
-            const accelFactor = this.handbrakeActive ? 0.7 : (Math.abs(speedDiff) > 5 ? 1.0 : 0.5);
-            this.speed += Math.sign(speedDiff) * Math.min(Math.abs(speedDiff), accelerationRate * accelFactor);
-        } else {
-            // Apply friction when not accelerating (coasting/drifting)
-            this.speed *= this.friction;
+        const boostAccelMultiplier = this.isBoosting ? this.boostMultiplier : 1;
+        let engineAccel = throttle * this.maxAcceleration * boostAccelMultiplier;
+        if (throttle < 0) {
+            // Reverse is weaker
+            engineAccel *= 0.6;
         }
 
-        // During handbrake, apply sideways sliding effect
-        if (this.handbrakeActive && Math.abs(this.speed) > 2 && this.steeringAngle !== 0) {
-            // Create sideways momentum for drift effect
-            const sideDirection = new THREE.Vector3(1, 0, 0);
-            sideDirection.applyQuaternion(this.rotation);
-            const slideAmount = this.steeringAngle * Math.abs(this.speed) * 0.02 * delta;
-            const slideVector = sideDirection.multiplyScalar(slideAmount);
-            this.position.add(slideVector);
+        const drag = this.dragCoefficient * this.speed * Math.abs(this.speed);
+        const rolling = this.rollingResistance * this.speed;
+        const engineBrake = Math.abs(throttle) < 0.05 ? this.engineBraking * speedSign : 0;
+        const brakeDecel = brake * this.maxBrakeDecel * speedSign;
+
+        const netAccel = engineAccel - drag - rolling - engineBrake - brakeDecel;
+        this.speed += netAccel * delta;
+
+        // Clamp speed
+        if (throttle >= 0) {
+            this.speed = Math.min(this.speed, effectiveMaxSpeed);
+        }
+        if (throttle <= 0) {
+            this.speed = Math.max(this.speed, -this.maxReverseSpeed);
         }
 
         // Stop very slow movement
-        if (Math.abs(this.speed) < 0.05) {
+        if (Math.abs(this.speed) < 0.05 && Math.abs(throttle) < 0.05) {
             this.speed = 0;
+        }
+
+        // During handbrake, apply sideways sliding effect
+        if (this.handbrakeActive && Math.abs(this.speed) > 2 && Math.abs(this.steeringAngle) > 0.01) {
+            const sideDirection = new THREE.Vector3(1, 0, 0);
+            sideDirection.applyQuaternion(this.rotation);
+            const slideAmount = this.steeringAngle * Math.abs(this.speed) * 0.015 * delta;
+            const slideVector = sideDirection.multiplyScalar(slideAmount);
+            this.position.add(slideVector);
         }
 
         // Update position based on speed and rotation
         const direction = new THREE.Vector3(0, 0, 1);
         direction.applyQuaternion(this.rotation);
 
-        // Improved steering - speed-dependent steering response with drift support
-        if (this.steeringAngle !== 0 && Math.abs(this.speed) > 0.1) {
-            // During handbrake/drift, steering is more responsive for counter-steering
+        // Steering using a simple bicycle model
+        if (Math.abs(this.steeringAngle) > 0.001 && Math.abs(this.speed) > 0.1) {
             const steeringMultiplier = this.handbrakeActive ? this.driftSteeringMultiplier : 1.0;
-
-            // Steering effectiveness decreases at higher speeds (more realistic)
-            // But during drift, we want more control for counter-steering
-            const speedRatio = Math.min(1, Math.abs(this.speed) / 30); // Normalize to 0-1 at 30 m/s
-            let steeringEffectiveness = 1.2 - (speedRatio * 0.4); // 100% at low speed, 80% at high speed
-
-            if (this.handbrakeActive) {
-                // During drift, maintain higher steering effectiveness
-                steeringEffectiveness = 1.3 - (speedRatio * 0.3); // Better control during drift
-            }
-
-            const steeringSpeed = Math.abs(this.speed) * delta * steeringEffectiveness * steeringMultiplier;
-
-            // Reduced turn radius during drift (tighter turns)
-            const effectiveTurnRadius = this.handbrakeActive
-                ? this.turningRadius * 0.7  // Tighter turning during drift
-                : this.turningRadius;
-
-            const turnRadius = effectiveTurnRadius / (Math.abs(this.steeringAngle) + 0.1);
-            const angularVelocity = steeringSpeed / turnRadius;
-            const turnDirection = this.steeringAngle > 0 ? 1 : -1;
-
+            const turnRadius = this.wheelBase / Math.tan(this.steeringAngle);
+            const angularVelocity = (this.speed / turnRadius) * steeringMultiplier;
             const rotationDelta = new THREE.Quaternion().setFromAxisAngle(
                 new THREE.Vector3(0, 1, 0),
-                angularVelocity * turnDirection
+                angularVelocity * delta
             );
             this.rotation.multiply(rotationDelta);
-
-            // Smooth steering return (self-centering) - slower during drift
-            const steeringReturnRate = this.handbrakeActive ? 0.90 : 0.95;
-            this.steeringAngle *= steeringReturnRate;
-            if (Math.abs(this.steeringAngle) < 0.01) {
-                this.steeringAngle = 0;
-            }
         }
 
         // Move forward/backward
@@ -383,36 +447,48 @@ export class Car {
         this.mesh.quaternion.copy(this.rotation);
 
         // Animate wheels (rotate when moving)
-        if (Math.abs(this.speed) > 0.1) {
-            const wheelRotation = this.speed * delta * 5;
-            this.wheels.forEach(wheel => {
-                const wheelMesh = wheel.children[0] as THREE.Mesh;
-                const rimMesh = wheel.children[1] as THREE.Mesh;
-                wheelMesh.rotation.x += wheelRotation / 0.4; // Divide by wheel radius
-                rimMesh.rotation.x += wheelRotation / 0.4;
-            });
-        }
-
-        // Rotate front wheels for steering
-        if (this.wheels && this.wheels.length >= 2) {
-            const frontWheelAngle = this.steeringAngle * 0.7; // Front wheels turn more
-            this.wheels[0].rotation.y = frontWheelAngle; // Front left
-            this.wheels[1].rotation.y = frontWheelAngle; // Front right
+        if (this.gltfWheelMeshes.length > 0) {
+            if (Math.abs(this.speed) > 0.1) {
+                const wheelRotation = this.speed * delta * 2.5;
+                this.gltfWheelMeshes.forEach(wheel => {
+                    wheel.rotation.x += wheelRotation;
+                });
+            }
+            // Rotate front wheels for steering
+            if (this.gltfFrontWheels.length > 0) {
+                const frontWheelAngle = this.steeringAngle * 0.7;
+                this.gltfFrontWheels.forEach(wheel => {
+                    wheel.rotation.y = frontWheelAngle;
+                });
+            }
+        } else {
+            if (Math.abs(this.speed) > 0.1) {
+                const wheelRotation = this.speed * delta * 5;
+                this.wheels.forEach(wheel => {
+                    const wheelMesh = wheel.children[0] as THREE.Mesh;
+                    const rimMesh = wheel.children[1] as THREE.Mesh;
+                    wheelMesh.rotation.x += wheelRotation / 0.4; // Divide by wheel radius
+                    rimMesh.rotation.x += wheelRotation / 0.4;
+                });
+            }
+            if (this.wheels && this.wheels.length >= 2) {
+                const frontWheelAngle = this.steeringAngle * 0.7; // Front wheels turn more
+                this.wheels[0].rotation.y = frontWheelAngle; // Front left
+                this.wheels[1].rotation.y = frontWheelAngle; // Front right
+            }
         }
     }
 
-    setAcceleration(value: number): void {
-        this.acceleration = Math.max(-this.maxAcceleration, Math.min(this.maxAcceleration, value));
+    setThrottle(value: number): void {
+        this.throttleInput = Math.max(-1, Math.min(1, value));
+    }
+
+    setBrake(value: number): void {
+        this.brakeInput = Math.max(0, Math.min(1, value));
     }
 
     setSteering(angle: number): void {
         this.steeringAngle = Math.max(-this.maxSteeringAngle, Math.min(this.maxSteeringAngle, angle));
-    }
-
-    brake(factor: number): void {
-        // Improved braking - more effective at higher speeds
-        const brakeForce = factor * (1 + Math.abs(this.speed) * 0.01); // Stronger at speed
-        this.speed *= (1 - Math.min(brakeForce, 0.15)); // Cap max brake force
     }
 
     setBoost(active: boolean): void {
@@ -441,6 +517,10 @@ export class Car {
 
     getPosition(): THREE.Vector3 {
         return this.position.clone();
+    }
+
+    getCameraTargetPosition(): THREE.Vector3 {
+        return this.mesh.localToWorld(this.cameraTargetOffset.clone());
     }
 
     getRotation(): THREE.Quaternion {
@@ -472,7 +552,8 @@ export class Car {
 
     setSpeed(speed: number): void {
         this.speed = speed;
-        this.acceleration = 0;
+        this.throttleInput = 0;
+        this.brakeInput = 0;
     }
 
     /**
@@ -480,7 +561,8 @@ export class Car {
      */
     resetPhysics(): void {
         this.speed = 0;
-        this.acceleration = 0;
+        this.throttleInput = 0;
+        this.brakeInput = 0;
         this.steeringAngle = 0;
         this.handbrakeActive = false;
         this.isBoosting = false;

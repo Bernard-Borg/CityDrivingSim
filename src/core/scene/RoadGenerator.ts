@@ -7,6 +7,8 @@ export class RoadGenerator {
     private labelsGroup: THREE.Group;
     private tunnelGroup: THREE.Group;
     private labelTextures: THREE.CanvasTexture[] = [];
+    private roadSurfaceSamples: Array<{ points: THREE.Vector3[]; halfWidth: number; surface: string; }> = [];
+    private readonly surfaceSampleSpacing = 5; // meters between surface samples
 
     // Shared materials to avoid creating duplicates
     private sharedMaterials = {
@@ -118,6 +120,7 @@ export class RoadGenerator {
         });
 
         this.roads = [];
+        this.roadSurfaceSamples = [];
     }
 
     /**
@@ -166,8 +169,13 @@ export class RoadGenerator {
                 // Parse lanes count (default to 1 if not specified)
                 const lanesCount = feature.properties.lanes ? parseInt(feature.properties.lanes, 10) : 1;
 
+                // Determine surface type (default to asphalt)
+                const surface = typeof feature.properties.surface === 'string'
+                    ? feature.properties.surface.toLowerCase()
+                    : 'asphalt';
+
                 // Create road from points
-                this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name, isTunnel, layer, lanesCount);
+                this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name, isTunnel, layer, lanesCount, surface);
                 roadsCreated++;
             } else {
                 roadsSkipped++;
@@ -200,7 +208,8 @@ export class RoadGenerator {
         roadName?: string,
         isTunnel: boolean = false,
         layer: number = 0,
-        lanesCount: number = 1
+        lanesCount: number = 1,
+        surface: string = 'asphalt'
     ): void {
         const roadWidth = this.getRoadWidth(highwayType, lanesCount);
         const roadY = 0.01;
@@ -227,6 +236,9 @@ export class RoadGenerator {
         // Tunnels use the same rendering as regular roads, just with darker color
         this.createRoadMeshAlongCurve(curve, roadWidth, numSegments, isTunnel);
 
+        // Store surface samples for road audio
+        this.storeSurfaceSamples(curve, roadWidth, curveLength, surface);
+
         // Create 3D tunnel structure above the road if it's a tunnel
         if (isTunnel) {
             this.createTunnelStructureAlongCurve(curve, roadWidth, numSegments, curveLength);
@@ -248,6 +260,49 @@ export class RoadGenerator {
             const labelDirection = Math.atan2(nextPoint.x - midPoint.x, nextPoint.z - midPoint.z);
             this.createStreetLabel(midPoint, labelDirection, roadName);
         }
+    }
+
+    /**
+     * Store simplified surface samples along a curve for surface lookup
+     */
+    private storeSurfaceSamples(
+        curve: THREE.CatmullRomCurve3,
+        roadWidth: number,
+        curveLength: number,
+        surface: string
+    ): void {
+        const sampleCount = Math.max(2, Math.ceil(curveLength / this.surfaceSampleSpacing));
+        const points = curve.getPoints(sampleCount);
+        this.roadSurfaceSamples.push({
+            points,
+            halfWidth: roadWidth * 0.5,
+            surface
+        });
+    }
+
+    /**
+     * Get the road surface type at a given world position
+     */
+    getSurfaceAtPosition(position: THREE.Vector3): string {
+        let closestSurface = 'asphalt';
+        let closestDistance = Infinity;
+
+        for (const road of this.roadSurfaceSamples) {
+            for (const point of road.points) {
+                const dx = position.x - point.x;
+                const dz = position.z - point.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist <= road.halfWidth && dist < closestDistance) {
+                    closestDistance = dist;
+                    closestSurface = road.surface;
+                    if (closestDistance < 1) {
+                        return closestSurface;
+                    }
+                }
+            }
+        }
+
+        return closestSurface;
     }
 
     /**

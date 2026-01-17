@@ -227,4 +227,11 @@ export class SceneManager {
     getLabelsVisible(): boolean {
         return this.roadGenerator.getLabelsVisible();
     }
+
+    /**
+     * Get road surface type at a world position (used for road noise)
+     */
+    getRoadSurfaceAtPosition(position: THREE.Vector3): string {
+        return this.roadGenerator.getSurfaceAtPosition(position);
+    }
 }

@@ -171,25 +171,28 @@ export class DrivingSimulator {
         const delta = this.clock.getDelta();
 
         if (this.isLoaded && this.carControls && this.car) {
+            const preUpdatePosition = this.car.getPosition();
+            const surface = this.sceneManager.getRoadSurfaceAtPosition(preUpdatePosition);
+            this.carControls.setRoadSurface(surface);
             this.carControls.update(delta);
 
             // Update camera to follow car smoothly
             const carPosition = this.car.getPosition();
+            const cameraTarget = this.car.getCameraTargetPosition();
             const carDirection = this.car.getDirection();
             const cameraAngle = this.carControls.getCameraAngle();
+            const cameraPitch = this.carControls.getCameraPitch();
 
             // Third-person camera that follows behind the car (zoomable)
             const cameraDistance = this.carControls.getCameraZoomDistance();
-            const cameraHeight = 6;
 
-            // Calculate camera offset using car direction rotated by camera angle
-            // Negative Z places camera behind the car (in car's local space)
-            const baseOffset = new THREE.Vector3(0, cameraHeight, -cameraDistance);
-            const rotationQuaternion = new THREE.Quaternion().setFromAxisAngle(
-                new THREE.Vector3(0, 1, 0),
-                cameraAngle
+            // Calculate camera offset using orbit angles (yaw + pitch)
+            const horizontalDistance = Math.cos(cameraPitch) * cameraDistance;
+            const baseOffset = new THREE.Vector3(
+                Math.sin(cameraAngle) * horizontalDistance,
+                Math.sin(cameraPitch) * cameraDistance,
+                -Math.cos(cameraAngle) * horizontalDistance
             );
-            baseOffset.applyQuaternion(rotationQuaternion);
 
             // Apply car rotation to camera offset
             const carQuaternion = this.car.getRotation();
@@ -198,11 +201,13 @@ export class DrivingSimulator {
 
             // Smooth camera movement
             const targetPosition = carPosition.clone().add(cameraOffset);
+            if (targetPosition.y < cameraTarget.y) {
+                targetPosition.y = cameraTarget.y;
+            }
             this.camera.position.lerp(targetPosition, Math.min(delta * 5, 1)); // Cap lerp at 1
 
-            // Look at a point in front of the car
-            const lookAtPosition = carPosition.clone().add(carDirection.clone().multiplyScalar(5));
-            lookAtPosition.y += 1.5;
+            // Look at the car center
+            const lookAtPosition = cameraTarget.clone();
 
             // Smooth camera lookAt
             const currentLookAt = new THREE.Vector3();

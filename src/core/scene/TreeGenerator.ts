@@ -69,6 +69,7 @@ export class TreeGenerator {
         leaves.castShadow = true;
         leaves.receiveShadow = true;
         tree.add(leaves);
+        tree.scale.set(0.5, 0.5, 0.5);
 
         // Add slight random rotation for variety
         tree.rotation.y = Math.random() * Math.PI * 2;
