@@ -592,7 +592,7 @@ export class RoadGenerator {
     }
 
     /**
-     * Create edge lines along a curve - optimized with reduced segments and no shadows
+     * Create edge lines along a curve as continuous curved ribbons (like the road surface)
      */
     private createEdgeLinesAlongCurve(
         curve: THREE.CatmullRomCurve3,
@@ -600,62 +600,73 @@ export class RoadGenerator {
         numSegments: number,
         curveLength: number
     ): void {
-        // Use far fewer segments for edge lines (they don't need high detail)
-        // Max 20 segments per road, or one per 5 meters, whichever is less
-        const edgeLineSegments = Math.min(20, Math.max(2, Math.floor(curveLength / 5)));
         const lineWidth = 0.15;
         const lineHeight = 0.015;
         const halfWidth = roadWidth / 2;
 
-        // Build merged geometry for left and right edge lines
-        const leftVertices: number[] = [];
-        const rightVertices: number[] = [];
-        const leftIndices: number[] = [];
-        const rightIndices: number[] = [];
+        // Create ribbon geometry for edge lines (similar to road surface)
+        const createEdgeRibbon = (offsetMultiplier: number): THREE.Mesh | null => {
+            const vertices: number[] = [];
+            const indices: number[] = [];
 
-        for (let i = 0; i < edgeLineSegments; i++) {
-            const t = i / edgeLineSegments;
-            const point = curve.getPoint(t);
-            const tangent = curve.getTangent(t);
-            const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+            // Generate vertices along the curve for both edges of the line ribbon
+            for (let i = 0; i <= numSegments; i++) {
+                const t = i / numSegments;
+                const point = curve.getPoint(t);
+                const tangent = curve.getTangent(t);
+                const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
-            const leftPoint = point.clone().add(perp.clone().multiplyScalar(halfWidth));
-            leftPoint.y = lineHeight;
-            const rightPoint = point.clone().add(perp.clone().multiplyScalar(-halfWidth));
-            rightPoint.y = lineHeight;
+                // Calculate position along the edge
+                const edgePoint = point.clone().add(perp.clone().multiplyScalar(halfWidth * offsetMultiplier));
+                edgePoint.y = lineHeight;
 
-            // Add vertex for line strip
-            leftVertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
-            rightVertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
-        }
+                // Create two vertices for the width of the line (ribbon)
+                const halfLineWidth = lineWidth / 2;
+                const leftEdge = edgePoint.clone().add(perp.clone().multiplyScalar(-halfLineWidth * offsetMultiplier));
+                const rightEdge = edgePoint.clone().add(perp.clone().multiplyScalar(halfLineWidth * offsetMultiplier));
 
-        // Create line segments using THREE.LineSegments (much more efficient)
-        // Left edge line
-        if (leftVertices.length >= 6) {
-            const leftGeometry = new THREE.BufferGeometry();
-            leftGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(leftVertices), 3));
-            // Use line segments (no indices needed, just sequential vertices)
-            const leftLine = new THREE.Line(leftGeometry, new THREE.LineBasicMaterial({
+                vertices.push(leftEdge.x, leftEdge.y, leftEdge.z);
+                vertices.push(rightEdge.x, rightEdge.y, rightEdge.z);
+            }
+
+            if (vertices.length < 6) return null;
+
+            // Create indices for ribbon (triangles connecting adjacent segments)
+            for (let i = 0; i < numSegments; i++) {
+                const base = i * 2;
+                indices.push(base, base + 2, base + 1);
+                indices.push(base + 2, base + 3, base + 1);
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+            geometry.computeVertexNormals();
+
+            const material = new THREE.MeshStandardMaterial({
                 color: 0xFFFF00,
-                linewidth: 2
-            }));
-            this.roadGroup.add(leftLine);
-        }
+                emissive: 0xFFFF00,
+                emissiveIntensity: 0.5,
+                side: THREE.DoubleSide
+            });
 
-        // Right edge line
-        if (rightVertices.length >= 6) {
-            const rightGeometry = new THREE.BufferGeometry();
-            rightGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(rightVertices), 3));
-            const rightLine = new THREE.Line(rightGeometry, new THREE.LineBasicMaterial({
-                color: 0xFFFF00,
-                linewidth: 2
-            }));
-            this.roadGroup.add(rightLine);
-        }
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.castShadow = false;
+            mesh.receiveShadow = false;
+            return mesh;
+        };
+
+        // Create left edge line (offsetMultiplier = 1)
+        const leftEdge = createEdgeRibbon(1);
+        if (leftEdge) this.roadGroup.add(leftEdge);
+
+        // Create right edge line (offsetMultiplier = -1)
+        const rightEdge = createEdgeRibbon(-1);
+        if (rightEdge) this.roadGroup.add(rightEdge);
     }
 
     /**
-     * Create lane dividers along a curve - optimized with reduced dashes and no shadows
+     * Create lane dividers along a curve as continuous ribbons with repeating pattern
      */
     private createLaneDividersAlongCurve(
         curve: THREE.CatmullRomCurve3,
@@ -664,78 +675,118 @@ export class RoadGenerator {
         numSegments: number,
         curveLength: number
     ): void {
-        // Only create dividers for roads with 2+ lanes, and skip if too short
-        if (lanesCount < 2 || curveLength < 5) return;
+        // Only create dividers for roads with 2+ lanes
+        if (lanesCount < 2) return;
 
+        const dividerWidth = 0.1;
         const dividerHeight = 0.02;
         const laneWidth = roadWidth / lanesCount;
+
+        // Create pattern: dash length and gap length
+        const dashLength = 2.0;
+        const gapLength = 1.0;
+        const patternLength = dashLength + gapLength;
 
         // Create dividers between lanes (not at edges)
         for (let i = 1; i < lanesCount; i++) {
             const offsetFromCenter = (i - lanesCount / 2) * laneWidth;
 
-            // Create dashed line effect - use fewer dashes for performance
-            const dashLength = 3.0; // Longer dashes
-            const gapLength = 2.0; // Longer gaps
-            const segmentLength = dashLength + gapLength;
-            const numDashes = Math.min(50, Math.ceil(curveLength / segmentLength)); // Cap at 50 dashes per divider
-
-            // Build merged geometry for all dashes on this divider
+            // Create continuous ribbon geometry along the curve
             const vertices: number[] = [];
             const indices: number[] = [];
+            const uvs: number[] = []; // UV coordinates for pattern texture
 
-            for (let dash = 0; dash < numDashes; dash++) {
-                const dashStart = dash * segmentLength;
-                const dashEnd = Math.min(dashStart + dashLength, curveLength);
-
-                if (dashEnd <= dashStart) continue;
-
-                const tStart = dashStart / curveLength;
-                const tEnd = dashEnd / curveLength;
-                const point1 = curve.getPoint(tStart);
-                const point2 = curve.getPoint(tEnd);
-                const tangent = curve.getTangent(tStart);
+            // Generate vertices along the curve
+            for (let j = 0; j <= numSegments; j++) {
+                const t = j / numSegments;
+                const point = curve.getPoint(t);
+                const tangent = curve.getTangent(t);
                 const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
-                const dashLengthActual = point1.distanceTo(point2);
-                if (dashLengthActual < 0.2) continue;
+                // Calculate position along divider line
+                const dividerPoint = point.clone().add(perp.clone().multiplyScalar(offsetFromCenter));
+                dividerPoint.y = dividerHeight;
 
-                const offset = perp.clone().multiplyScalar(offsetFromCenter);
-                const dashPoint1 = point1.clone().add(offset);
-                dashPoint1.y = dividerHeight;
-                const dashPoint2 = point2.clone().add(offset);
-                dashPoint2.y = dividerHeight;
-
-                // Add vertices for dash quad
-                const dividerWidth = 0.1;
+                // Create two vertices for the width of the divider (ribbon)
                 const halfWidth = dividerWidth / 2;
-                const baseIndex = vertices.length / 3;
+                const leftEdge = dividerPoint.clone().add(perp.clone().multiplyScalar(-halfWidth));
+                const rightEdge = dividerPoint.clone().add(perp.clone().multiplyScalar(halfWidth));
 
-                vertices.push(
-                    dashPoint1.x - perp.x * halfWidth, dividerHeight, dashPoint1.z - perp.z * halfWidth,
-                    dashPoint1.x + perp.x * halfWidth, dividerHeight, dashPoint1.z + perp.z * halfWidth,
-                    dashPoint2.x - perp.x * halfWidth, dividerHeight, dashPoint2.z - perp.z * halfWidth,
-                    dashPoint2.x + perp.x * halfWidth, dividerHeight, dashPoint2.z + perp.z * halfWidth
-                );
+                vertices.push(leftEdge.x, leftEdge.y, leftEdge.z);
+                vertices.push(rightEdge.x, rightEdge.y, rightEdge.z);
 
-                // Add indices for quad
-                indices.push(
-                    baseIndex, baseIndex + 1, baseIndex + 2,
-                    baseIndex + 1, baseIndex + 3, baseIndex + 2
-                );
+                // Calculate UV coordinates for repeating pattern
+                // U coordinate varies along the curve (0 to repeat count, will wrap with RepeatWrapping)
+                const distanceAlongCurve = t * curveLength;
+                const u = distanceAlongCurve / patternLength; // Will repeat with RepeatWrapping
+
+                // V coordinate (0 = left edge, 1 = right edge)
+                uvs.push(u, 0); // Left edge
+                uvs.push(u, 1); // Right edge
             }
 
-            // Create single merged mesh for all dashes on this divider
-            if (vertices.length >= 6) {
-                const dividerGeometry = new THREE.BufferGeometry();
-                dividerGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-                dividerGeometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
-                dividerGeometry.computeVertexNormals();
-                const divider = new THREE.Mesh(dividerGeometry, this.sharedMaterials.laneDividerMaterial);
-                divider.castShadow = false;
-                divider.receiveShadow = false;
-                this.roadGroup.add(divider);
+            if (vertices.length < 6) continue;
+
+            // Create indices for ribbon
+            for (let j = 0; j < numSegments; j++) {
+                const base = j * 2;
+                indices.push(base, base + 2, base + 1);
+                indices.push(base + 2, base + 3, base + 1);
             }
+
+            // Create texture for dashed pattern (white -> transparent -> white -> transparent)
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 32;
+            const context = canvas.getContext('2d')!;
+
+            const dashPixelLength = (dashLength / patternLength) * canvas.width;
+            const gapPixelLength = (gapLength / patternLength) * canvas.width;
+
+            // Clear entire canvas (transparent background)
+            context.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw white dashes with alpha
+            let x = 0;
+            while (x < canvas.width) {
+                // White dash
+                context.fillStyle = '#FFFFFF';
+                context.fillRect(x, 0, dashPixelLength, canvas.height);
+                // Gap is transparent (already cleared)
+                x += dashPixelLength + gapPixelLength;
+            }
+
+            const patternTexture = new THREE.CanvasTexture(canvas);
+            patternTexture.wrapS = THREE.RepeatWrapping;
+            patternTexture.wrapT = THREE.ClampToEdgeWrapping;
+            patternTexture.needsUpdate = true;
+
+            // Create geometry
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+            geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
+            geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+            geometry.computeVertexNormals();
+
+            // Calculate how many pattern repeats along the curve
+            const patternRepeats = curveLength / patternLength;
+
+            // Create material with pattern texture
+            const material = new THREE.MeshStandardMaterial({
+                map: patternTexture,
+                emissive: 0xFFFFFF,
+                emissiveIntensity: 0.3,
+                transparent: true,
+                alphaTest: 0.01, // Low threshold for transparency
+                side: THREE.DoubleSide
+            });
+
+            // Texture repeat is handled by UV coordinates and RepeatWrapping
+
+            const divider = new THREE.Mesh(geometry, material);
+            divider.castShadow = false;
+            divider.receiveShadow = false;
+            this.roadGroup.add(divider);
         }
     }
 
