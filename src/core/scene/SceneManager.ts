@@ -16,7 +16,7 @@ export class SceneManager {
         this.startPosition = new THREE.Vector3(0, 1, 0);
     }
 
-    async loadCityMap(city: string, savedPosition?: { x: number; y: number; z: number; }): Promise<void> {
+    async loadCityMap(city: string, savedPosition?: { lat: number; lon: number; y?: number; }): Promise<void> {
         try {
             const cityConfig = CityManager.getCityConfig(city);
             if (!cityConfig) {
@@ -49,9 +49,10 @@ export class SceneManager {
 
             // Set starting position
             if (savedPosition) {
-                // Use saved position
-                this.startPosition.set(savedPosition.x, savedPosition.y, savedPosition.z);
-                console.log(`Restored position: (${savedPosition.x.toFixed(2)}, ${savedPosition.y.toFixed(2)}, ${savedPosition.z.toFixed(2)})`);
+                // Convert saved lat/lon position to local coordinates
+                const local = this.latLonToLocal(savedPosition.lat, savedPosition.lon);
+                this.startPosition.set(local.x, savedPosition.y ?? 1, local.z);
+                console.log(`Restored position: Lat ${savedPosition.lat.toFixed(6)}, Lon ${savedPosition.lon.toFixed(6)} -> Local (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
             } else if (geoJSON.features.length > 0) {
                 // Use first feature coordinate
                 const firstFeature = geoJSON.features[0];
@@ -133,6 +134,28 @@ export class SceneManager {
         const z = -dLat * R;
 
         return { x, z };
+    }
+
+    /**
+     * Convert local XZ coordinates back to lat/lon
+     */
+    localToLatLon(x: number, z: number): { lat: number; lon: number; } {
+        const R = 6371000; // Earth radius in meters
+        // Reverse the conversion from latLonToLocal
+        const dLat = -z / R; // Reverse z = -dLat * R
+        const dLon = x / (R * Math.cos(this.centerLat * Math.PI / 180)); // Reverse x = dLon * R * cos(centerLat)
+
+        const lat = this.centerLat + (dLat * 180 / Math.PI);
+        const lon = this.centerLon + (dLon * 180 / Math.PI);
+
+        return { lat, lon };
+    }
+
+    /**
+     * Get center coordinates for coordinate conversion
+     */
+    getCenterCoordinates(): { lat: number; lon: number; } {
+        return { lat: this.centerLat, lon: this.centerLon };
     }
 
     getStartPosition(): THREE.Vector3 {

@@ -63,6 +63,17 @@
       </div>
     </div>
 
+    <!-- Coordinates Display -->
+    <div v-if="!showCityMenu && !isLoading" class="absolute top-5 left-80 z-10">
+      <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20">
+        <div class="text-xs text-gray-400 mb-1">Coordinates</div>
+        <div class="text-sm text-white font-mono">
+          <div>Lat: {{ coordinates.lat.toFixed(6) }}</div>
+          <div>Lon: {{ coordinates.lon.toFixed(6) }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- FPS Counter -->
     <div class="absolute top-5 right-5 z-10">
       <div class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20">
@@ -191,6 +202,7 @@ const showCitySwitcher = ref(false)
 const availableCities = ref<string[]>([])
 const currentCity = ref<string | null>(null)
 const showStreetNames = ref(true)
+const coordinates = ref({ lat: 0, lon: 0 })
 
 let simulator: DrivingSimulator | null = null
 
@@ -247,6 +259,10 @@ const selectCity = async (city: string) => {
     boostAmount.value = newBoost
   })
   
+  simulator.onCoordinateUpdate((lat: number, lon: number) => {
+    coordinates.value = { lat, lon }
+  })
+  
   simulator.onLoadComplete(() => {
     isLoading.value = false
     // Initialize street names visibility state
@@ -255,7 +271,7 @@ const selectCity = async (city: string) => {
     }
   })
   
-  await simulator.init(city, savedPos ? { x: savedPos.x, y: savedPos.y, z: savedPos.z } : undefined)
+  await simulator.init(city, savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined)
 }
 
 const toggleStreetNames = () => {

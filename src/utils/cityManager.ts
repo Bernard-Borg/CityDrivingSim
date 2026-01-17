@@ -1,7 +1,7 @@
 export interface SavedPosition {
-  x: number
-  y: number
-  z: number
+  lat: number
+  lon: number
+  y?: number // Optional elevation
 }
 
 export interface CityConfig {

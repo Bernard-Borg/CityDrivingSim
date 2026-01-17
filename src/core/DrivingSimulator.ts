@@ -24,7 +24,8 @@ export class DrivingSimulator {
     private fpsFrames: number = 0;
     private fps: number = 0;
     private positionSaveInterval: number | null = null;
-    private lastSavedPosition: { x: number; y: number; z: number; } | null = null;
+    private lastSavedPosition: { lat: number; lon: number; } | null = null;
+    private coordinateUpdateCallbacks: Array<(lat: number, lon: number) => void> = [];
 
     constructor(private container: HTMLElement) {
         // Initialize Three.js core
@@ -50,7 +51,7 @@ export class DrivingSimulator {
         this.setupEventListeners();
     }
 
-    async init(city: string, savedPosition?: { x: number; y: number; z: number; }): Promise<void> {
+    async init(city: string, savedPosition?: { lat: number; lon: number; y?: number; }): Promise<void> {
         try {
             // Add lighting (only if not already added)
             if (this.scene.children.filter(child => child instanceof THREE.AmbientLight).length === 0) {
@@ -138,17 +139,21 @@ export class DrivingSimulator {
                 const pos = this.car.getPosition();
                 const currentCity = this.sceneManager.getCurrentCity();
 
-                // Only save if position changed significantly
+                // Convert local position to lat/lon coordinates
+                const coords = this.sceneManager.localToLatLon(pos.x, pos.z);
+
+                // Only save if position changed significantly (in lat/lon, ~1 meter = ~0.000009 degrees)
+                const threshold = 0.00001; // ~1.1 meters
                 if (!this.lastSavedPosition ||
-                    Math.abs(pos.x - this.lastSavedPosition.x) > 1 ||
-                    Math.abs(pos.z - this.lastSavedPosition.z) > 1) {
+                    Math.abs(coords.lat - this.lastSavedPosition.lat) > threshold ||
+                    Math.abs(coords.lon - this.lastSavedPosition.lon) > threshold) {
 
                     CityManager.savePosition(currentCity, {
-                        x: pos.x,
-                        y: pos.y,
-                        z: pos.z
+                        lat: coords.lat,
+                        lon: coords.lon,
+                        y: pos.y
                     });
-                    this.lastSavedPosition = { x: pos.x, y: pos.y, z: pos.z };
+                    this.lastSavedPosition = { lat: coords.lat, lon: coords.lon };
                 }
             }
         }, 5000); // Save every 5 seconds
@@ -157,7 +162,7 @@ export class DrivingSimulator {
     async reloadCity(city: string): Promise<void> {
         this.isLoaded = false;
         const savedPos = CityManager.getSavedPosition(city);
-        await this.init(city, savedPos ? { x: savedPos.x, y: savedPos.y, z: savedPos.z } : undefined);
+        await this.init(city, savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined);
     }
 
     private animate = (): void => {
@@ -217,6 +222,10 @@ export class DrivingSimulator {
             // Update boost callbacks
             const boostAmount = this.car.getBoostAmount();
             this.boostUpdateCallbacks.forEach(callback => callback(boostAmount));
+
+            // Update coordinate callbacks
+            const coords = this.sceneManager.localToLatLon(carPosition.x, carPosition.z);
+            this.coordinateUpdateCallbacks.forEach(callback => callback(coords.lat, coords.lon));
         }
 
         // Calculate FPS
@@ -250,6 +259,10 @@ export class DrivingSimulator {
 
     onBoostUpdate(callback: SpeedUpdateCallback): void {
         this.boostUpdateCallbacks.push(callback);
+    }
+
+    onCoordinateUpdate(callback: (lat: number, lon: number) => void): void {
+        this.coordinateUpdateCallbacks.push(callback);
     }
 
     getCarHeading(): number {
