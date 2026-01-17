@@ -199,22 +199,26 @@ export class DrivingSimulator {
             const cameraOffset = baseOffset.clone();
             cameraOffset.applyQuaternion(carQuaternion);
 
-            // Smooth camera movement
+            // Direct camera movement
             const targetPosition = carPosition.clone().add(cameraOffset);
             if (targetPosition.y < cameraTarget.y) {
                 targetPosition.y = cameraTarget.y;
             }
-            this.camera.position.lerp(targetPosition, Math.min(delta * 5, 1)); // Cap lerp at 1
+            // this.camera.position.copy(targetPosition);
+            this.camera.position.lerp(targetPosition, Math.min(delta * 5, 1));
 
             // Look at the car center
             const lookAtPosition = cameraTarget.clone();
 
+            // Direct camera lookAt
+            this.camera.lookAt(lookAtPosition);
+
             // Smooth camera lookAt
-            const currentLookAt = new THREE.Vector3();
-            this.camera.getWorldDirection(currentLookAt);
-            currentLookAt.multiplyScalar(20).add(this.camera.position);
-            const smoothLookAt = currentLookAt.lerp(lookAtPosition, Math.min(delta * 4, 1));
-            this.camera.lookAt(smoothLookAt);
+            // const currentLookAt = new THREE.Vector3();
+            // this.camera.getWorldDirection(currentLookAt);
+            // currentLookAt.multiplyScalar(20).add(this.camera.position);
+            // const smoothLookAt = currentLookAt.lerp(lookAtPosition, Math.min(delta * 4, 1));
+            // this.camera.lookAt(smoothLookAt);
 
             // Update speed callbacks
             const speedKmh = Math.abs(this.car.getSpeed() * 3.6); // Convert m/s to km/h

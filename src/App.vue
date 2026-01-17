@@ -211,7 +211,7 @@
 
     <!-- Loading Screen -->
     <div v-if="isLoading" class="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div class="text-white text-2xl">Loading City Map...</div>
+      <div class="text-white text-2xl">Loading City Map ({{ currentCity }})...</div>
     </div>
   </div>
 </template>
