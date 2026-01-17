@@ -18,6 +18,11 @@ export class Car {
     public readonly maxSteeringAngle: number = Math.PI / 4; // 45 degrees
     private readonly turningRadius: number = 18; // Improved turning
 
+    // Drift/handbrake properties
+    private handbrakeActive: boolean = false;
+    private readonly driftFriction: number = 0.88; // Reduced friction during drift
+    private readonly driftSteeringMultiplier: number = 1.5; // More steering response during drift
+
     // Boost properties
     private isBoosting: boolean = false;
     public readonly boostMultiplier: number = 1.5; // 50% speed increase
@@ -276,6 +281,9 @@ export class Car {
         const effectiveMaxSpeed = this.isBoosting ? this.boostMaxSpeed : this.maxSpeed;
 
         // Improved acceleration/deceleration physics
+        // During handbrake, apply reduced friction for sliding
+        const currentFriction = this.handbrakeActive ? this.driftFriction : this.coastFriction;
+
         if (this.acceleration !== 0) {
             // Apply acceleration with smoother curve
             const targetSpeed = this.acceleration > 0 ? effectiveMaxSpeed : -this.maxSpeed * 0.5;
@@ -283,11 +291,22 @@ export class Car {
             const accelerationRate = Math.abs(this.acceleration) * delta;
 
             // Non-linear acceleration for more realistic feel
-            const accelFactor = Math.abs(speedDiff) > 5 ? 1.0 : 0.5; // Slower near max speed
+            // During drift, acceleration is slightly reduced (wheelspin)
+            const accelFactor = this.handbrakeActive ? 0.7 : (Math.abs(speedDiff) > 5 ? 1.0 : 0.5);
             this.speed += Math.sign(speedDiff) * Math.min(Math.abs(speedDiff), accelerationRate * accelFactor);
         } else {
-            // Apply friction when not accelerating (coasting)
-            this.speed *= this.coastFriction;
+            // Apply friction when not accelerating (coasting/drifting)
+            this.speed *= currentFriction;
+        }
+
+        // During handbrake, apply sideways sliding effect
+        if (this.handbrakeActive && Math.abs(this.speed) > 2 && this.steeringAngle !== 0) {
+            // Create sideways momentum for drift effect
+            const sideDirection = new THREE.Vector3(1, 0, 0);
+            sideDirection.applyQuaternion(this.rotation);
+            const slideAmount = this.steeringAngle * Math.abs(this.speed) * 0.02 * delta;
+            const slideVector = sideDirection.multiplyScalar(slideAmount);
+            this.position.add(slideVector);
         }
 
         // Stop very slow movement
@@ -299,14 +318,29 @@ export class Car {
         const direction = new THREE.Vector3(0, 0, 1);
         direction.applyQuaternion(this.rotation);
 
-        // Improved steering - speed-dependent steering response
+        // Improved steering - speed-dependent steering response with drift support
         if (this.steeringAngle !== 0 && Math.abs(this.speed) > 0.1) {
-            // Steering effectiveness decreases at higher speeds (more realistic)
-            const speedRatio = Math.min(1, Math.abs(this.speed) / 30); // Normalize to 0-1 at 30 m/s
-            const steeringEffectiveness = 1.2 - (speedRatio * 0.4); // 100% at low speed, 80% at high speed
+            // During handbrake/drift, steering is more responsive for counter-steering
+            const steeringMultiplier = this.handbrakeActive ? this.driftSteeringMultiplier : 1.0;
 
-            const steeringSpeed = Math.abs(this.speed) * delta * steeringEffectiveness;
-            const turnRadius = this.turningRadius / (Math.abs(this.steeringAngle) + 0.1);
+            // Steering effectiveness decreases at higher speeds (more realistic)
+            // But during drift, we want more control for counter-steering
+            const speedRatio = Math.min(1, Math.abs(this.speed) / 30); // Normalize to 0-1 at 30 m/s
+            let steeringEffectiveness = 1.2 - (speedRatio * 0.4); // 100% at low speed, 80% at high speed
+
+            if (this.handbrakeActive) {
+                // During drift, maintain higher steering effectiveness
+                steeringEffectiveness = 1.3 - (speedRatio * 0.3); // Better control during drift
+            }
+
+            const steeringSpeed = Math.abs(this.speed) * delta * steeringEffectiveness * steeringMultiplier;
+
+            // Reduced turn radius during drift (tighter turns)
+            const effectiveTurnRadius = this.handbrakeActive
+                ? this.turningRadius * 0.7  // Tighter turning during drift
+                : this.turningRadius;
+
+            const turnRadius = effectiveTurnRadius / (Math.abs(this.steeringAngle) + 0.1);
             const angularVelocity = steeringSpeed / turnRadius;
             const turnDirection = this.steeringAngle > 0 ? 1 : -1;
 
@@ -316,8 +350,9 @@ export class Car {
             );
             this.rotation.multiply(rotationDelta);
 
-            // Smooth steering return (self-centering)
-            this.steeringAngle *= 0.95;
+            // Smooth steering return (self-centering) - slower during drift
+            const steeringReturnRate = this.handbrakeActive ? 0.90 : 0.95;
+            this.steeringAngle *= steeringReturnRate;
             if (Math.abs(this.steeringAngle) < 0.01) {
                 this.steeringAngle = 0;
             }
@@ -378,6 +413,14 @@ export class Car {
 
     isBoostActive(): boolean {
         return this.isBoosting;
+    }
+
+    setHandbrake(active: boolean): void {
+        this.handbrakeActive = active;
+    }
+
+    isHandbrakeActive(): boolean {
+        return this.handbrakeActive;
     }
 
     getPosition(): THREE.Vector3 {

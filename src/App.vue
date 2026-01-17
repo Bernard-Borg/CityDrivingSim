@@ -54,6 +54,7 @@
         <h3 class="text-xl font-bold text-white mb-2">🏙️ City Driving Simulator</h3>
         <div class="space-y-1 text-sm text-gray-300">
           <p><strong class="text-white">WASD</strong> or <strong class="text-white">Arrow Keys</strong> to drive</p>
+          <p><strong class="text-white">E</strong> for handbrake (drift)</p>
           <p><strong class="text-white">Shift</strong> for boost</p>
           <p><strong class="text-white">Space</strong> for brake</p>
           <p><strong class="text-white">Mouse</strong> to look around</p>

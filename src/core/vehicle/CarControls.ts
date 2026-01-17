@@ -10,7 +10,8 @@ export class CarControls {
         left: false,
         right: false,
         brake: false,
-        boost: false
+        boost: false,
+        handbrake: false
     };
 
     private soundManager: SoundManager;
@@ -115,6 +116,10 @@ export class CarControls {
                 this.keys.boost = true;
                 e.preventDefault();
                 break;
+            case 'e':
+                this.keys.handbrake = true;
+                e.preventDefault();
+                break;
         }
     }
 
@@ -141,6 +146,9 @@ export class CarControls {
                 break;
             case 'shift':
                 this.keys.boost = false;
+                break;
+            case 'e':
+                this.keys.handbrake = false;
                 break;
         }
     }
@@ -191,6 +199,9 @@ export class CarControls {
 
         this.car.setAcceleration(acceleration * this.car.maxAcceleration);
 
+        // Handbrake - enables drift
+        this.car.setHandbrake(this.keys.handbrake);
+
         // Boost
         const wasBoosting = this.car.isBoostActive();
         this.car.setBoost(this.keys.boost && this.car.getBoostAmount() > 0);
@@ -200,6 +211,11 @@ export class CarControls {
             // this.soundManager.play('boost', 0.8, true)
         } else if (!this.car.isBoostActive() && wasBoosting) {
             // this.soundManager.stop('boost')
+        }
+
+        // Play drift sound effect if handbrake state changed
+        if (this.keys.handbrake) {
+            // this.soundManager.play('drift', 0.6, true)
         }
 
         // Engine sound (would play based on speed)
