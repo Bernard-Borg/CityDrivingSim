@@ -107,7 +107,7 @@ export class SceneManager {
         const groundSize = 50000; // 50km x 50km
         const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
         const groundMaterial = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(0, 255, 0), // Green grass color
+            color: new THREE.Color(0.17, 1, 0.23), // Green grass color
             roughness: 0.8,
             metalness: 0,
         });

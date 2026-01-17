@@ -696,12 +696,23 @@ export class RoadGenerator {
             const indices: number[] = [];
             const uvs: number[] = []; // UV coordinates for pattern texture
 
-            // Generate vertices along the curve
+            // Track cumulative arc length for accurate UV mapping
+            // This ensures the pattern stays consistent regardless of curve curvature
+            let cumulativeArcLength = 0;
+            let lastPoint: THREE.Vector3 | null = null;
+
+            // Generate vertices along the curve with arc-length-based UV coordinates
             for (let j = 0; j <= numSegments; j++) {
                 const t = j / numSegments;
                 const point = curve.getPoint(t);
                 const tangent = curve.getTangent(t);
                 const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+
+                // Accumulate arc length (distance from previous point)
+                if (lastPoint !== null) {
+                    cumulativeArcLength += lastPoint.distanceTo(point);
+                }
+                lastPoint = point;
 
                 // Calculate position along divider line
                 const dividerPoint = point.clone().add(perp.clone().multiplyScalar(offsetFromCenter));
@@ -715,10 +726,9 @@ export class RoadGenerator {
                 vertices.push(leftEdge.x, leftEdge.y, leftEdge.z);
                 vertices.push(rightEdge.x, rightEdge.y, rightEdge.z);
 
-                // Calculate UV coordinates for repeating pattern
-                // U coordinate varies along the curve (0 to repeat count, will wrap with RepeatWrapping)
-                const distanceAlongCurve = t * curveLength;
-                const u = distanceAlongCurve / patternLength; // Will repeat with RepeatWrapping
+                // Calculate UV coordinates using actual accumulated arc length
+                // This ensures pattern remains consistent even in tight corners
+                const u = cumulativeArcLength / patternLength; // Will repeat with RepeatWrapping
 
                 // V coordinate (0 = left edge, 1 = right edge)
                 uvs.push(u, 0); // Left edge
