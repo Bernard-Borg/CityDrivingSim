@@ -20,7 +20,8 @@ export class BuildingGenerator {
         this.sharedMaterial = new THREE.MeshStandardMaterial({
             color: 0xCCCCCC, // Light gray for buildings
             roughness: 0.7,
-            metalness: 0.1
+            metalness: 0.1,
+            side: THREE.DoubleSide // Make visible from both sides
         });
     }
 
@@ -79,12 +80,14 @@ export class BuildingGenerator {
         const firstPoint = this.latLonToLocal(firstLat, firstLon, centerLat, centerLon);
         shape.moveTo(firstPoint.x, firstPoint.z);
 
-        // Check if polygon is already closed (last point == first point)
+        // Check if polygon is already closed (last point == first point, with tolerance for floating point)
         const lastPoint = outerRing[outerRing.length - 1];
+        const tolerance = 1e-10; // Small tolerance for floating point comparison
         const isClosed = outerRing.length > 3 &&
-            firstLon === lastPoint[0] &&
-            firstLat === lastPoint[1];
+            Math.abs(firstLon - lastPoint[0]) < tolerance &&
+            Math.abs(firstLat - lastPoint[1]) < tolerance;
 
+        // Process all points except the last one if the polygon is already closed
         const endIndex = isClosed ? outerRing.length - 1 : outerRing.length;
 
         for (let i = 1; i < endIndex; i++) {
@@ -94,10 +97,9 @@ export class BuildingGenerator {
             shape.lineTo(point.x, point.z);
         }
 
-        // Close the shape if not already closed
-        if (!isClosed) {
-            shape.lineTo(firstPoint.x, firstPoint.z);
-        }
+        // Always explicitly close the shape to ensure it's a complete polygon
+        // Use closePath() which is more reliable than lineTo back to first point
+        shape.closePath();
 
         // Handle holes (interior rings) if present
         for (let holeIndex = 1; holeIndex < coordinates.length; holeIndex++) {
@@ -123,10 +125,8 @@ export class BuildingGenerator {
                     hole.lineTo(point.x, point.z);
                 }
 
-                // Close the hole if not already closed
-                if (!holeIsClosed) {
-                    hole.lineTo(firstHolePoint.x, firstHolePoint.z);
-                }
+                // Always explicitly close the hole path to ensure it's complete
+                hole.closePath();
                 shape.holes.push(hole);
             }
         }
