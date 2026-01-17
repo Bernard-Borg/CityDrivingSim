@@ -24,6 +24,12 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         file: 'rabat.json',
         centerLat: 35.8807,
         centerLon: 14.3977
+    },
+    balzan: {
+        name: 'Ħal Balzan',
+        file: 'balzan.json',
+        centerLat: 35.9005,
+        centerLon: 14.4504
     }
 };
 

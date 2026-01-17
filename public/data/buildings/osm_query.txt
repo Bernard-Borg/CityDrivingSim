@@ -1,0 +1,7 @@
+[out:json][timeout:25];
+area["name"="Ħal Balzan"]->.a;
+way["building"](area.a);
+/*added by auto repair*/
+(._;>;);
+/*end of auto repair*/
+out ;

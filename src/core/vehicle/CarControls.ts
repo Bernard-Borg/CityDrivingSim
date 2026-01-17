@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Car } from './Car';
 import { SoundManager } from '@/utils/SoundManager';
+import { EngineSoundGenerator } from '@/utils/EngineSoundGenerator';
 import type { InputState, MouseState } from '@/types';
 
 export class CarControls {
@@ -15,6 +16,7 @@ export class CarControls {
     };
 
     private soundManager: SoundManager;
+    private engineSoundGenerator: EngineSoundGenerator;
     private currentAcceleratingSound: HTMLAudioElement | null = null;
     private currentStartupSound: HTMLAudioElement | null = null;
     private previousWasAccelerating: boolean = false;
@@ -53,6 +55,7 @@ export class CarControls {
         this.contextMenuHandler = (e: Event) => e.preventDefault();
 
         this.soundManager = SoundManager.getInstance();
+        this.engineSoundGenerator = new EngineSoundGenerator();
 
         this.setupEventListeners();
         this.initSounds();
@@ -247,26 +250,35 @@ export class CarControls {
         }
         this.previousForwardPressedAtStandstill = forwardPressedAtStandstill;
 
-        // Play accelerating sound when accelerating (not at standstill, not boosting)
-        if (isAccelerating && !isAtStandstill) {
-            if (!this.previousWasAccelerating || !this.currentAcceleratingSound || this.currentAcceleratingSound.paused || this.currentAcceleratingSound.ended) {
-                // Stop previous sound if playing
-                if (this.currentAcceleratingSound) {
-                    this.currentAcceleratingSound.pause();
-                    this.currentAcceleratingSound.currentTime = 0;
+        // Sync engine sound with mute state
+        const isSoundEnabled = this.soundManager.getEnabled();
+        this.engineSoundGenerator.setEnabled(isSoundEnabled);
+        
+        // Update procedural engine sound
+        // Wait for startup sound to finish before starting engine sound
+        if (!isStartupPlaying && isSoundEnabled) {
+            if (isAccelerating || currentSpeed > 0.1) {
+                // Start engine sound if not already playing
+                if (!this.previousWasAccelerating) {
+                    this.engineSoundGenerator.start();
                 }
-                // Play new looping sound
-                this.currentAcceleratingSound = this.soundManager.play('accelerating', 0.6, true);
+                // Update engine sound based on speed and acceleration
+                const normalizedAcceleration = Math.max(0, acceleration);
+                this.engineSoundGenerator.update(currentSpeed, normalizedAcceleration, isAccelerating);
+                this.previousWasAccelerating = true;
+            } else {
+                // Stop engine sound when car is stopped and not accelerating
+                if (this.previousWasAccelerating) {
+                    this.engineSoundGenerator.stop();
+                }
+                this.previousWasAccelerating = false;
             }
-            this.previousWasAccelerating = true;
         } else {
-            // Stop accelerating sound when not accelerating
-            if (this.previousWasAccelerating && this.currentAcceleratingSound) {
-                this.currentAcceleratingSound.pause();
-                this.currentAcceleratingSound.currentTime = 0;
-                this.currentAcceleratingSound = null;
+            // Stop engine sound while startup is playing or when muted
+            if (this.previousWasAccelerating) {
+                this.engineSoundGenerator.stop();
+                this.previousWasAccelerating = false;
             }
-            this.previousWasAccelerating = false;
         }
 
         // Play boost sound effect if boost state changed
@@ -319,6 +331,11 @@ export class CarControls {
             this.currentStartupSound.pause();
             this.currentStartupSound.currentTime = 0;
             this.currentStartupSound = null;
+        }
+        
+        // Stop and dispose procedural engine sound
+        if (this.engineSoundGenerator) {
+            this.engineSoundGenerator.dispose();
         }
 
         document.removeEventListener('keydown', this.keyDownHandler);
