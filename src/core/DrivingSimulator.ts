@@ -19,6 +19,7 @@ export class DrivingSimulator {
     private loadCompleteCallbacks: LoadCompleteCallback[] = [];
     private fpsUpdateCallbacks: SpeedUpdateCallback[] = [];
     private headingUpdateCallbacks: SpeedUpdateCallback[] = [];
+    private boostUpdateCallbacks: SpeedUpdateCallback[] = [];
     private lastFpsUpdate: number = 0;
     private fpsFrames: number = 0;
     private fps: number = 0;
@@ -171,8 +172,8 @@ export class DrivingSimulator {
             const carDirection = this.car.getDirection();
             const cameraAngle = this.carControls.getCameraAngle();
 
-            // Third-person camera that follows behind the car
-            const cameraDistance = 12;
+            // Third-person camera that follows behind the car (zoomable)
+            const cameraDistance = this.carControls.getCameraZoomDistance();
             const cameraHeight = 6;
 
             // Calculate camera offset using car direction rotated by camera angle
@@ -210,6 +211,10 @@ export class DrivingSimulator {
             // Update heading callbacks
             const carHeading = this.getCarHeading();
             this.headingUpdateCallbacks.forEach(callback => callback(carHeading));
+
+            // Update boost callbacks
+            const boostAmount = this.car.getBoostAmount();
+            this.boostUpdateCallbacks.forEach(callback => callback(boostAmount));
         }
 
         // Calculate FPS
@@ -239,6 +244,10 @@ export class DrivingSimulator {
 
     onHeadingUpdate(callback: SpeedUpdateCallback): void {
         this.headingUpdateCallbacks.push(callback);
+    }
+
+    onBoostUpdate(callback: SpeedUpdateCallback): void {
+        this.boostUpdateCallbacks.push(callback);
     }
 
     getCarHeading(): number {

@@ -54,8 +54,10 @@
         <h3 class="text-xl font-bold text-white mb-2">🏙️ City Driving Simulator</h3>
         <div class="space-y-1 text-sm text-gray-300">
           <p><strong class="text-white">WASD</strong> or <strong class="text-white">Arrow Keys</strong> to drive</p>
+          <p><strong class="text-white">Shift</strong> for boost</p>
           <p><strong class="text-white">Space</strong> for brake</p>
           <p><strong class="text-white">Mouse</strong> to look around</p>
+          <p><strong class="text-white">Scroll Wheel</strong> to zoom camera</p>
         </div>
       </div>
     </div>
@@ -125,6 +127,20 @@
       </div>
     </div>
 
+    <!-- Boost Meter -->
+    <div class="absolute bottom-8 left-64 z-10">
+      <div class="bg-black/70 backdrop-blur-md p-4 rounded-2xl border-2 border-white/20">
+        <div class="text-xs uppercase tracking-wider text-gray-400 mb-2">Boost</div>
+        <div class="w-32 h-4 bg-gray-800 rounded-full overflow-hidden border border-gray-600">
+          <div 
+            class="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 transition-all duration-100"
+            :style="{ width: `${boostAmount}%` }"
+          ></div>
+        </div>
+        <div class="text-xs text-gray-400 mt-1 text-center">{{ Math.round(boostAmount) }}%</div>
+      </div>
+    </div>
+
     <!-- Loading Screen -->
     <div v-if="isLoading" class="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
       <div class="text-white text-2xl">Loading City Map...</div>
@@ -133,16 +149,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
-import { DrivingSimulator } from './core/DrivingSimulator'
-import { CityManager } from './utils/cityManager'
-import type { Ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue';
+import { DrivingSimulator } from './core/DrivingSimulator';
+import { CityManager } from './utils/cityManager';
+import type { Ref } from 'vue';
 
 const canvasContainer: Ref<HTMLElement | null> = ref(null)
 const speed = ref(0)
 const fps = ref(0)
 const heading = ref(0)
 const displayedHeading = ref(0)
+const boostAmount = ref(100)
 const isLoading = ref(true)
 const showCityMenu = ref(false)
 const showCitySwitcher = ref(false)
@@ -198,6 +215,10 @@ const selectCity = async (city: string) => {
     
     // Update displayed heading (smooth interpolation)
     displayedHeading.value = normalizeAngle(current + diff)
+  })
+  
+  simulator.onBoostUpdate((newBoost: number) => {
+    boostAmount.value = newBoost
   })
   
   simulator.onLoadComplete(() => {

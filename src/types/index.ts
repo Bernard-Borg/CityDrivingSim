@@ -95,6 +95,7 @@ export interface InputState {
   left: boolean
   right: boolean
   brake: boolean
+  boost: boolean
 }
 
 export interface MouseState {
