@@ -11,19 +11,19 @@ export class Car {
     // Physics properties
     private position: THREE.Vector3;
     private rotation: THREE.Quaternion;
-    private speed: number = 0; // m/s
-    public readonly maxSpeed: number = 160; // m/s (~324 km/h)
-    public readonly maxAcceleration: number = 24; // m/s²
+    private speed: number = 0; // km/h
+    public readonly maxSpeed: number = 200; // km/h 
+    public readonly maxAcceleration: number = 45; // km/h per s
     private throttleInput: number = 0;
     private brakeInput: number = 0;
     private steeringAngle: number = 0;
-    public readonly maxSteeringAngle: number = Math.PI / 4; // 30 degrees
+    public readonly maxSteeringAngle: number = Math.PI / 3.75; // 45 degrees
     private readonly wheelBase: number = 2.6;
-    private readonly dragCoefficient: number = 0.02;
-    private readonly rollingResistance: number = 0.2;
-    private readonly engineBraking: number = 0.6;
-    private readonly maxBrakeDecel: number = 18;
-    private readonly maxReverseSpeed: number = 14;
+    private readonly dragCoefficient: number = 0.02 / 3.6; // scaled for km/h
+    private readonly rollingResistance: number = 0.2; // scaled for km/h
+    private readonly engineBraking: number = 2.16; // km/h per s (converted from 0.6 m/s^2)
+    private readonly maxBrakeDecel: number = 64.8; // km/h per s (converted from 18 m/s^2)
+    private readonly maxReverseSpeed: number = 50.4; // km/h (converted from 14 m/s)
 
     // Drift/handbrake properties
     private handbrakeActive: boolean = false;
@@ -32,7 +32,7 @@ export class Car {
     // Boost properties
     private isBoosting: boolean = false;
     public readonly boostMultiplier: number = 2.0; // 100% accel increase
-    public readonly boostMaxSpeed: number = 90; // m/s (~324 km/h) with boost
+    public readonly boostMaxSpeed: number = 250; // km/h (converted from 90 m/s)
     private boostAmount: number = 100; // Boost meter (0-100)
     public readonly boostDrainRate: number = 30; // Per second
     public readonly boostRegenRate: number = 15; // Per second
@@ -61,7 +61,7 @@ export class Car {
                 const box = new THREE.Box3().setFromObject(model);
                 const size = new THREE.Vector3();
                 box.getSize(size);
-                const targetLength = 3.4; // meters
+                const targetLength = 2.6; // meters (smaller to fit road scale)
                 const scaleFactor = size.z > 0 ? targetLength / size.z : 1;
                 model.scale.setScalar(scaleFactor);
 
@@ -165,7 +165,7 @@ export class Car {
         // Compute longitudinal acceleration (engine, drag, rolling, braking)
         const throttle = THREE.MathUtils.clamp(this.throttleInput, -1, 1);
         const brake = THREE.MathUtils.clamp(this.brakeInput, 0, 1);
-        const speedSign = this.speed === 0 ? (throttle >= 0 ? 1 : -1) : Math.sign(this.speed);
+        const speedSign = Math.abs(this.speed) < 0.05 ? 0 : Math.sign(this.speed);
 
         const boostAccelMultiplier = this.isBoosting ? this.boostMultiplier : 1;
         let engineAccel = throttle * this.maxAcceleration * boostAccelMultiplier;
@@ -177,10 +177,15 @@ export class Car {
         const drag = this.dragCoefficient * this.speed * Math.abs(this.speed);
         const rolling = this.rollingResistance * this.speed;
         const engineBrake = Math.abs(throttle) < 0.05 ? this.engineBraking * speedSign : 0;
-        const brakeDecel = brake * this.maxBrakeDecel * speedSign;
+        const brakeDecel = speedSign !== 0 ? brake * this.maxBrakeDecel * speedSign : 0;
 
         const netAccel = engineAccel - drag - rolling - engineBrake - brakeDecel;
         this.speed += netAccel * delta;
+
+        // Prevent brake from oscillating around zero speed
+        if (brake > 0.1 && Math.abs(this.speed) < 1 && Math.abs(throttle) < 0.05) {
+            this.speed = 0;
+        }
 
         // Clamp speed
         if (throttle >= 0) {
@@ -191,7 +196,7 @@ export class Car {
         }
 
         // Stop very slow movement
-        if (Math.abs(this.speed) < 0.05 && Math.abs(throttle) < 0.05) {
+        if (Math.abs(this.speed) < 0.2 && Math.abs(throttle) < 0.05) {
             this.speed = 0;
         }
 
@@ -211,17 +216,23 @@ export class Car {
         // Steering using a simple bicycle model
         if (Math.abs(this.steeringAngle) > 0.001 && Math.abs(this.speed) > 0.1) {
             const steeringMultiplier = this.handbrakeActive ? this.driftSteeringMultiplier : 1.0;
-            const turnRadius = this.wheelBase / Math.tan(this.steeringAngle);
-            const angularVelocity = (this.speed / turnRadius) * steeringMultiplier;
-            const rotationDelta = new THREE.Quaternion().setFromAxisAngle(
-                new THREE.Vector3(0, 1, 0),
-                angularVelocity * delta
-            );
-            this.rotation.multiply(rotationDelta);
+            const speedKmh = Math.abs(this.speed);
+            if (speedKmh > 2) {
+                const turnRadius = this.wheelBase / Math.tan(this.steeringAngle);
+                let angularVelocity = (this.speed / turnRadius) * steeringMultiplier;
+                const maxYawRate = 1.1; // rad/s
+                angularVelocity = THREE.MathUtils.clamp(angularVelocity, -maxYawRate, maxYawRate);
+                const rotationDelta = new THREE.Quaternion().setFromAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    angularVelocity * delta
+                );
+                this.rotation.multiply(rotationDelta);
+            }
         }
 
         // Move forward/backward
-        const movement = direction.multiplyScalar(this.speed * delta);
+        const speedMps = this.speed / 3.6;
+        const movement = direction.multiplyScalar(speedMps * delta);
         this.position.add(movement);
 
         // Update mesh position and rotation
@@ -230,8 +241,8 @@ export class Car {
 
         // Animate wheels (rotate when moving)
         if (this.gltfWheelSpinMeshes.length > 0) {
-            if (Math.abs(this.speed) > 0.1) {
-                const wheelRotation = -this.speed * delta * 2.5;
+            if (Math.abs(this.speed) > 0.5) {
+                const wheelRotation = -speedMps * delta * 2.5;
                 this.gltfWheelSpinMeshes.forEach(wheelMesh => {
                     wheelMesh.rotateX(wheelRotation);
                 });

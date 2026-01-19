@@ -22,7 +22,7 @@ export class EngineSoundGenerator {
     private readonly BASE_FREQUENCY = 30; // Base engine frequency (Hz) - deep idle rumble
     private readonly MIN_RPM = 800; // Idle RPM
     private readonly MAX_RPM = 6000; // Max RPM
-    private readonly MAX_CAR_SPEED = 90; // m/s (max speed with boost)
+    private readonly MAX_CAR_SPEED = 324; // km/h (max speed with boost)
 
     private isEnabled: boolean = true;
 
@@ -218,14 +218,14 @@ export class EngineSoundGenerator {
 
     /**
      * Update engine sound based on car state
-     * @param speed Car speed in m/s
+     * @param speed Car speed in km/h
      * @param acceleration Current acceleration (0-1)
      * @param isAccelerating Whether the car is actively accelerating
      */
     update(speed: number, acceleration: number, isAccelerating: boolean): void {
         if (!this.isEnabled || !this.audioContext || !this.isPlaying) {
             // Auto-start if not playing and we should be
-            if (this.isEnabled && isAccelerating && speed > 0.1) {
+            if (this.isEnabled && isAccelerating && speed > 0.5) {
                 this.start();
             }
             return;

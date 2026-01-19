@@ -31,7 +31,7 @@ export class DrivingSimulator {
         // Initialize Three.js core
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(
-            50,
+            45,
             window.innerWidth / window.innerHeight,
             0.1,
             5000
@@ -221,7 +221,7 @@ export class DrivingSimulator {
             // this.camera.lookAt(smoothLookAt);
 
             // Update speed callbacks
-            const speedKmh = Math.abs(this.car.getSpeed() * 3.6); // Convert m/s to km/h
+            const speedKmh = Math.abs(this.car.getSpeed());
             this.speedUpdateCallbacks.forEach(callback => callback(speedKmh));
 
             // Update heading callbacks

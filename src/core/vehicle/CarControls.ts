@@ -51,15 +51,15 @@ export class CarControls {
     private wheelHandler: (e: WheelEvent) => void;
     private contextMenuHandler: (e: Event) => void;
 
-    private cameraZoomDistance: number = 12; // Default camera distance
-    private readonly minZoom: number = 5;
-    private readonly maxZoom: number = 25;
+    private cameraZoomDistance: number = 9; // Default camera distance
+    private readonly minZoom: number = 4;
+    private readonly maxZoom: number = 20;
     private cameraAngle: number = 0; // Smoothed yaw
-    private cameraPitch: number = 0.35; // Smoothed pitch
+    private cameraPitch: number = 0.25; // Smoothed pitch
     private cameraAngleTarget: number = 0;
-    private cameraPitchTarget: number = 0.35;
-    private readonly minPitch: number = 0.0;
-    private readonly maxPitch: number = 1.1;
+    private cameraPitchTarget: number = 0.25;
+    private readonly minPitch: number = 0.05;
+    private readonly maxPitch: number = 0.9;
     private readonly cameraRotateSpeed = 0.005;
     private readonly cameraPitchSpeed = 0.004;
     private readonly cameraSmoothRate = 10;
@@ -256,7 +256,19 @@ export class CarControls {
         // Steering input (speed-dependent)
         const rawSteer = (this.keys.left ? 1 : 0) + (this.keys.right ? -1 : 0);
         const currentSpeed = Math.abs(this.car.getSpeed());
-        const speedFactor = THREE.MathUtils.clamp(1 - currentSpeed / 35, 0.35, 1);
+
+        const fullSteerSpeed = 20; // km/h where max steering is still allowed
+        const maxSteerSpeed = 120; // km/h where steering is most limited
+        const minSteerFactor = 0.2;
+        let speedFactor = 1;
+        if (currentSpeed > fullSteerSpeed) {
+            const normalizedSpeed = THREE.MathUtils.clamp(
+                (currentSpeed - fullSteerSpeed) / (maxSteerSpeed - fullSteerSpeed),
+                0,
+                1
+            );
+            speedFactor = Math.max(minSteerFactor, Math.pow(1 - normalizedSpeed, 1.5));
+        }
         const targetSteer = rawSteer * speedFactor;
         const steerRate = Math.abs(targetSteer) > Math.abs(this.steeringInput) ? this.steerRate : this.steerReturnRate;
         this.steeringInput = THREE.MathUtils.damp(this.steeringInput, targetSteer, steerRate, delta);
@@ -273,7 +285,7 @@ export class CarControls {
         this.car.setBoost(this.keys.boost && this.car.getBoostAmount() > 0);
 
         // Sound effects for acceleration
-        const isAtStandstill = currentSpeed < 0.1;
+        const isAtStandstill = currentSpeed < 0.5;
         const throttleAmount = Math.max(0, this.throttleInput);
         const isAccelerating = throttleAmount > 0.1 && !this.car.isBoostActive();
 
@@ -300,7 +312,7 @@ export class CarControls {
         // Sync engine sound with mute state
         const isSoundEnabled = this.soundManager.getEnabled();
         this.engineSoundGenerator.setEnabled(isSoundEnabled);
-        
+
         // Update procedural engine sound
         // Wait for startup sound to finish before starting engine sound
         if (!isStartupPlaying && isSoundEnabled) {
@@ -373,7 +385,7 @@ export class CarControls {
             this.currentStartupSound.currentTime = 0;
             this.currentStartupSound = null;
         }
-        
+
         // Stop and dispose procedural engine sound
         if (this.engineSoundGenerator) {
             this.engineSoundGenerator.dispose();

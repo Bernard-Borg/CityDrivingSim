@@ -108,12 +108,12 @@ export class RoadSoundGenerator {
             return;
         }
 
-        if (!this.isPlaying && speed > 0.5) {
+        if (!this.isPlaying && speed > 1) {
             this.start();
         }
 
         const profile = this.surfaceProfiles[surface] || this.surfaceProfiles.asphalt;
-        const speedFactorRaw = Math.min(1, Math.max(0, speed / 30));
+        const speedFactorRaw = Math.min(1, Math.max(0, speed / 110));
         const speedFactor = Number.isFinite(speedFactorRaw) ? speedFactorRaw : 0;
 
         const targetGain = profile.gain * Math.pow(speedFactor, 1.2);
@@ -122,7 +122,7 @@ export class RoadSoundGenerator {
         this.noiseGain.gain.setTargetAtTime(targetGain, this.audioContext.currentTime, 0.1);
         this.lowpassFilter.frequency.setTargetAtTime(targetCutoff, this.audioContext.currentTime, 0.1);
 
-        if (speed < 0.2) {
+        if (speed < 0.5) {
             this.noiseGain.gain.setTargetAtTime(0, this.audioContext.currentTime, 0.2);
         }
     }
