@@ -25,7 +25,7 @@ export class Car {
     private readonly maxBrakeDecel: number = 18;
     private readonly maxReverseSpeed: number = 14;
 
-    // Drift/handbrake propertiesssssss
+    // Drift/handbrake properties
     private handbrakeActive: boolean = false;
     private readonly driftSteeringMultiplier: number = 1.5; // More steering response during drift
 
@@ -239,14 +239,14 @@ export class Car {
             // Rotate front wheel pivots for steering
             if (this.gltfFrontWheelPivots.length > 0) {
                 const frontWheelAngle = this.steeringAngle * 0.7;
+                const steerQuat = new THREE.Quaternion().setFromAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    frontWheelAngle
+                );
                 this.gltfFrontWheelPivots.forEach(pivot => {
                     const baseQuat = pivot.userData.baseQuat instanceof THREE.Quaternion
                         ? pivot.userData.baseQuat
                         : pivot.quaternion.clone();
-                    const baseUp = pivot.userData.baseUp instanceof THREE.Vector3
-                        ? pivot.userData.baseUp
-                        : new THREE.Vector3(0, 1, 0);
-                    const steerQuat = new THREE.Quaternion().setFromAxisAngle(baseUp, frontWheelAngle);
                     pivot.quaternion.copy(baseQuat).multiply(steerQuat);
                 });
             }
