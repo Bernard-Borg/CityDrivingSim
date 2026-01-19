@@ -5,8 +5,8 @@ export class Car {
     private mesh: THREE.Group = new THREE.Group();
     private scene: THREE.Scene;
     private cameraTargetOffset = new THREE.Vector3(0, 0.8, 0.3);
-    private gltfWheelMeshes: THREE.Object3D[] = [];
-    private gltfFrontWheels: THREE.Object3D[] = [];
+    private gltfWheelSpinMeshes: THREE.Object3D[] = [];
+    private gltfFrontWheelPivots: THREE.Object3D[] = [];
 
     // Physics properties
     private position: THREE.Vector3;
@@ -86,18 +86,58 @@ export class Car {
                     centeredSize.z * 0.15
                 );
 
-                // Cache wheel meshes for animation (steering + spin)
-                this.gltfWheelMeshes = [];
-                this.gltfFrontWheels = [];
-                const wheelRegex = /(wheel|tire|tyre)/i;
+                // Cache wheel spin targets (polySurface parent or mesh) and wheel pivots for steering
+                this.gltfWheelSpinMeshes = [];
+                this.gltfFrontWheelPivots = [];
+                const frontWheelNodes: THREE.Object3D[] = [];
                 model.traverse((child) => {
-                    if (child instanceof THREE.Mesh && wheelRegex.test(child.name)) {
-                        this.gltfWheelMeshes.push(child);
+                    // Spin meshes: polySurface..._frontL/_frontR/_rearL/_rearR
+                    if (child instanceof THREE.Mesh) {
+                        const name = child.name.toLowerCase();
+                        if (name.includes('polysurface') && (name.includes('_front') || name.includes('_rear'))) {
+                            const spinTarget = child.parent ?? child;
+                            if (!this.gltfWheelSpinMeshes.includes(spinTarget)) {
+                                spinTarget.matrixAutoUpdate = true;
+                                this.gltfWheelSpinMeshes.push(spinTarget);
+                            }
+                        }
+                    }
+
+                    // Steering nodes: 3DWheel Front L/R (wrap in a pivot for clean yaw)
+                    const normalizedName = child.name.replace(/\s+/g, '_');
+                    if (normalizedName === '3DWheel_Front_L' || normalizedName === '3DWheel_Front_R') {
+                        frontWheelNodes.push(child);
                     }
                 });
 
-                if (this.gltfWheelMeshes.length > 0) {
-                    this.gltfFrontWheels = this.gltfWheelMeshes.filter(mesh => mesh.name.toLowerCase().includes('front'));
+                // Create steering pivots after traversal to avoid duplicate creation
+                frontWheelNodes.forEach((wheelNode) => {
+                    if (this.gltfFrontWheelPivots.some(pivot => pivot.name === `${wheelNode.name}_steerPivot`)) {
+                        return;
+                    }
+                    const parent = wheelNode.parent;
+                    if (!parent) return;
+                    let pivot: THREE.Object3D | null = null;
+                    if (parent.name.endsWith('_steerPivot')) {
+                        pivot = parent;
+                    } else {
+                        pivot = new THREE.Object3D();
+                        pivot.name = `${wheelNode.name}_steerPivot`;
+                        // Place pivot at wheel position in parent space
+                        pivot.position.copy(wheelNode.position);
+                        // Keep pivot unrotated so yaw is clean around local Y
+                        pivot.quaternion.identity();
+                        pivot.scale.set(1, 1, 1);
+                        parent.add(pivot);
+                        pivot.updateMatrixWorld(true);
+                        pivot.attach(wheelNode); // preserve world transform
+                    }
+                    pivot.userData.baseQuat = pivot.quaternion.clone();
+                    this.gltfFrontWheelPivots.push(pivot);
+                });
+
+                if (this.gltfFrontWheelPivots.length === 0) {
+                    console.warn('No front wheel nodes found for steering.');
                 }
             },
             undefined,
@@ -189,18 +229,25 @@ export class Car {
         this.mesh.quaternion.copy(this.rotation);
 
         // Animate wheels (rotate when moving)
-        if (this.gltfWheelMeshes.length > 0) {
+        if (this.gltfWheelSpinMeshes.length > 0) {
             if (Math.abs(this.speed) > 0.1) {
                 const wheelRotation = -this.speed * delta * 2.5;
-                this.gltfWheelMeshes.forEach(wheel => {
-                    wheel.rotation.x += wheelRotation;
+                this.gltfWheelSpinMeshes.forEach(wheelMesh => {
+                    wheelMesh.rotateX(wheelRotation);
                 });
             }
-            // Rotate front wheels for steeringad
-            if (this.gltfFrontWheels.length > 0) {
+            // Rotate front wheel pivots for steering
+            if (this.gltfFrontWheelPivots.length > 0) {
                 const frontWheelAngle = this.steeringAngle * 0.7;
-                this.gltfFrontWheels.forEach(wheel => {
-                    wheel.rotation.y = frontWheelAngle;
+                this.gltfFrontWheelPivots.forEach(pivot => {
+                    const baseQuat = pivot.userData.baseQuat instanceof THREE.Quaternion
+                        ? pivot.userData.baseQuat
+                        : pivot.quaternion.clone();
+                    const baseUp = pivot.userData.baseUp instanceof THREE.Vector3
+                        ? pivot.userData.baseUp
+                        : new THREE.Vector3(0, 1, 0);
+                    const steerQuat = new THREE.Quaternion().setFromAxisAngle(baseUp, frontWheelAngle);
+                    pivot.quaternion.copy(baseQuat).multiply(steerQuat);
                 });
             }
         }
