@@ -52,8 +52,8 @@ export class NaturalGenerator {
                         shader.fragmentShader = 'varying vec2 coverPosition;\n' + shader.fragmentShader;
                         shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
                             float grain = fract(sin(dot(floor(coverPosition * 6.0), vec2(12.9898,78.233))) * 43758.5453);
-                            float patch = sin(coverPosition.x * 0.19) * sin(coverPosition.y * 0.23);
-                            diffuseColor.rgb *= 0.94 + grain * 0.12 + patch * 0.035;`);
+                            float coverVariation = sin(coverPosition.x * 0.19) * sin(coverPosition.y * 0.23);
+                            diffuseColor.rgb *= 0.94 + grain * 0.12 + coverVariation * 0.035;`);
                     };
                     this.materials.set(kind, material);
                 }
