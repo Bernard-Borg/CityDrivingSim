@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import {computed} from 'vue';
-import {useStateStore} from '@/stores/state';
-const state=useStateStore();
+import { computed } from "vue";
+import { useStateStore } from "@/stores/state";
+
+const state = useStateStore();
 const speed = computed(() => Math.round(state.speed) || 0);
 const speedRatio = computed(() =>
     Math.min(1, Math.abs(state.speed) / state.vehicle.maxSpeed),
@@ -24,134 +25,123 @@ const ticks = computed(() =>
         };
     }),
 );
-
 </script>
 <template>
-<section class="instrument-cluster" aria-label="Vehicle instruments">
-            <div class="cluster-topline">
-                <span>{{ state.vehicle.name }}</span
-                ><span class="engine-status" :class="state.vehicle.engine">{{
-                    state.vehicle.engine === "starting"
-                        ? "IGNITION"
-                        : state.vehicle.engine === "off"
-                          ? "ENGINE OFF"
-                          : "ENGINE RUNNING"
-                }}</span>
-            </div>
-            <div class="cluster-instruments">
-                <div class="speed-dial">
-                    <svg viewBox="0 0 220 188" aria-hidden="true">
-                        <path
-                            d="M32.06 155 A90 90 0 1 1 187.94 155"
-                            class="dial-track"
+    <section class="instrument-cluster" aria-label="Vehicle instruments">
+        <div class="cluster-topline">
+            <span>{{ state.vehicle.name }}</span
+            ><span class="engine-status" :class="state.vehicle.engine">{{
+                state.vehicle.engine === "starting"
+                    ? "IGNITION"
+                    : state.vehicle.engine === "off"
+                      ? "ENGINE OFF"
+                      : "ENGINE RUNNING"
+            }}</span>
+        </div>
+        <div class="cluster-instruments">
+            <div class="speed-dial">
+                <svg viewBox="0 0 220 188" aria-hidden="true">
+                    <path
+                        d="M32.06 155 A90 90 0 1 1 187.94 155"
+                        class="dial-track"
+                    />
+                    <path
+                        d="M32.06 155 A90 90 0 1 1 187.94 155"
+                        class="dial-progress"
+                        pathLength="100"
+                        :stroke-dasharray="`${speedRatio * 100} 100`"
+                    />
+                    <g v-for="tick in ticks" :key="tick.i">
+                        <line
+                            :x1="tick.x"
+                            :y1="tick.y"
+                            :x2="tick.x2"
+                            :y2="tick.y2"
+                            class="dial-tick"
                         />
-                        <path
-                            d="M32.06 155 A90 90 0 1 1 187.94 155"
-                            class="dial-progress"
-                            pathLength="100"
-                            :stroke-dasharray="`${speedRatio * 100} 100`"
-                        />
-                        <g v-for="tick in ticks" :key="tick.i">
-                            <line
-                                :x1="tick.x"
-                                :y1="tick.y"
-                                :x2="tick.x2"
-                                :y2="tick.y2"
-                                class="dial-tick"
-                            />
-                            <text
-                                v-if="tick.i % 4 === 0"
-                                :x="tick.tx"
-                                :y="tick.ty"
-                                class="dial-label"
-                            >
-                                {{ tick.label }}
-                            </text>
-                        </g>
-                    </svg>
-                    <div
-                        class="speed-readout"
-                        :class="{ reversing: speed < 0 }"
-                    >
-                        <strong>{{ speed }}</strong
-                        ><span>KM/H</span>
-                    </div>
+                        <text
+                            v-if="tick.i % 4 === 0"
+                            :x="tick.tx"
+                            :y="tick.ty"
+                            class="dial-label"
+                        >
+                            {{ tick.label }}
+                        </text>
+                    </g>
+                </svg>
+                <div class="speed-readout" :class="{ reversing: speed < 0 }">
+                    <strong>{{ speed }}</strong
+                    ><span>KM/H</span>
                 </div>
-                <div class="drive-information">
-                    <div class="rpm-label">
-                        <span>ENGINE <small>RPM × 1000</small></span
-                        ><b>{{ (state.vehicle.rpm / 1000).toFixed(1) }}</b>
-                    </div>
-                    <div class="rpm-bars">
-                        <i
-                            v-for="n in 24"
-                            :key="n"
-                            :class="{
-                                lit: n / 24 <= rpmRatio,
-                                redline: n > 20,
-                            }"
-                        ></i>
-                    </div>
-                    <div class="rpm-scale">
-                        <span>0</span
-                        ><span>{{
-                            Math.round(state.vehicle.maxRPM / 2000)
-                        }}</span
-                        ><span>{{
-                            Math.round(state.vehicle.maxRPM / 1000)
+            </div>
+            <div class="drive-information">
+                <div class="rpm-label">
+                    <span>ENGINE <small>RPM × 1000</small></span
+                    ><b>{{ (state.vehicle.rpm / 1000).toFixed(1) }}</b>
+                </div>
+                <div class="rpm-bars">
+                    <i
+                        v-for="n in 24"
+                        :key="n"
+                        :class="{
+                            lit: n / 24 <= rpmRatio,
+                            redline: n > 20,
+                        }"
+                    ></i>
+                </div>
+                <div class="rpm-scale">
+                    <span>0</span
+                    ><span>{{ Math.round(state.vehicle.maxRPM / 2000) }}</span
+                    ><span>{{ Math.round(state.vehicle.maxRPM / 1000) }}</span>
+                </div>
+                <div class="drive-state">
+                    <span
+                        class="gear"
+                        :class="{ reverse: state.vehicle.gear === 'R' }"
+                        >{{ state.vehicle.gear }}</span
+                    >
+                    <div>
+                        <span
+                            class="parking-indicator"
+                            :class="{ active: state.vehicle.handbrake }"
+                            >&#9413;
+                            <small>{{
+                                state.vehicle.handbrake
+                                    ? "BRAKE SET"
+                                    : "BRAKE RELEASED"
+                            }}</small></span
+                        ><span class="drive-caption">{{
+                            state.vehicle.engine === "off"
+                                ? "PARKED"
+                                : state.vehicle.engine === "starting"
+                                  ? "STARTING…"
+                                  : speed < 0
+                                    ? "REVERSE"
+                                    : "DRIVE"
                         }}</span>
                     </div>
-                    <div class="drive-state">
-                        <span
-                            class="gear"
-                            :class="{ reverse: state.vehicle.gear === 'R' }"
-                            >{{ state.vehicle.gear }}</span
-                        >
-                        <div>
-                            <span
-                                class="parking-indicator"
-                                :class="{ active: state.vehicle.handbrake }"
-                                >&#9413;
-                                <small>{{
-                                    state.vehicle.handbrake
-                                        ? "BRAKE SET"
-                                        : "BRAKE RELEASED"
-                                }}</small></span
-                            ><span class="drive-caption">{{
-                                state.vehicle.engine === "off"
-                                    ? "PARKED"
-                                    : state.vehicle.engine === "starting"
-                                      ? "STARTING…"
-                                      : speed < 0
-                                        ? "REVERSE"
-                                        : "DRIVE"
-                            }}</span>
-                        </div>
-                    </div>
-                    <div class="boost-label">
-                        <span>BOOST RESERVE</span
-                        ><b
-                            >{{ Math.round(state.boostAmount)
-                            }}<small>%</small></b
-                        >
-                    </div>
-                    <div
-                        class="boost-bars"
-                        role="meter"
-                        aria-label="Boost reserve"
-                        :aria-valuenow="Math.round(state.boostAmount)"
-                        aria-valuemin="0"
-                        aria-valuemax="100"
-                    >
-                        <i
-                            v-for="n in 20"
-                            :key="n"
-                            :class="{ charged: n <= state.boostAmount / 5 }"
-                        ></i>
-                    </div>
+                </div>
+                <div class="boost-label">
+                    <span>BOOST RESERVE</span
+                    ><b>{{ Math.round(state.boostAmount) }}<small>%</small></b>
+                </div>
+                <div
+                    class="boost-bars"
+                    role="meter"
+                    aria-label="Boost reserve"
+                    :aria-valuenow="Math.round(state.boostAmount)"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                >
+                    <i
+                        v-for="n in 20"
+                        :key="n"
+                        :class="{ charged: n <= state.boostAmount / 5 }"
+                    ></i>
                 </div>
             </div>
-        </section>
+        </div>
+    </section>
 </template>
 <style scoped>
 .instrument-cluster {
@@ -437,31 +427,37 @@ const ticks = computed(() =>
     }
 }
 .cluster-topline {
-    font-size:12px;
-    letter-spacing:1px
+    font-size: 12px;
+    letter-spacing: 1px;
 }
-.rpm-label,.boost-label {
-    font-size:12px
+.rpm-label,
+.boost-label {
+    font-size: 12px;
 }
-.rpm-label small,.rpm-scale,.boost-label small,.drive-caption {
-    font-size:11px
+.rpm-label small,
+.rpm-scale,
+.boost-label small,
+.drive-caption {
+    font-size: 11px;
 }
 .parking-indicator small {
-    font-size:10px;
-    letter-spacing:0
+    font-size: 10px;
+    letter-spacing: 0;
 }
-.rpm-label b,.boost-label b {
-    font-size:16px
+.rpm-label b,
+.boost-label b {
+    font-size: 16px;
 }
-@media(max-width:420px) {
+@media (max-width: 420px) {
     .cluster-topline {
-        font-size:10px
+        font-size: 10px;
     }
-    .rpm-label,.boost-label {
-        font-size:10px
+    .rpm-label,
+    .boost-label {
+        font-size: 10px;
     }
     .parking-indicator small {
-        font-size:9px
+        font-size: 9px;
     }
 }
 </style>

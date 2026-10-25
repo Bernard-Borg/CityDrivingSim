@@ -201,7 +201,8 @@ export class RoadGenerator {
     /**
      * Generate roads from GeoJSON data
      */
-    generateRoadsFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number, options: Partial<RoadLevelSettings> = {}): void {
+    async generateRoadsFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number, options: Partial<RoadLevelSettings> = {},
+        report?: (stage: string, detail?: string) => Promise<void>): Promise<void> {
         const inputs: RoadInput[] = [];
         const names = new Map<string, string>();
         for (const [index, feature] of geoJSON.features.entries()) {
@@ -222,11 +223,14 @@ export class RoadGenerator {
                 headroom: Number.isFinite(parsedHeadroom) && parsedHeadroom >= 2 ? parsedHeadroom : undefined });
             if (typeof p.name === 'string') names.set(id, p.name);
         }
+        await report?.("Solving road elevations and tunnel connections", `${inputs.length.toLocaleString()} drivable roads`);
         const network = new RoadProfileNetwork(inputs, (x, z) => this.groundSample(x, z), options, this.terrain?.referenceHeight ?? 0);
         this.settings = network.settings;
         this.profiles = network.profiles;
+        await report?.("Preparing road and tunnel corridors");
         this.corridors.build(this.profiles);
-        for (const profile of this.profiles) {
+        for (const [index, profile] of this.profiles.entries()) {
+            if (index % 100 === 0) await report?.("Generating roads and markings", `${index.toLocaleString()} / ${this.profiles.length.toLocaleString()} roads`);
             this.activeProfile = profile;
             this.createRoadFromProfile(profile, names.get(profile.input.id));
         }

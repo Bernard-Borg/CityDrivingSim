@@ -1,12 +1,6 @@
 <script setup lang="ts">
-import {ref,nextTick,onUnmounted} from 'vue';
-const emit=defineEmits<{(e:'pauseChanged',paused:boolean):void;(e:'closed'):void}>();
-const helpDialog=ref<HTMLDialogElement|null>(null);
-const open=async()=>{emit('pauseChanged',true);await nextTick();helpDialog.value?.showModal();};
-const closeHelp=()=>{helpDialog.value?.close();emit('pauseChanged',false);emit('closed');};
-const isOpen=()=>helpDialog.value?.open??false;
-defineExpose({open,isOpen});
-onUnmounted(()=>{if(isOpen())emit('pauseChanged',false);});
+import { ref, nextTick, onUnmounted } from "vue";
+
 const controls = [
     ["W / Up", "Accelerate"],
     ["S / Down", "Brake, then reverse"],
@@ -21,9 +15,35 @@ const controls = [
     ["?", "Open help"],
 ];
 
+const helpDialog = ref<HTMLDialogElement | null>(null);
+
+const emit = defineEmits<{
+    (e: "pauseChanged", paused: boolean): void;
+    (e: "closed"): void;
+}>();
+
+const open = async () => {
+    emit("pauseChanged", true);
+    await nextTick();
+    helpDialog.value?.showModal();
+};
+
+const closeHelp = () => {
+    helpDialog.value?.close();
+    emit("pauseChanged", false);
+    emit("closed");
+};
+
+const isOpen = () => helpDialog.value?.open ?? false;
+
+defineExpose({ open, isOpen });
+
+onUnmounted(() => {
+    if (isOpen()) emit("pauseChanged", false);
+});
 </script>
 <template>
-<dialog
+    <dialog
         ref="helpDialog"
         class="help-dialog"
         aria-labelledby="help-title"
@@ -195,21 +215,24 @@ const controls = [
     }
 }
 .panel-title {
-    font-size:14px
+    font-size: 14px;
 }
-.controls-list kbd,.controls-list dd,.help-intro,.help-note {
-    font-size:14px
+.controls-list kbd,
+.controls-list dd,
+.help-intro,
+.help-note {
+    font-size: 14px;
 }
 .hud-button {
-    font-size:14px
+    font-size: 14px;
 }
 .resume-button small {
-    font-size:11px
+    font-size: 11px;
 }
 .controls-list div {
-    padding:9px 0
+    padding: 9px 0;
 }
 .help-dialog {
-    width:min(620px,calc(100vw - 32px))
+    width: min(620px, calc(100vw - 32px));
 }
 </style>

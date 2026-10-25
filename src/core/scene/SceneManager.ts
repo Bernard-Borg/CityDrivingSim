@@ -1,3 +1,4 @@
+import { useLoadingStore } from "@/stores/loading";
 import * as THREE from "three";
 import { CollisionWorld } from "./CollisionWorld";
 import { RoadGenerator, ROAD_HEIGHT } from "./RoadGenerator";
@@ -81,12 +82,19 @@ export class SceneManager {
         city: string,
         savedPosition?: { lat: number; lon: number; y?: number },
     ): Promise<void> {
+        const loading = useLoadingStore();
+        const report = async (message: string, detail = '') => {
+            if (this.disposed) throw new Error("City loading cancelled");
+            await loading.stage(message, detail);
+            if (this.disposed) throw new Error("City loading cancelled");
+        };
         const cityStore = useCitiesStore();
         const config = cityStore.getCityConfig(city);
         if (!config) throw new Error(`City config not found: ${city}`);
         this.currentCity = city;
         this.centerLat = config.centerLat;
         this.centerLon = config.centerLon;
+        await report("Loading road data", config.file);
         const response = await fetch(`/data/roads/${config.file}`, {
             signal: AbortSignal.timeout(30000),
         });
@@ -94,12 +102,14 @@ export class SceneManager {
             throw new Error(
                 `Failed to load ${config.file}: ${response.status}`,
             );
+        await report("Parsing road data", config.file);
         let data: GeoJSON = await response.json();
         if (this.disposed) return;
         this.clearScene();
         this.terrain = null;
         this.elevationTile = null;
         if (config.elevation) {
+            await report("Loading elevation data", config.elevation.file);
             const elevationResponse = await fetch(
                 `/data/elevation/${config.elevation.file}`,
                 { signal: AbortSignal.timeout(60000) },
@@ -110,6 +120,7 @@ export class SceneManager {
                 );
             const buffer = await elevationResponse.arrayBuffer();
             if (this.disposed) return;
+            await report("Preparing terrain heights");
             this.elevationTile = new HgtTile(
                 buffer,
                 config.elevation.south,
@@ -142,6 +153,7 @@ export class SceneManager {
                 `Elevation enabled: ${this.terrain.columns} x ${this.terrain.rows} terrain grid; reference ${this.terrain.referenceHeight.toFixed(1)} m AMSL`,
             );
         }
+        await report("Loading road-level settings");
         let roadLevels: Partial<RoadLevelSettings> = {};
         const levelsResponse = await fetch("/data/roads/road-levels.json", {
             signal: AbortSignal.timeout(15000),
@@ -159,17 +171,19 @@ export class SceneManager {
         }
         if (this.disposed) return;
         this.roadGenerator.setTerrain(this.terrain);
-        this.roadGenerator.generateRoadsFromGeoJSON(
+        await this.roadGenerator.generateRoadsFromGeoJSON(
             data,
             this.centerLat,
             this.centerLon,
             roadLevels,
+            (message, detail) => report(message, detail),
         );
         this.collisions.setTunnelQuery((x, z, y) => this.roadGenerator.isInTunnel(x, z, y));
         this.collisions.setRoadOpeningQuery((x, z, y, owner) => this.roadGenerator.isTunnelOpening(x, z, y, owner));
         this.collisions.setBounds(this.terrain?.bounds ?? null);
         if (!this.roadGenerator.getRoads().length)
             throw new Error("This city has no drivable roads.");
+        await report("Loading scenery data", "Nature, buildings and street furniture");
         const [naturalData, buildingData, decorData] = await Promise.all([
             this.optionalData(`/data/natural/${config.file}`),
             this.optionalData(`/data/buildings/${config.file}`),
@@ -179,15 +193,19 @@ export class SceneManager {
         const project = (lat: number, lon: number) => this.latLonToLocal(lat, lon);
         const sample = (x: number, z: number) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
         const heightAt = (x: number, z: number) => sample(x, z).height;
+        await report("Generating water and coastlines");
         if (naturalData) this.water.generate(naturalData, project,
             this.terrain?.bounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
             sample, this.terrain?.referenceHeight ?? 0);
+        await report("Building terrain mesh");
         this.createGround();
         if (naturalData) {
+            await report("Generating parks and beaches");
             this.natural.generate(naturalData, project, this.terrain, geometry => {
                 this.roadGenerator.cutTerrainGeometry(geometry);
                 this.water.cutTerrain(geometry, sample);
             });
+            await report("Generating trees");
             const trees: GeoJSON = { ...naturalData, features: naturalData.features.filter(f => f.properties.natural === "tree" && f.geometry.type === "Point") };
             // Fill mapped tree rows at 8 m intervals; avoid duplicating individually mapped trees.
             const occupied = new Set(trees.features.map(f => {
@@ -219,11 +237,13 @@ export class SceneManager {
         }
         const scenery: GeoJSON = { type: "FeatureCollection", features: [...(decorData?.features ?? []),
             ...(naturalData?.features.filter(f => f.properties.natural === "shrub") ?? [])] };
+        await report("Generating street furniture", `${scenery.features.length.toLocaleString()} mapped features`);
         this.decor.generate(scenery, project, (x, z, layer) => {
             const ground = heightAt(x, z);
             const road = this.roadGenerator.getRoadState(x, z, ground + layer * 5 + 0.4, true);
             return road.roadId ? road.height : ground;
         }, (x, z) => !this.terrain || this.terrain.contains(x, z));
+        await report("Generating buildings and tunnel openings", `${buildingData?.features.length.toLocaleString() ?? 0} mapped features`);
         if (buildingData)
             this.buildingGenerator.generateBuildingsFromGeoJSON(
                 this.coveredData(buildingData, "building"),
@@ -232,6 +252,7 @@ export class SceneManager {
                 heightAt,
                 config.buildings,
             );
+        await report("Finding starting position");
         if (savedPosition) {
             const local = this.latLonToLocal(
                 savedPosition.lat,

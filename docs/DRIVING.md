@@ -117,6 +117,23 @@ geographic conversions remain unchanged. The instrument
 cluster includes speed, gear, RPM, engine/parking state and boost reserve; RPM
 continues to work when audio is muted. Existing settings retain their behaviour.
 
+### Loading diagnostics
+
+[LoadingScreen.vue](../src/parts/LoadingScreen.vue) reads shared progress from
+[the loading store](../src/stores/loading.ts). It shows the active stage, road
+counts during mesh generation, total elapsed time, and the five most recently
+completed stages with durations. A complete timing table is printed to the
+browser console on completion or failure. Each city load/retry resets the history.
+
+Stages distinguish road download/parsing, elevation, road-profile solving,
+corridor preparation, road/marking generation, scenery download, water, terrain,
+parks, trees, street furniture, buildings/tunnel openings, spawn, vehicle assets,
+controls/audio and first rendering. Timings are wall-clock diagnostics, including
+brief browser paint yields; they are not GPU benchmarks or estimated progress
+percentages. Heavy synchronous work can pause the elapsed-time display; the
+stage is painted before that work begins so its name identifies the active task.
+There is no worker/off-thread generation change in this update.
+
 ## Vehicle configuration
 
 [VehicleConfig.ts](../src/core/vehicle/VehicleConfig.ts) defines the typed vehicle

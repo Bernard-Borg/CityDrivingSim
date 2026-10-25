@@ -10,6 +10,7 @@ export interface BuildingTheme {
     balconyChance: number;
     residentialLevels: [number, number];
     wallMaterial: string;
+    residentialRoofShape?: 'flat' | 'gabled' | 'hipped';
 }
 export const MALTA_BUILDINGS: BuildingTheme = {
     wallColors: ['#d9c594', '#cdb785', '#e4d3ab', '#c4ad7d', '#e1cda0'],
@@ -20,6 +21,14 @@ export const MONACO_BUILDINGS: BuildingTheme = {
     wallColors: ['#ead7bf', '#e3bfae', '#eee6d4', '#d8c9b4', '#e6cfaa', '#f0e9dc'],
     roofColors: ['#a96e51', '#b87d5b', '#aa9d8d'], shutterColors: ['#52685d', '#6b7374', '#637c8b'],
     floorHeight: 3, windowSpacing: 3.2, weathering: 0.18, balconyChance: 0.6, residentialLevels: [2, 5], wallMaterial: 'plaster',
+};
+/** Fallback palette follows the warm plaster/red/white facades present in the Stockholm export. */
+export const STOCKHOLM_BUILDINGS: BuildingTheme = {
+    wallColors: ['#dfc17d', '#e9d8ad', '#d39d7e', '#c98069', '#eee8d9', '#c1b7a6', '#b36b56'],
+    roofColors: ['#41484a', '#555957', '#6b716b', '#8b5948'],
+    shutterColors: ['#e8e5dc', '#4b5652', '#656c70'],
+    floorHeight: 3.1, windowSpacing: 2.7, weathering: 0.22, balconyChance: 0.18,
+    residentialLevels: [3, 5], wallMaterial: 'plaster', residentialRoofShape: 'gabled',
 };
 export type BuildingStyle = 'home' | 'apartments' | 'church' | 'civic' | 'commercial' | 'industrial' | 'garage' | 'greenhouse' | 'ruins' | 'construction' | 'canopy' | 'parking' | 'bunker';
 type Tags = Record<string, string | number | boolean | undefined>;
@@ -51,15 +60,16 @@ function color(value: unknown, fallback: string): THREE.Color {
 }
 export function resolveBuildingAppearance(p: Tags, seed: number, theme: BuildingTheme) {
     const style = buildingStyle(p), pick = (colors: string[], shift = 0) => colors.length ? colors[(seed + shift) % colors.length] : '#d2c5aa';
-    const material = String(p['building:material'] ?? (style === 'church' || style === 'ruins' ? 'stone' : style === 'industrial' ? 'metal' : style === 'greenhouse' ? 'glass' : style === 'parking' || style === 'bunker' ? 'concrete' : theme.wallMaterial));
+    const smallWoodenHouse = ['allotment_house', 'cabin', 'hut'].includes(String(p.building));
+    const material = String(p['building:material'] ?? (smallWoodenHouse ? 'wood' : undefined) ?? (style === 'church' || style === 'ruins' ? 'stone' : style === 'industrial' ? 'metal' : style === 'greenhouse' ? 'glass' : style === 'parking' || style === 'bunker' ? 'concrete' : theme.wallMaterial));
     const defaults: Record<BuildingStyle, number> = { home: theme.residentialLevels[0] + seed % Math.max(1, theme.residentialLevels[1] - theme.residentialLevels[0] + 1),
         apartments: 4 + seed % 3, church: p.building === 'cathedral' ? 7 : p.building === 'chapel' ? 2 : 4,
         civic: 3, commercial: 3, industrial: 2, garage: 1, greenhouse: 1, ruins: 1, construction: 3, canopy: 1, parking: 3, bunker: 1 };
     const taggedLevels = Number(p['building:levels'] ?? p.levels);
-    const levels = Number.isFinite(taggedLevels) && taggedLevels > 0 ? taggedLevels : defaults[style];
+    const levels = Number.isFinite(taggedLevels) && taggedLevels > 0 ? taggedLevels : smallWoodenHouse ? 1 : defaults[style];
     const taggedHeight = parseFloat(String(p.height ?? ''));
     const height = Number.isFinite(taggedHeight) && taggedHeight > 0 ? taggedHeight : style === 'ruins' ? 1.8 : levels * theme.floorHeight;
-    const roofShape = String(p['roof:shape'] ?? (p.building === 'tent' ? 'pyramidal' : style === 'church' && ['church', 'chapel', 'cathedral'].includes(String(p.building)) || style === 'industrial' || style === 'greenhouse' ? 'gabled' : 'flat'));
+    const roofShape = String(p['roof:shape'] ?? (p.building === 'tent' ? 'pyramidal' : style === 'church' && ['church', 'chapel', 'cathedral'].includes(String(p.building)) || style === 'industrial' || style === 'greenhouse' ? 'gabled' : (style === 'home' || style === 'apartments') ? theme.residentialRoofShape ?? 'flat' : 'flat'));
     const roofMaterial = String(p['roof:material'] ?? (style === 'greenhouse' ? 'glass' : style === 'industrial' ? 'metal' : roofShape === 'flat' ? 'concrete' : 'roof_tiles'));
     const wallFallback = material === 'brick' ? '#aa7057' : material === 'glass' ? '#83a9b1' : material === 'metal' ? '#a7adae'
         : material === 'wood' ? '#937452' : pick(theme.wallColors);

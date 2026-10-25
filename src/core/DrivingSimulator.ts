@@ -1,3 +1,4 @@
+import { useLoadingStore } from "@/stores/loading";
 import * as THREE from "three";
 import { SceneManager } from "./scene/SceneManager";
 import { Car } from "./vehicle/Car";
@@ -122,6 +123,8 @@ export class DrivingSimulator {
             await this.sceneManager.loadCityMap(city, savedPosition);
             if (this.disposed) return;
 
+            await useLoadingStore().stage("Loading car model and textures");
+            if (this.disposed) return;
             // Initialize vehicle
             const startPosition = this.sceneManager.getStartPosition();
             this.car = new Car(this.scene, this.vehicleConfig);
@@ -140,6 +143,8 @@ export class DrivingSimulator {
                 throw new Error("Car initialization failed");
             }
 
+            await useLoadingStore().stage("Preparing controls and audio");
+            if (this.disposed) return;
             this.carControls = new CarControls(
                 this.car,
                 this.camera,
@@ -153,6 +158,9 @@ export class DrivingSimulator {
             cameraOffset.y = 5; // Height above car
             this.camera.position.copy(carPos).add(cameraOffset);
 
+            await useLoadingStore().stage("Rendering first frame");
+            if (this.disposed) return;
+            this.renderer.render(this.scene, this.camera);
             this.lastFrame = performance.now();
             this.physicsClock.reset();
             this.cameraReset = true;

@@ -1,112 +1,133 @@
 <script setup lang="ts">
-import {ref} from 'vue';
-import {useStateStore} from '@/stores/state';
-import {useSettingsStore} from '@/stores/settings';
-import {useCitiesStore} from '@/stores/cities';
-import {SoundManager} from '@/utils/SoundManager';
-import HudIcon from './HudIcon.vue';
-const state=useStateStore(),settings=useSettingsStore(),cityStore=useCitiesStore();
-const emit=defineEmits<{(e:'help'):void;(e:'performance'):void;(e:'toggleIgnition'):void;(e:'resetLocation'):void;(e:'toggleStreetNames'):void;(e:'citySelected',city:string):void}>();
-const helpButton=ref<HTMLButtonElement|null>(null);
-const openHelp=()=>emit('help');
-const togglePerformance=()=>emit('performance');
-const toggleMute=()=>{settings.isSoundMuted=!SoundManager.getInstance().toggleMute();};
-const switchCity=(city:string)=>{state.showCitySwitcher=false;if(city!==state.currentCity)emit('citySelected',city);};
-defineExpose({focusHelp:()=>helpButton.value?.focus()});
+import { ref } from "vue";
+import { useStateStore } from "@/stores/state";
+import { useSettingsStore } from "@/stores/settings";
+import { useCitiesStore } from "@/stores/cities";
+import { SoundManager } from "@/utils/SoundManager";
+import HudIcon from "./HudIcon.vue";
+
+const state = useStateStore();
+const settings = useSettingsStore();
+const cityStore = useCitiesStore();
+
+const emit = defineEmits<{
+    (e: "help"): void;
+    (e: "performance"): void;
+    (e: "toggleIgnition"): void;
+    (e: "resetLocation"): void;
+    (e: "toggleStreetNames"): void;
+    (e: "citySelected", city: string): void;
+}>();
+
+const helpButton = ref<HTMLButtonElement | null>(null);
+
+const openHelp = () => emit("help");
+const togglePerformance = () => emit("performance");
+
+const toggleMute = () => {
+    settings.isSoundMuted = !SoundManager.getInstance().toggleMute();
+};
+
+const switchCity = (city: string) => {
+    state.showCitySwitcher = false;
+    if (city !== state.currentCity) emit("citySelected", city);
+};
+
+defineExpose({ focusHelp: () => helpButton.value?.focus() });
 </script>
 <template>
-<div class="hud-tools">
-            <div class="utility-row">
-                <button
-                    ref="helpButton"
-                    class="hud-button icon-button"
-                    aria-label="Open controls help"
-                    title="Controls (?)"
-                    @click="openHelp"
-                >
-                    <svg viewBox="0 0 24 24">
-                        <circle cx="12" cy="12" r="9" />
-                        <path
-                            d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"
-                        />
-                    </svg>
-                </button>
-                <button
-                    class="hud-button icon-button"
-                    :class="{ selected: state.showPerformance }"
-                    aria-label="Toggle performance graphs"
-                    :aria-pressed="state.showPerformance"
-                    title="Performance (F3)"
-                    @click="togglePerformance"
-                >
-                    <svg viewBox="0 0 24 24">
-                        <path d="M4 4v16h17M6 15l4-5 4 3 6-8" />
-                    </svg>
-                </button>
-                <button
-                    class="hud-button ignition-button"
-                    :class="{ selected: state.vehicle.engine !== 'off' }"
-                    :aria-label="
-                        state.vehicle.engine === 'off'
-                            ? 'Start engine'
-                            : 'Switch off engine and park'
-                    "
-                    @click="emit('toggleIgnition')"
-                >
-                    <svg viewBox="0 0 24 24">
-                        <path d="M12 2v10M6.3 5.3a9 9 0 1 0 11.4 0" /></svg
-                    ><span>{{
-                        state.vehicle.engine === "off"
-                            ? "START"
-                            : state.vehicle.engine === "starting"
-                              ? "CANCEL"
-                              : "STOP"
-                    }}</span>
-                </button>
-            </div>
-            <div class="settings-tools">
-                <button class="hud-button" @click="emit('resetLocation')">
-                    Reset location
-                </button>
+    <div class="hud-tools">
+        <div class="utility-row">
+            <button
+                ref="helpButton"
+                class="hud-button icon-button"
+                aria-label="Open controls help"
+                title="Controls (?)"
+                @click="openHelp"
+            >
+                <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="9" />
+                    <path
+                        d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"
+                    />
+                </svg>
+            </button>
+            <button
+                class="hud-button icon-button"
+                :class="{ selected: state.showPerformance }"
+                aria-label="Toggle performance graphs"
+                :aria-pressed="state.showPerformance"
+                title="Performance (F3)"
+                @click="togglePerformance"
+            >
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 4v16h17M6 15l4-5 4 3 6-8" />
+                </svg>
+            </button>
+            <button
+                class="hud-button ignition-button"
+                :class="{ selected: state.vehicle.engine !== 'off' }"
+                :aria-label="
+                    state.vehicle.engine === 'off'
+                        ? 'Start engine'
+                        : 'Switch off engine and park'
+                "
+                @click="emit('toggleIgnition')"
+            >
+                <svg viewBox="0 0 24 24">
+                    <path d="M12 2v10M6.3 5.3a9 9 0 1 0 11.4 0" /></svg
+                ><span>{{
+                    state.vehicle.engine === "off"
+                        ? "START"
+                        : state.vehicle.engine === "starting"
+                          ? "CANCEL"
+                          : "STOP"
+                }}</span>
+            </button>
+        </div>
+        <div class="settings-tools">
+            <button class="hud-button" @click="emit('resetLocation')">
+                Reset location
+            </button>
+            <button
+                class="hud-button"
+                :class="{ selected: settings.showStreetNames }"
+                :aria-pressed="settings.showStreetNames"
+                @click="emit('toggleStreetNames')"
+            >
+                Street names
+            </button>
+            <button
+                class="hud-button"
+                :class="{ selected: !settings.isSoundMuted }"
+                :aria-pressed="settings.isSoundMuted"
+                @click="toggleMute"
+            >
+                <HudIcon
+                    :name="settings.isSoundMuted ? 'muted' : 'volume'"
+                /><span>{{ settings.isSoundMuted ? "Unmute" : "Mute" }}</span>
+            </button>
+            <div class="city-switcher">
                 <button
                     class="hud-button"
-                    :class="{ selected: settings.showStreetNames }"
-                    :aria-pressed="settings.showStreetNames"
-                    @click="emit('toggleStreetNames')"
+                    :aria-expanded="state.showCitySwitcher"
+                    @click="state.showCitySwitcher = !state.showCitySwitcher"
                 >
-                    Street names
+                    <HudIcon name="city" /><span>Switch city</span>
                 </button>
-                <button
-                    class="hud-button"
-                    :class="{ selected: !settings.isSoundMuted }"
-                    :aria-pressed="settings.isSoundMuted"
-                    @click="toggleMute"
-                >
-<HudIcon :name="settings.isSoundMuted ? 'muted' : 'volume'" /><span>{{ settings.isSoundMuted ? "Unmute" : "Mute" }}</span>
-</button>
-                <div class="city-switcher">
+                <div v-if="state.showCitySwitcher" class="city-menu">
                     <button
-                        class="hud-button"
-                        :aria-expanded="state.showCitySwitcher"
-                        @click="
-                            state.showCitySwitcher = !state.showCitySwitcher
-                        "
+                        v-for="city in cityStore.availableCities"
+                        :key="city"
+                        :class="{ selected: city === state.currentCity }"
+                        @click="switchCity(city)"
                     >
-                        <HudIcon name="city" /><span>Switch city</span>
+                        {{ cityStore.getCityName(city) }}
                     </button>
-                    <div v-if="state.showCitySwitcher" class="city-menu">
-                        <button
-                            v-for="city in cityStore.availableCities"
-                            :key="city"
-                            :class="{ selected: city === state.currentCity }"
-                            @click="switchCity(city)"
-                        >
-                            {{ cityStore.getCityName(city) }}
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
+    </div>
 </template>
 <style scoped>
 .hud-tools {
@@ -224,30 +245,31 @@ defineExpose({focusHelp:()=>helpButton.value?.focus()});
     }
 }
 .hud-tools {
-    width:220px
+    width: 220px;
 }
-.hud-button,.settings-tools .hud-button {
-    font-size:13px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    gap:7px
+.hud-button,
+.settings-tools .hud-button {
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
 }
 .settings-tools .hud-button {
-    padding:10px 7px
+    padding: 10px 7px;
 }
 .icon-button {
-    width:42px
+    width: 42px;
 }
 .city-menu button {
-    font-size:14px
+    font-size: 14px;
 }
 .city-menu {
-    min-width:185px
+    min-width: 185px;
 }
-@media(max-width:800px) {
+@media (max-width: 800px) {
     .hud-tools {
-        width:210px
+        width: 210px;
     }
 }
 </style>

@@ -5,6 +5,8 @@ import { SoundManager } from "./utils/SoundManager";
 import type { Ref } from "vue";
 import Overlay from "./parts/Overlay.vue";
 import CitySelection from "./parts/CitySelection.vue";
+import LoadingScreen from "./parts/LoadingScreen.vue";
+import { useLoadingStore } from "./stores/loading";
 import { useCitiesStore } from "./stores/cities.ts";
 import { useSettingsStore } from "./stores/settings.ts";
 import { useStateStore } from "./stores/state.ts";
@@ -14,6 +16,7 @@ const canvasContainer: Ref<HTMLElement | null> = ref(null);
 const cityStore = useCitiesStore();
 const settings = useSettingsStore();
 const state = useStateStore();
+const loading = useLoadingStore();
 
 let simulator: DrivingSimulator | null = null;
 let unmounted = false;
@@ -26,6 +29,8 @@ const selectCity = async (city: string) => {
         state.currentCity = city;
         state.showCityMenu = false;
         state.isLoading = true;
+        loading.begin();
+        await loading.stage("Preparing renderer");
 
         if (simulator) {
             simulator.dispose();
@@ -94,11 +99,13 @@ const selectCity = async (city: string) => {
                 ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y }
                 : undefined,
         );
+        loading.finish();
         if (!unmounted) {
             cityStore.selectedCity = city;
             simulator.setLabelsVisible(settings.showStreetNames);
         }
     } catch (error) {
+        loading.finish();
         simulator?.dispose();
         simulator = null;
         if (!unmounted)
@@ -124,6 +131,8 @@ onMounted(async () => {
     const soundManager = SoundManager.getInstance();
     soundManager.setEnabled(!settings.isSoundMuted);
 
+    loading.begin();
+    await loading.stage("Finding available cities");
     await cityStore.loadCities();
 
     if (
@@ -134,6 +143,7 @@ onMounted(async () => {
         await selectCity(cityStore.selectedCity);
     } else {
         // Show city selection menu
+        loading.finish();
         state.showCityMenu = true;
         state.isLoading = false;
     }
@@ -191,14 +201,6 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- Loading Screen -->
-        <div
-            v-if="state.isLoading"
-            class="absolute inset-0 z-50 flex items-center justify-center bg-black/80"
-        >
-            <div class="text-white text-2xl">
-                Loading City Map ({{ state.currentCity }})...
-            </div>
-        </div>
+        <LoadingScreen v-if="state.isLoading" />
     </div>
 </template>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import {computed} from 'vue';
-import {useStateStore} from '@/stores/state';
-import {compassHeading} from './navigation';
-const state=useStateStore();
-const headingValue=computed(()=>compassHeading(state.displayedHeading));
+import { computed } from "vue";
+import { useStateStore } from "@/stores/state";
+import { compassHeading } from "./navigation";
+
+const state = useStateStore();
+
+const headingValue = computed(() => compassHeading(state.displayedHeading));
 const compass = computed(() =>
     Array.from({ length: 24 }, (_, i) => {
-        const degree = i * 15,
-            delta = ((degree - headingValue.value + 540) % 360) - 180;
+        const degree = i * 15;
+        const delta = ((degree - headingValue.value + 540) % 360) - 180;
+
         const labels: Record<number, string> = {
             0: "N",
             45: "NE",
@@ -18,6 +21,7 @@ const compass = computed(() =>
             270: "W",
             315: "NW",
         };
+
         return {
             degree,
             delta,
@@ -26,33 +30,34 @@ const compass = computed(() =>
         };
     }).filter((mark) => Math.abs(mark.delta) < 100),
 );
+
 const heading = computed(() =>
     String(Math.round(headingValue.value) % 360).padStart(3, "0"),
 );
-
 </script>
 <template>
-<div class="navigation-strip" aria-label="Compass and coordinates">
-            <div class="compass-heading">{{ heading }}<span>°</span></div>
-            <div class="compass-track">
-                <div
-                    v-for="mark in compass"
-                    :key="mark.degree"
-                    class="compass-mark"
-                    :class="{ major: mark.major, north: mark.degree === 0 }"
-                    :style="{ left: `calc(50% + ${mark.delta * 2.15}px)` }"
-                >
-                    <span v-if="mark.label">{{ mark.label }}</span
-                    ><i></i>
-                </div>
-            </div>
-            <div class="compass-pointer"></div>
-            <div class="coordinates">
-                {{ state.coordinates.lat.toFixed(5) }}° N <span> / </span
-                >{{ state.coordinates.lon.toFixed(5) }}° E
+    <div class="navigation-strip" aria-label="Compass and coordinates">
+        <div class="compass-heading">{{ heading }}<span>°</span></div>
+        <div class="compass-track">
+            <div
+                v-for="mark in compass"
+                :key="mark.degree"
+                class="compass-mark"
+                :class="{ major: mark.major, north: mark.degree === 0 }"
+                :style="{ left: `calc(50% + ${mark.delta * 2.15}px)` }"
+            >
+                <span v-if="mark.label">{{ mark.label }}</span
+                ><i></i>
             </div>
         </div>
+        <div class="compass-pointer"></div>
+        <div class="coordinates">
+            {{ state.coordinates.lat.toFixed(5) }}° N <span> / </span
+            >{{ state.coordinates.lon.toFixed(5) }}° E
+        </div>
+    </div>
 </template>
+
 <style scoped>
 .navigation-strip {
     position: absolute;
@@ -151,36 +156,36 @@ const heading = computed(() =>
     }
 }
 .navigation-strip {
-    background:rgba(7,17,13,.9);
-    border:1px solid #6b8977;
-    border-radius:12px;
-    padding:10px 16px;
-    box-shadow:0 4px 20px #0005
+    background: rgba(7, 17, 13, 0.9);
+    border: 1px solid #6b8977;
+    border-radius: 12px;
+    padding: 10px 16px;
+    box-shadow: 0 4px 20px #0005;
 }
 .compass-heading {
-    font-size:16px;
-    color:#edf5ef
+    font-size: 16px;
+    color: #edf5ef;
 }
 .coordinates {
-    font-size:14px;
-    color:#edf5ef;
-    letter-spacing:.3px
+    font-size: 14px;
+    color: #edf5ef;
+    letter-spacing: 0.3px;
 }
 .compass-mark {
-    font-size:16px
+    font-size: 16px;
 }
 .compass-track {
-    height:43px
+    height: 43px;
 }
-@media(max-width:800px) {
+@media (max-width: 800px) {
     .coordinates {
-        font-size:11px
+        font-size: 11px;
     }
     .compass-heading {
-        font-size:14px
+        font-size: 14px;
     }
     .navigation-strip {
-        padding:8px 10px
+        padding: 8px 10px;
     }
 }
 </style>

@@ -9,7 +9,7 @@ the same city preserves the appearance.
 ## City configuration
 
 Each entry in [cities.ts](../src/stores/cities.ts) accepts a `buildings` theme.
-The `MALTA_BUILDINGS` and `MONACO_BUILDINGS` presets live in
+The `MALTA_BUILDINGS`, `MONACO_BUILDINGS`, and `STOCKHOLM_BUILDINGS` presets live in
 [BuildingAppearance.ts](../src/core/scene/BuildingAppearance.ts).
 Copy/spread a preset in a city entry to customize it:
 
@@ -28,12 +28,20 @@ buildings: {
 `wallMaterial` selects the fallback facade finish. `floorHeight` and
 `windowSpacing` are metres. `weathering` and `balconyChance` are fractions from
 0 to 1. `residentialLevels` supplies the inclusive fallback range for unclassified
-homes. Explicit OSM properties override the corresponding defaults.
+homes. Optional `residentialRoofShape` sets the fallback roof shape for homes/apartments.
+Explicit OSM properties override the corresponding defaults.
 
 Malta defaults to warm limestone, coloured shutters and mostly low buildings.
 Monaco defaults to pastel plaster, taller residential buildings and more balcony
 rail patterns. Balcony rails and window recesses are facade details, not separate
 3D balconies.
+
+Stockholm uses ochre, cream, muted red and off-white plaster, darker roofs,
+closer window spacing, fewer balcony patterns, and 3?5 storeys for unspecified
+homes. Unspecified residential roofs are gabled. Explicit OSM colours, materials,
+heights, levels and roof shapes still take precedence. Small allotment houses,
+cabins and huts default to one-storey wood buildings rather than the urban height
+range; their mapped levels/materials override that fallback as well.
 
 ## OSM properties
 
