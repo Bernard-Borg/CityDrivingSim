@@ -24,7 +24,6 @@ export class VehiclePhysics {
     boosting = false;
     slip = 0;
     private boostLocked = false;
-    private rearLock = 0;
     constructor(readonly config: VehicleConfig['physics'] = DEFAULT_VEHICLE.physics) {}
 
     get forwardSpeed(): number {
@@ -35,14 +34,11 @@ export class VehiclePhysics {
         this.vx = this.vz = this.yawRate = this.slip = 0;
         this.boosting = false;
         this.boostLocked = false;
-        this.rearLock = 0;
     }
 
     step(dt: number, input: VehicleInput, grip = 1, slopeX = 0, slopeZ = 0): void {
         if (input.parkingBrake) { this.reset(); return; }
         const cfg = this.config;
-        this.rearLock += ((input.handbrake ? 1 : 0) - this.rearLock)
-            * (1 - Math.exp(-(input.handbrake ? 10 : cfg.gripRecoveryRate) * dt));
         const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
         let forward = this.forwardSpeed;
         let lateral = this.vx * cos - this.vz * sin;
@@ -52,7 +48,7 @@ export class VehiclePhysics {
         this.boost = Math.max(0, Math.min(100, this.boost + (this.boosting ? -cfg.boostDrain : cfg.boostRecharge) * dt));
 
         // Brake has priority over throttle; holding W must not lengthen stopping distance.
-        const pedal = Math.max(0, Math.min(1, input.brake));
+        const pedal = Math.max(input.handbrake ? 1 : 0, Math.max(0, Math.min(1, input.brake)));
         const throttle = Math.max(-1, Math.min(1, input.throttle)) * (1 - pedal);
         const limit = (throttle < 0 ? cfg.reverseSpeed : this.boosting ? cfg.boostSpeed : cfg.maxSpeed) / 3.6;
         // Taper power toward the top speed; ordinary drag no longer caps speed at 74 km/h.
@@ -65,8 +61,7 @@ export class VehiclePhysics {
         const sideGrade = slopeX * cos - slopeZ * sin;
         forward += (acceleration / Math.sqrt(1 + forwardGrade * forwardGrade) - 9.81 * forwardGrade / plane) * dt;
         lateral -= 9.81 * sideGrade / plane * dt;
-        const braking = pedal * cfg.brakeDeceleration * grip
-            + (input.handbrake ? cfg.handbrakeDeceleration : 0) + cfg.rollingResistance + cfg.drag * forward * forward
+        const braking = pedal * (input.handbrake ? cfg.handbrakeDeceleration : cfg.brakeDeceleration) * grip + cfg.rollingResistance + cfg.drag * forward * forward
             + (Math.abs(throttle) < 0.05 ? cfg.engineResistance : 0);
         forward = Math.sign(forward) * Math.max(0, Math.abs(forward) - braking * dt);
 
@@ -74,27 +69,18 @@ export class VehiclePhysics {
         // Only reduce steering authority once speed makes tight turns unstable.
         const speed = Math.abs(forward);
         const steer = input.steering / (1 + Math.pow(speed / cfg.steeringSpeedScale, 2));
-        const drift = this.rearLock * Math.min(1, speed / 6);
-        const desiredYaw = forward / cfg.wheelbase * Math.tan(steer) * (1 + drift * 0.35);
-        const maxYaw = Math.min(cfg.maxYawRate, (cfg.cornerGrip + (cfg.driftGrip - cfg.cornerGrip) * drift) * grip / Math.max(1, speed));
-        const slipAngle = Math.atan2(lateral, Math.max(1, speed));
-        const alignment = Math.sign(slipAngle) * Math.max(0, Math.abs(slipAngle) - cfg.maxDriftAngle) * cfg.driftStability;
-        const steeringYaw = Math.max(-maxYaw, Math.min(maxYaw, desiredYaw));
-        const targetYaw = Math.max(-maxYaw, Math.min(maxYaw, steeringYaw + alignment));
+        const desiredYaw = forward / cfg.wheelbase * Math.tan(steer);
+        const maxYaw = Math.min(cfg.maxYawRate, cfg.cornerGrip * grip / Math.max(1, speed));
+        const targetYaw = Math.max(-maxYaw, Math.min(maxYaw, desiredYaw));
         const yawResponse = speed < 10 ? 20 : 12;
         this.yawRate += (targetYaw - this.yawRate) * (1 - Math.exp(-yawResponse * dt));
         const yawDelta = this.yawRate * dt;
         this.yaw += yawDelta;
-        // Rotate the body without rotating its world momentum. Rear-wheel lock
-        // reduces lateral force; releasing E restores grip progressively.
-        const worldX = sin * forward + cos * lateral, worldZ = cos * forward - sin * lateral;
+        // Grip driving: steering carries the travel direction with the body.
+        // Residual sideways motion (from slopes or wall contact) decays without a drift mode.
         const nextSin = Math.sin(this.yaw), nextCos = Math.cos(this.yaw);
-        forward = worldX * nextSin + worldZ * nextCos;
-        lateral = worldX * nextCos - worldZ * nextSin;
-        const damping = cfg.lateralDamping + (cfg.driftDamping - cfg.lateralDamping) * drift;
-        const lateralGrip = cfg.cornerGrip + (cfg.driftLateralGrip - cfg.cornerGrip) * drift;
-        const correction = Math.min(Math.abs(lateral) * (1 - Math.exp(-damping * grip * dt)), lateralGrip * grip * dt);
-        lateral -= Math.sign(lateral) * correction;
+        lateral *= Math.exp(-cfg.lateralDamping * grip * dt);
+        if (input.handbrake) lateral = Math.sign(lateral) * Math.max(0, Math.abs(lateral) - cfg.handbrakeDeceleration * grip * dt);
         this.vx = nextSin * forward + nextCos * lateral;
         this.vz = nextCos * forward - nextSin * lateral;
         if (input.handbrake && Math.abs(throttle) < 0.1 && Math.hypot(this.vx, this.vz) < 0.15) this.vx = this.vz = this.yawRate = 0;

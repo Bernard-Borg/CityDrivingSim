@@ -291,7 +291,7 @@ export class CarControls {
         this.car.setBrake(this.brakeInput);
         this.car.setSteering(this.steeringInput * this.car.maxSteeringAngle);
 
-        // Handbrake - enables drift
+        // Handbrake - straight braking with full lateral grip
         this.car.setHandbrake(this.keys.handbrake);
 
         // Boost
@@ -316,7 +316,7 @@ export class CarControls {
         this.roadSoundGenerator.update(speed, this.currentSurface);
         if (impact > this.car.config.audio.impactThreshold && this.soundCooldown === 0) {
             this.roadSoundGenerator.playImpact(Math.min(1, impact / 15));
-            this.soundCooldown = 0.24;
+            this.soundCooldown = 0.4;
         }
 
     }

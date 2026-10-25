@@ -5,6 +5,8 @@ import { TreeGenerator } from "./TreeGenerator";
 import { BuildingGenerator } from "./BuildingGenerator";
 import { ElevationTerrain, HgtTile } from "./ElevationTerrain";
 import { WaterGenerator } from "./WaterGenerator";
+import { NaturalGenerator } from "./NaturalGenerator";
+import { DecorGenerator } from "./DecorGenerator";
 import type { GeoJSON, GeoJSONFeature } from "@/types";
 import type { RoadLevelSettings } from "./RoadProfiles";
 import { useCitiesStore } from "@/stores/cities";
@@ -24,12 +26,16 @@ export class SceneManager {
     private terrain: ElevationTerrain | null = null;
     private elevationTile: HgtTile | null = null;
     private water: WaterGenerator;
+    private natural: NaturalGenerator;
+    private decor: DecorGenerator;
 
     constructor(private scene: THREE.Scene) {
         this.roadGenerator = new RoadGenerator(scene, this.collisions);
         this.treeGenerator = new TreeGenerator(scene);
         this.buildingGenerator = new BuildingGenerator(scene, this.collisions);
         this.water = new WaterGenerator(scene);
+        this.natural = new NaturalGenerator(scene);
+        this.decor = new DecorGenerator(scene, this.collisions);
         this.startPosition = new THREE.Vector3(0, ROAD_HEIGHT + 0.4, 0);
     }
 
@@ -165,34 +171,60 @@ export class SceneManager {
         this.collisions.setBounds(this.terrain?.bounds ?? null);
         if (!this.roadGenerator.getRoads().length)
             throw new Error("This city has no drivable roads.");
-        const waterData = await this.optionalData(`/data/water/${config.file}`);
-        if (this.disposed) return;
-        if (waterData) this.water.generate(waterData, (lat, lon) => this.latLonToLocal(lat, lon),
-            this.terrain?.bounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
-            (x, z) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 }, this.terrain?.referenceHeight ?? 0);
-        this.createGround();
-        const [treeData, buildingData] = await Promise.all([
-            this.optionalData(`/data/trees/${config.file}`),
+        const [naturalData, buildingData, decorData] = await Promise.all([
+            this.optionalData(`/data/natural/${config.file}`),
             this.optionalData(`/data/buildings/${config.file}`),
+            this.optionalData(`/data/decor/${config.file}`),
         ]);
         if (this.disposed) return;
-        const heightAt = (x: number, z: number) =>
-            this.terrain?.sample(x, z).height ?? 0;
-        if (treeData) {
-            const trees = this.coveredData(treeData, "tree");
-            this.treeGenerator.generateTreesFromGeoJSON(
-                trees,
-                this.centerLat,
-                this.centerLon,
-                heightAt,
-            );
-            for (const feature of trees.features)
-                if (feature.geometry.type === "Point") {
-                    const [lon, lat] = feature.geometry.coordinates;
-                    const p = this.latLonToLocal(lat, lon);
-                    this.collisions.addTrunk(p, 0.25, heightAt(p.x, p.z));
+        const project = (lat: number, lon: number) => this.latLonToLocal(lat, lon);
+        const sample = (x: number, z: number) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
+        const heightAt = (x: number, z: number) => sample(x, z).height;
+        if (naturalData) this.water.generate(naturalData, project,
+            this.terrain?.bounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
+            sample, this.terrain?.referenceHeight ?? 0);
+        this.createGround();
+        if (naturalData) {
+            this.natural.generate(naturalData, project, this.terrain, geometry => {
+                this.roadGenerator.cutTerrainGeometry(geometry);
+                this.water.cutTerrain(geometry, sample);
+            });
+            const trees: GeoJSON = { ...naturalData, features: naturalData.features.filter(f => f.properties.natural === "tree" && f.geometry.type === "Point") };
+            // Fill mapped tree rows at 8 m intervals; avoid duplicating individually mapped trees.
+            const occupied = new Set(trees.features.map(f => {
+                const [lon, lat] = (f.geometry as { coordinates: [number, number] }).coordinates;
+                const q = project(lat, lon); return `${Math.round(q.x / 4)},${Math.round(q.z / 4)}`;
+            }));
+            for (const f of naturalData.features) if (f.properties.natural === "tree_row" && f.geometry.type === "LineString") {
+                const coords = f.geometry.coordinates;
+                for (let i = 1; i < coords.length; i++) {
+                    const a = project(coords[i - 1][1], coords[i - 1][0]), b = project(coords[i][1], coords[i][0]);
+                    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 8));
+                    for (let j = 0; j < steps; j++) {
+                        const t = j / steps, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
+                        const key = `${Math.round(x / 4)},${Math.round(z / 4)}`;
+                        if (occupied.has(key)) continue;
+                        occupied.add(key);
+                        trees.features.push({ type: "Feature", properties: { natural: "tree" }, geometry: { type: "Point", coordinates: [
+                            coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * t,
+                            coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * t] } });
+                    }
                 }
+            }
+            const coveredTrees = this.coveredData(trees, "tree");
+            this.treeGenerator.generateTreesFromGeoJSON(coveredTrees, this.centerLat, this.centerLon, heightAt);
+            for (const feature of coveredTrees.features) if (feature.geometry.type === "Point") {
+                const [lon, lat] = feature.geometry.coordinates, p = project(lat, lon);
+                this.collisions.addTrunk(p, 0.25, heightAt(p.x, p.z));
+            }
         }
+        const scenery: GeoJSON = { type: "FeatureCollection", features: [...(decorData?.features ?? []),
+            ...(naturalData?.features.filter(f => f.properties.natural === "shrub") ?? [])] };
+        this.decor.generate(scenery, project, (x, z, layer) => {
+            const ground = heightAt(x, z);
+            const road = this.roadGenerator.getRoadState(x, z, ground + layer * 5 + 0.4, true);
+            return road.roadId ? road.height : ground;
+        }, (x, z) => !this.terrain || this.terrain.contains(x, z));
         if (buildingData)
             this.buildingGenerator.generateBuildingsFromGeoJSON(
                 this.coveredData(buildingData, "building"),
@@ -242,6 +274,8 @@ export class SceneManager {
 
     private clearScene(): void {
         this.water.clear();
+        this.natural.clear();
+        this.decor.clear();
         this.collisions.clear();
         if (this.groundGroup) {
             this.groundGroup.traverse((object) => {
@@ -259,7 +293,7 @@ export class SceneManager {
 
     private createGround(): void {
         this.groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0x36b34a,
+            color: 0xa49b80,
             roughness: 0.9,
             metalness: 0,
             polygonOffset: true,
@@ -410,6 +444,8 @@ export class SceneManager {
         this.treeGenerator.dispose();
         this.buildingGenerator.dispose();
         this.water.dispose();
+        this.natural.dispose();
+        this.decor.dispose();
         this.terrain = null;
         this.elevationTile = null;
         this.roadGenerator.setTerrain(null);

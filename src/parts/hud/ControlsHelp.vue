@@ -12,7 +12,7 @@ const controls = [
     ["S / Down", "Brake, then reverse"],
     ["A / D / Arrows", "Steer"],
     ["Space", "Service brake"],
-    ["E (hold)", "Handbrake / drift"],
+    ["E (hold)", "Handbrake"],
     ["Shift", "Boost"],
     ["I", "Ignition / park"],
     ["V", "First / third person"],

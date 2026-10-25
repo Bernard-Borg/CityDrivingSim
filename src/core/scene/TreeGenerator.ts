@@ -84,7 +84,7 @@ export class TreeGenerator {
         let treesCreated = 0;
 
         for (const feature of geoJSON.features) {
-            if (feature.geometry.type === 'Point' && feature.geometry.coordinates.length >= 2) {
+            if (feature.properties.natural === 'tree' && feature.geometry.type === 'Point' && feature.geometry.coordinates.length >= 2) {
                 const [lon, lat] = feature.geometry.coordinates;
 
                 // Convert to local coordinates

@@ -1,9 +1,9 @@
 # Water
 
-Water is loaded automatically from `public/data/water/<city-file>.json` when
-available. Monaco uses the supplied `monaco.json` Overpass Turbo GeoJSON export.
-Cities without a water file continue to load normally. There are no runtime OSM
-queries, additional packages, or downloaded textures.
+Water is loaded exclusively from `public/data/natural/<city-file>.json`.
+Cities without natural water/coastline features continue to load without water.
+The legacy water folder is not read. There are no runtime OSM queries,
+additional packages, or downloaded textures.
 
 ## Supported geometry
 
@@ -45,8 +45,8 @@ Saved locations in open water fall back to the city spawn when loading.
 ## Exporting another city
 
 Use [Overpass Turbo](https://overpass-turbo.eu/) and the query in
-[osm_query.txt](../public/data/water/osm_query.txt). Select an area larger than
+[natural/osm_query.txt](../public/data/natural/osm_query.txt). Select an area larger than
 the entire terrain extent, including connected coastline beyond its edges.
-Export **GeoJSON** into `public/data/water/` with the same filename as that
+Export **GeoJSON** into `public/data/natural/` with the same filename as that
 city's road data. Native Overpass JSON is not the same format. Keep the OSM
 copyright/ODbL attribution from the export.

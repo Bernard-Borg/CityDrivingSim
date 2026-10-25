@@ -144,7 +144,7 @@ export class RoadSoundGenerator {
     }
 
     playImpact(strength: number): void {
-        this.playEffect(this.impactBuffer, Math.pow(Math.max(0, Math.min(1, strength)), 0.7) * this.config.impactVolume, 0.85 + strength * 0.3);
+        this.playEffect(this.impactBuffer, Math.pow(Math.max(0, Math.min(1, strength)), 0.7) * this.config.impactVolume, 1.04 - Math.max(0, Math.min(1, strength)) * 0.12);
     }
 
     playIgnition(): void { this.start(); this.playEffect(this.ignitionBuffer, 0.65); }

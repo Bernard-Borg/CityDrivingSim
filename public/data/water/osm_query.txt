@@ -1,9 +1,0 @@
-[out:json][timeout:60];
-(
-  way["natural"="coastline"]({{bbox}});
-  way["natural"="water"]({{bbox}});
-  relation["natural"="water"]({{bbox}});
-);
-out body;
->;
-out skel qt;

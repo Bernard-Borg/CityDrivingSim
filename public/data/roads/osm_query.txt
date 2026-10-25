@@ -1,4 +1,7 @@
-[out:json][timeout:25];
-area["name"="Amsterdam"]->.a;
-way["highway" !~ "footway|path|cycleway|pedestrian|track"](area.a);
-out geom;
+[out:json][timeout:90];
+(
+  way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|.*_link)$"]({{bbox}});
+);
+out body;
+>;
+out skel qt;

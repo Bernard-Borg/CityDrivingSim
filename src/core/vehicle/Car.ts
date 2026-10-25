@@ -181,7 +181,11 @@ export class Car {
             parkingBrake: this.engineState !== 'running',
         }, contact.grip, contact.slopeX, contact.slopeZ);
         const proposed = this.surface(this.physics.x, this.physics.z, this.position.y);
-        this.impact = Math.max(this.impact, this.engineState === 'running' ? this.world?.resolve(this.physics, proposed.height + this.groundOffset, this.config.collision) ?? 0 : 0);
+        const impact = this.engineState === 'running'
+            ? this.world?.resolve(this.physics, proposed.height + this.groundOffset, this.config.collision) ?? 0 : 0;
+        this.impact = Math.max(this.impact, impact);
+        // Cancel stored steering rotation on contact rather than sweeping the body into the wall again.
+        if (impact > 0) this.physics.yawRate = 0;
         const road = this.surface(this.physics.x, this.physics.z, this.position.y);
         this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
         this.position.set(this.physics.x, road.height + this.groundOffset / this.groundNormal.y, this.physics.z);

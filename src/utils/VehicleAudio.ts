@@ -1,16 +1,26 @@
 /** Reusable procedural SFX buffers, independent of AudioContext for offline inspection. */
-export function vehicleSound(kind: 'impact' | 'ignition', sampleRate: number, duration = kind === 'impact' ? 0.65 : 0.95): Float32Array {
+export function vehicleSound(kind: 'impact' | 'ignition', sampleRate: number, duration = kind === 'impact' ? 0.9 : 0.95): Float32Array {
     const samples = new Float32Array(Math.ceil(sampleRate * duration));
-    let seed = 17029, low = 0, phase = 0;
+    let seed = 17029, low = 0, phase = 0, previousLow = 0;
     const noise = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2147483648 - 1; };
     for (let i = 0; i < samples.length; i++) {
         const t = i / sampleRate, u = t / duration, white = noise();
         low = low * 0.92 + white * 0.08;
         const fade = Math.min(1, t / 0.003, (duration - t) / 0.025);
         if (kind === 'impact') {
-            const body = Math.sin(2 * Math.PI * (73 * t - 25 * t * t)) * Math.exp(-t * 15);
-            const metal = (Math.sin(2 * Math.PI * 347 * t) + 0.5 * Math.sin(2 * Math.PI * 581 * t)) * Math.exp(-t * 22);
-            samples[i] = (body * 0.65 + metal * 0.12 + white * Math.exp(-t * 55) * 0.3 + low * Math.exp(-t * 10) * 0.3) * fade;
+            // Broad, damped crushing energy rather than a pitched rubber-like boing.
+            const high = white - low;
+            const onset = Math.exp(-t * 85);
+            const crush = Math.exp(-t * 12) * (0.65 + 0.35 * Math.sin(t * 173) ** 2);
+            const rattle = Math.max(0, 1 - Math.abs(t - 0.095) / 0.035)
+                + 0.55 * Math.max(0, 1 - Math.abs(t - 0.19) / 0.05)
+                + 0.25 * Math.max(0, 1 - Math.abs(t - 0.31) / 0.07);
+            previousLow = previousLow * 0.985 + white * 0.015;
+            const panel = (Math.sin(2 * Math.PI * 193 * t) * 0.045
+                + Math.sin(2 * Math.PI * 431 * t) * 0.025) * Math.exp(-t * 30);
+            const rumble = previousLow * 5 * Math.exp(-t * 16);
+            samples[i] = Math.tanh((high * onset * 0.6 + low * crush * 2.8
+                + high * rattle * 0.18 + panel + rumble) * 1.3) * fade;
         } else {
             // Starter motor and compression pulses, followed by combustion catch.
             const crankRate = 10 + u * 7;

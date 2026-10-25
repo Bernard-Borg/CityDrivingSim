@@ -92,7 +92,12 @@ export class CollisionWorld {
                     const inward = body.vx * nx + body.vz * nz;
                     if (inward < 0) {
                         impact = Math.max(impact, -inward);
+                        // Inelastic contact: remove inward speed, never reflect it.
+                        // Crush/contact friction also dissipates tangential motion.
                         body.vx -= nx * inward; body.vz -= nz * inward;
+                        const tangentSpeed = Math.hypot(body.vx, body.vz);
+                        const retained = Math.max(0, 1 - (-inward * 0.3) / Math.max(tangentSpeed, 1e-8));
+                        body.vx *= retained; body.vz *= retained;
                     }
                     moved = true;
                 }

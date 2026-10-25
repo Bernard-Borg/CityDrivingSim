@@ -22,13 +22,7 @@ export interface VehicleConfig {
         steeringSpeedScale: number;
         maxYawRate: number;
         cornerGrip: number;
-        driftGrip: number;
         lateralDamping: number;
-        driftDamping: number;
-        driftLateralGrip: number;
-        gripRecoveryRate: number;
-        maxDriftAngle: number;
-        driftStability: number;
         rollingResistance: number;
         engineResistance: number;
         drag: number;
@@ -72,19 +66,13 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
         reverseAcceleration: 4,
         boostAcceleration: 15,
         brakeDeceleration: 20,
-        handbrakeDeceleration: 5,
+        handbrakeDeceleration: 20,
         wheelbase: 1.9,
         maxSteeringAngle: 0.65,
         steeringSpeedScale: 28,
         maxYawRate: 2.4,
         cornerGrip: 14,
-        driftGrip: 16,
         lateralDamping: 32,
-        driftDamping: 1.8,
-        driftLateralGrip: 2.8,
-        gripRecoveryRate: 4,
-        maxDriftAngle: 0.55,
-        driftStability: 3.5,
         rollingResistance: 0.15,
         engineResistance: 0.18,
         drag: 0.00025,

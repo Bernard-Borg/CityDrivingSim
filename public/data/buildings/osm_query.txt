@@ -1,7 +1,18 @@
-[out:json][timeout:25];
-area["name"="Ħal Balzan"]->.a;
-way["building"](area.a);
-/*added by auto repair*/
-(._;>;);
-/*end of auto repair*/
-out ;
+[out:json][timeout:180];
+
+(
+  // BUILDING FOOTPRINTS
+  way["building"]({{bbox}});
+  relation["building"]({{bbox}});
+
+  // BUILDING PARTS (for detailed 3D geometry)
+  way["building:part"]({{bbox}});
+  relation["building:part"]({{bbox}});
+
+  // BUILDING ENTRANCES
+  node["entrance"]({{bbox}});
+);
+
+out body;
+>;
+out skel qt;
