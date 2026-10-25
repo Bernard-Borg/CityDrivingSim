@@ -1,5 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import type { VehicleTelemetry, PerformanceSample } from "@/core/DrivingSimulator";
+import { DEFAULT_VEHICLE } from "@/core/vehicle/VehicleConfig";
 
 export const useStateStore = defineStore("state", () => {
     /* UI State */
@@ -17,6 +19,9 @@ export const useStateStore = defineStore("state", () => {
 
     const heading = ref(0);
     const displayedHeading = ref(0);
+    const vehicle = ref<VehicleTelemetry>({ engine: 'running', rpm: 800, maxRPM: 6000, maxSpeed: 250, handbrake: false, name: DEFAULT_VEHICLE.name, gear: 'D1' });
+    const showPerformance = ref(false);
+    const performanceHistory = ref<PerformanceSample[]>([]);
 
     return {
         showCitySwitcher,
@@ -29,6 +34,9 @@ export const useStateStore = defineStore("state", () => {
         coordinates,
         heading,
         displayedHeading,
+        vehicle,
+        showPerformance,
+        performanceHistory,
         loadError,
     };
 });

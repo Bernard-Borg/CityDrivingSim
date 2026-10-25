@@ -33,6 +33,13 @@ const selectCity = async (city: string) => {
 
         const savedPos = cityStore.getSavedPosition(city);
         simulator = new DrivingSimulator(canvasContainer.value!);
+        simulator.setPerformanceEnabled(state.showPerformance);
+        state.performanceHistory = [];
+        simulator.onVehicleUpdate(data => { Object.assign(state.vehicle, data); });
+        simulator.onPerformanceUpdate(data => {
+            state.performanceHistory.push(data);
+            while (state.performanceHistory.length && state.performanceHistory[0].timeMs < data.timeMs - 12000) state.performanceHistory.shift();
+        });
 
         // Subscribe to all callbacks
         simulator.onSpeedUpdate((newSpeed: number) => {
@@ -151,6 +158,9 @@ onUnmounted(() => {
             @citySelected="selectCity"
             @toggleStreetNames="toggleStreetNames"
             @resetLocation="simulator && simulator.resetCarPosition()"
+            @toggleIgnition="simulator?.toggleIgnition()"
+            @pauseChanged="simulator?.setPaused($event)"
+            @performanceChanged="simulator?.setPerformanceEnabled($event)"
         />
 
         <div

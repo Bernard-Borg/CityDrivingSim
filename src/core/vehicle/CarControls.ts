@@ -20,6 +20,9 @@ export class CarControls {
     private engineSoundGenerator: EngineSoundGenerator;
     private roadSoundGenerator: RoadSoundGenerator;
     private focused = true;
+    private paused = false;
+    private audioUnlocked = false;
+    private initialIgnitionPlayed = false;
     private soundCooldown = 0;
     private currentSurface: string = 'asphalt';
 
@@ -27,10 +30,10 @@ export class CarControls {
     private brakeInput: number = 0;
     private steeringInput: number = 0;
 
-    private readonly throttleRiseRate = 3.5;
-    private readonly throttleFallRate = 5.0;
-    private readonly steerRate = 14.0;
-    private readonly steerReturnRate = 18.0;
+    private get throttleRiseRate() { return this.car.config.controls.throttleRise; }
+    private get throttleFallRate() { return this.car.config.controls.throttleFall; }
+    private get steerRate() { return this.car.config.controls.steerRise; }
+    private get steerReturnRate() { return this.car.config.controls.steerReturn; }
 
     private mouse: MouseState = {
         x: 0,
@@ -78,8 +81,9 @@ export class CarControls {
         this.contextMenuHandler = (e: Event) => e.preventDefault();
 
         this.soundManager = SoundManager.getInstance();
-        this.engineSoundGenerator = new EngineSoundGenerator();
-        this.roadSoundGenerator = new RoadSoundGenerator();
+        this.engineSoundGenerator = new EngineSoundGenerator(car.config.audio, car.config.physics.boostSpeed);
+        this.roadSoundGenerator = new RoadSoundGenerator(car.config.audio);
+        this.cameraZoomDistance = car.config.camera.distance;
 
         this.setupEventListeners();
 
@@ -115,11 +119,19 @@ export class CarControls {
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
-        if (this.soundManager.getEnabled() && ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
-            this.engineSoundGenerator.start();
-            this.roadSoundGenerator.start();
+        const target = e.target as HTMLElement | null;
+        if (this.paused || e.ctrlKey || e.metaKey || e.altKey || target?.matches('input,textarea,select,[contenteditable="true"]')) return;
+        if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
+            this.unlockAudio();
+            if (!this.initialIgnitionPlayed && this.car.getEngineState() === 'running') {
+                this.roadSoundGenerator.playIgnition(); this.initialIgnitionPlayed = true;
+            }
         }
         switch (e.key.toLowerCase()) {
+            case 'i':
+                e.preventDefault();
+                if (!e.repeat) this.toggleIgnition();
+                break;
             case 'v':
                 e.preventDefault();
                 if (!e.repeat) {
@@ -289,25 +301,45 @@ export class CarControls {
 
     updateAudio(delta: number): void {
         this.soundCooldown = Math.max(0, this.soundCooldown - delta);
-        const enabled = this.soundManager.getEnabled() && this.focused;
-        this.engineSoundGenerator.setEnabled(enabled);
+        const enabled = this.audioUnlocked && this.soundManager.getEnabled() && this.focused && !this.paused;
+        const running = this.car.getEngineState() === 'running';
+        this.engineSoundGenerator.setEnabled(enabled && running);
         this.roadSoundGenerator.setEnabled(enabled);
         const impact = this.car.consumeImpact();
         if (!enabled) return;
         const speed = Math.abs(this.car.getSpeed());
         const throttle = Math.abs(this.throttleInput);
-        this.engineSoundGenerator.start();
-        this.engineSoundGenerator.update(speed, throttle, throttle > 0.1, delta);
-        this.roadSoundGenerator.update(speed, this.currentSurface);
-        if (impact > 1.5 && this.soundCooldown === 0) {
-            this.roadSoundGenerator.playImpact(Math.min(1, impact / 15));
-            this.soundCooldown = 0.18;
+        if (running) {
+            this.engineSoundGenerator.start();
+            this.engineSoundGenerator.update(speed, throttle, throttle > 0.1, delta);
         }
-        // Dead zone keeps ordinary cornering quiet; loose surfaces crunch rather than squeal.
-        const tireSlip = Math.max(0, this.car.physics.slip - 1.2);
-        const onPavement = ['asphalt', 'concrete', 'paved', 'cobblestone'].includes(this.currentSurface);
-        this.roadSoundGenerator.setSkid(onPavement ? Math.min(1, tireSlip / 5) : 0, speed);
+        this.roadSoundGenerator.update(speed, this.currentSurface);
+        if (impact > this.car.config.audio.impactThreshold && this.soundCooldown === 0) {
+            this.roadSoundGenerator.playImpact(Math.min(1, impact / 15));
+            this.soundCooldown = 0.24;
+        }
+
     }
+
+    private unlockAudio(): void {
+        this.audioUnlocked = true;
+        this.engineSoundGenerator.unlock();
+        this.roadSoundGenerator.setEnabled(this.soundManager.getEnabled());
+        this.roadSoundGenerator.start();
+    }
+    toggleIgnition(): void {
+        if (this.paused) return;
+        this.resetInput();
+        this.silenceAudio();
+        const state = this.car.toggleIgnition();
+        if (state === 'starting') {
+            this.unlockAudio(); this.initialIgnitionPlayed = true;
+            this.roadSoundGenerator.playIgnition();
+        }
+    }
+    getRPM(): number { return this.car.getRPM(); }
+    silenceAudio(): void { this.engineSoundGenerator.stop(); this.roadSoundGenerator.stop(); }
+    setPaused(paused: boolean): void { this.paused = paused; this.resetInput(); if (paused) this.silenceAudio(); }
 
     resetInput(): void {
         for (const key of Object.keys(this.keys) as Array<keyof InputState>) this.keys[key] = false;

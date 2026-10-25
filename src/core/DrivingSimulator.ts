@@ -5,6 +5,12 @@ import { PhysicsClock } from "./vehicle/VehiclePhysics";
 import { CarControls } from "./vehicle/CarControls";
 import type { SpeedUpdateCallback, LoadCompleteCallback } from "@/types";
 import { useCitiesStore } from "@/stores/cities";
+import { DEFAULT_VEHICLE } from "./vehicle/VehicleConfig";
+import { chaseOrbitPosition } from "./vehicle/ChaseCameraRig";
+import type { VehicleConfig, EngineState } from "./vehicle/VehicleConfig";
+
+export interface VehicleTelemetry { engine: EngineState; rpm: number; maxRPM: number; maxSpeed: number; handbrake: boolean; name: string; gear: string; }
+export interface PerformanceSample { timeMs: number; frameMs: number; cpuMs: number; calls: number; triangles: number; meshes: number; visibleMeshes: number; geometries: number; textures: number; }
 
 export class DrivingSimulator {
     private scene: THREE.Scene;
@@ -16,6 +22,15 @@ export class DrivingSimulator {
     private lastFrame = performance.now();
     private physicsClock = new PhysicsClock();
     private firstPersonView = false;
+    private cameraReset = true;
+    private cameraInTunnel = false;
+    private paused = false;
+    private performanceEnabled = false;
+    private lastPerformanceUpdate = 0;
+    private peakFrameMs = 0;
+    private peakCpuMs = 0;
+    private vehicleCallbacks: Array<(data: VehicleTelemetry) => void> = [];
+    private performanceCallbacks: Array<(data: PerformanceSample) => void> = [];
     private disposed = false;
     private loading = false;
     private isLoaded = false;
@@ -33,7 +48,7 @@ export class DrivingSimulator {
         (lat: number, lon: number) => void
     > = [];
 
-    constructor(private container: HTMLElement) {
+    constructor(private container: HTMLElement, readonly vehicleConfig: VehicleConfig = DEFAULT_VEHICLE) {
         // Initialize Three.js core
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(
@@ -109,7 +124,7 @@ export class DrivingSimulator {
 
             // Initialize vehicle
             const startPosition = this.sceneManager.getStartPosition();
-            this.car = new Car(this.scene);
+            this.car = new Car(this.scene, this.vehicleConfig);
             await this.car.ready;
             if (this.disposed) return;
             this.car.setWorld(this.sceneManager.collisions, (x, z, y) =>
@@ -140,6 +155,7 @@ export class DrivingSimulator {
 
             this.lastFrame = performance.now();
             this.physicsClock.reset();
+            this.cameraReset = true;
             this.isLoaded = true;
             this.loadCompleteCallbacks.forEach((callback) => callback());
 
@@ -213,7 +229,8 @@ export class DrivingSimulator {
             const surface =
                 this.sceneManager.getRoadSurfaceAtPosition(preUpdatePosition);
             this.carControls.setRoadSurface(surface);
-            if (!document.hidden) {
+            if (!document.hidden && !this.paused) {
+                if (elapsed > 0.25) this.car.resetInterpolation();
                 let enteredWater = false;
                 this.physicsClock.advance(elapsed, (dt) => {
                     if (enteredWater) return;
@@ -223,11 +240,12 @@ export class DrivingSimulator {
                 });
                 if (enteredWater) this.resetCarPosition();
                 this.carControls.updateAudio(delta);
-            } else this.physicsClock.reset();
+            } else { this.physicsClock.reset(); this.carControls.silenceAudio(); }
+            this.car.render(this.paused || document.hidden ? 1 : this.physicsClock.alpha);
             this.sceneManager.update(nowFrame / 1000);
 
-            const carPosition = this.car.getPosition();
-            const carQuaternion = this.car.getRotation();
+            const carPosition = this.car.getRenderPosition();
+            const carQuaternion = this.car.getRenderRotation();
             const firstPerson = this.carControls.isFirstPerson();
             const viewChanged = firstPerson !== this.firstPersonView;
             if (viewChanged) {
@@ -256,7 +274,7 @@ export class DrivingSimulator {
                 );
             } else {
                 this.camera.up.set(0, 1, 0);
-                const cameraTarget = this.car.getCameraTargetPosition();
+                const rawTarget = this.car.getCameraTargetPosition();
                 const angle = this.carControls.getCameraAngle();
                 const pitch = this.carControls.getCameraPitch();
                 const contact = this.sceneManager.getRoadState(
@@ -269,13 +287,12 @@ export class DrivingSimulator {
                     this.carControls.getCameraZoomDistance(),
                     inTunnel ? 3 : 20,
                 );
-                const horizontalDistance = Math.cos(pitch) * distance;
-                const offset = new THREE.Vector3(
-                    Math.sin(angle) * horizontalDistance,
-                    Math.sin(pitch) * distance,
-                    -Math.cos(angle) * horizontalDistance,
-                ).applyQuaternion(carQuaternion);
-                const targetPosition = carPosition.clone().add(offset);
+                const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(carQuaternion);
+                const yaw = Math.atan2(forward.x, forward.z);
+                const blend = 1 - Math.exp(-this.vehicleConfig.camera.followRate * delta);
+                const snap = viewChanged || this.cameraReset || inTunnel !== this.cameraInTunnel;
+                const cameraTarget = rawTarget;
+                const targetPosition = chaseOrbitPosition(cameraTarget, yaw, angle, pitch, distance);
                 if (inTunnel) {
                     targetPosition.y = THREE.MathUtils.clamp(
                         targetPosition.y,
@@ -293,13 +310,10 @@ export class DrivingSimulator {
                         ).height + 0.6,
                     );
                 }
-                if (viewChanged || inTunnel)
-                    this.camera.position.copy(targetPosition);
-                else
-                    this.camera.position.lerp(
-                        targetPosition,
-                        Math.min(delta * 5, 1),
-                    );
+                // Orbit the current car, never a horizontally lagged position.
+                const cameraY = snap ? targetPosition.y : THREE.MathUtils.lerp(this.camera.position.y, targetPosition.y, blend);
+                this.camera.position.copy(targetPosition);
+                this.camera.position.y = cameraY;
                 if (!inTunnel)
                     this.camera.position.y = Math.max(
                         this.camera.position.y,
@@ -309,12 +323,22 @@ export class DrivingSimulator {
                             this.camera.position.y,
                         ).height + 0.6,
                     );
+                else this.camera.position.y = THREE.MathUtils.clamp(this.camera.position.y,
+                    contact.height + 0.7, (contact.ceiling ?? contact.height + 3.5) - 0.4);
                 this.camera.lookAt(cameraTarget);
+                this.cameraInTunnel = inTunnel;
             }
+            this.cameraReset = false;
 
             // Update speed callbacks
-            const speedKmh = Math.abs(this.car.getSpeed());
+            const speedKmh = this.car.getSpeed();
             this.speedUpdateCallbacks.forEach((callback) => callback(speedKmh));
+            const engine = this.car.getEngineState();
+            const gearIndex = this.vehicleConfig.audio.gears.findIndex(end => Math.abs(speedKmh) < end);
+            this.vehicleCallbacks.forEach(callback => callback({ engine, rpm: this.carControls!.getRPM(),
+                maxRPM: this.vehicleConfig.audio.maxRPM, maxSpeed: this.vehicleConfig.physics.boostSpeed,
+                handbrake: engine !== 'running' || this.car!.isHandbrakeActive(), name: this.vehicleConfig.name,
+                gear: engine === 'off' ? 'P' : engine === 'starting' ? 'N' : speedKmh < -0.5 ? 'R' : `D${gearIndex < 0 ? this.vehicleConfig.audio.gears.length : gearIndex + 1}` }));
 
             // Update heading callbacks
             const carHeading = this.getCarHeading();
@@ -349,11 +373,41 @@ export class DrivingSimulator {
         }
 
         this.renderer.render(this.scene, this.camera);
+        if (this.performanceEnabled) {
+            this.peakFrameMs = Math.max(this.peakFrameMs, elapsed * 1000);
+            this.peakCpuMs = Math.max(this.peakCpuMs, performance.now() - nowFrame);
+        }
+        if (this.performanceEnabled && nowFrame - this.lastPerformanceUpdate >= 100) {
+            this.lastPerformanceUpdate = nowFrame;
+            let meshes = 0, visibleMeshes = 0;
+            const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+            this.scene.traverse(object => { if (object instanceof THREE.Mesh) meshes++; });
+            this.scene.traverseVisible(object => {
+                if (object instanceof THREE.Mesh && object.layers.test(this.camera.layers) && (!object.frustumCulled || frustum.intersectsObject(object))) visibleMeshes++;
+            });
+            const info = this.renderer.info;
+            const sample = { timeMs: nowFrame, frameMs: this.peakFrameMs, cpuMs: this.peakCpuMs,
+                calls: info.render.calls, triangles: info.render.triangles, meshes, visibleMeshes,
+                geometries: info.memory.geometries, textures: info.memory.textures };
+            this.performanceCallbacks.forEach(callback => callback(sample));
+            this.peakFrameMs = this.peakCpuMs = 0;
+        }
     };
 
     onSpeedUpdate(callback: SpeedUpdateCallback): void {
         this.speedUpdateCallbacks.push(callback);
     }
+    onVehicleUpdate(callback: (data: VehicleTelemetry) => void): void { this.vehicleCallbacks.push(callback); }
+    onPerformanceUpdate(callback: (data: PerformanceSample) => void): void { this.performanceCallbacks.push(callback); }
+    setPerformanceEnabled(enabled: boolean): void {
+        this.performanceEnabled = enabled; this.peakFrameMs = this.peakCpuMs = 0;
+        this.lastPerformanceUpdate = performance.now();
+    }
+    setPaused(paused: boolean): void {
+        this.paused = paused; this.carControls?.setPaused(paused); this.physicsClock.reset();
+        this.car?.resetInterpolation();
+    }
+    toggleIgnition(): void { this.carControls?.toggleIgnition(); }
 
     onLoadComplete(callback: LoadCompleteCallback): void {
         this.loadCompleteCallbacks.push(callback);
@@ -427,6 +481,7 @@ export class DrivingSimulator {
         this.car.resetPhysics();
         this.carControls?.resetInput();
         this.physicsClock.reset();
+        this.cameraReset = true;
 
         // Reset camera position behind car
         const carPos = this.car.getPosition();
@@ -447,6 +502,7 @@ export class DrivingSimulator {
     private handleVisibility = (): void => {
         this.lastFrame = performance.now();
         this.physicsClock.reset();
+        this.car?.resetInterpolation();
     };
 
     private handleResize = (): void => {

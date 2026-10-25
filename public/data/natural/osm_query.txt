@@ -1,0 +1,14 @@
+[out:json][timeout:180];
+
+(
+  // All natural features
+  nwr["natural"]["natural"!~"^(mountain_range|mountain_area|mountain|ridge|massif|wood|scrub|cliff|bay|heath|grassland)$"]({{bbox}});
+
+
+  // Parks and gardens
+  nwr["leisure"~"^(park|garden)$"]({{bbox}});
+);
+
+out body;
+>;
+out skel qt;

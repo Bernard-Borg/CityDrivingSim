@@ -1,9 +1,13 @@
+import { DEFAULT_VEHICLE } from './VehicleConfig';
+import type { VehicleConfig } from './VehicleConfig';
+
 export interface VehicleInput {
     throttle: number;
     brake: number;
     steering: number;
     handbrake: boolean;
     boost: boolean;
+    parkingBrake?: boolean;
 }
 
 export const FIXED_STEP = 1 / 120;
@@ -20,6 +24,8 @@ export class VehiclePhysics {
     boosting = false;
     slip = 0;
     private boostLocked = false;
+    private rearLock = 0;
+    constructor(readonly config: VehicleConfig['physics'] = DEFAULT_VEHICLE.physics) {}
 
     get forwardSpeed(): number {
         return this.vx * Math.sin(this.yaw) + this.vz * Math.cos(this.yaw);
@@ -29,23 +35,28 @@ export class VehiclePhysics {
         this.vx = this.vz = this.yawRate = this.slip = 0;
         this.boosting = false;
         this.boostLocked = false;
+        this.rearLock = 0;
     }
 
     step(dt: number, input: VehicleInput, grip = 1, slopeX = 0, slopeZ = 0): void {
+        if (input.parkingBrake) { this.reset(); return; }
+        const cfg = this.config;
+        this.rearLock += ((input.handbrake ? 1 : 0) - this.rearLock)
+            * (1 - Math.exp(-(input.handbrake ? 10 : cfg.gripRecoveryRate) * dt));
         const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
         let forward = this.forwardSpeed;
         let lateral = this.vx * cos - this.vz * sin;
         if (!input.boost) this.boostLocked = false;
         if (this.boost < 1) this.boostLocked = true;
         this.boosting = input.boost && !this.boostLocked && input.throttle > 0.1 && forward >= 0 && this.boost > 1;
-        this.boost = Math.max(0, Math.min(100, this.boost + (this.boosting ? -30 : 15) * dt));
+        this.boost = Math.max(0, Math.min(100, this.boost + (this.boosting ? -cfg.boostDrain : cfg.boostRecharge) * dt));
 
         // Brake has priority over throttle; holding W must not lengthen stopping distance.
         const pedal = Math.max(0, Math.min(1, input.brake));
         const throttle = Math.max(-1, Math.min(1, input.throttle)) * (1 - pedal);
-        const limit = (throttle < 0 ? 35 : this.boosting ? 250 : 200) / 3.6;
+        const limit = (throttle < 0 ? cfg.reverseSpeed : this.boosting ? cfg.boostSpeed : cfg.maxSpeed) / 3.6;
         // Taper power toward the top speed; ordinary drag no longer caps speed at 74 km/h.
-        const acceleration = throttle * (throttle < 0 ? 4 : this.boosting ? 15 : 9)
+        const acceleration = throttle * (throttle < 0 ? cfg.reverseAcceleration : this.boosting ? cfg.boostAcceleration : cfg.acceleration)
             * Math.max(0, 1 - Math.pow(Math.max(0, forward * Math.sign(throttle)) / limit, 4));
         // Project gravity onto the road plane. The sign naturally handles reverse
         // travel, uphill rollback and downhill coasting without throttle.
@@ -54,29 +65,39 @@ export class VehiclePhysics {
         const sideGrade = slopeX * cos - slopeZ * sin;
         forward += (acceleration / Math.sqrt(1 + forwardGrade * forwardGrade) - 9.81 * forwardGrade / plane) * dt;
         lateral -= 9.81 * sideGrade / plane * dt;
-        const braking = pedal * 20 * grip
-            + (input.handbrake ? 5 : 0) + 0.15 + 0.00025 * forward * forward
-            + (Math.abs(throttle) < 0.05 ? 0.18 : 0);
+        const braking = pedal * cfg.brakeDeceleration * grip
+            + (input.handbrake ? cfg.handbrakeDeceleration : 0) + cfg.rollingResistance + cfg.drag * forward * forward
+            + (Math.abs(throttle) < 0.05 ? cfg.engineResistance : 0);
         forward = Math.sign(forward) * Math.max(0, Math.abs(forward) - braking * dt);
 
         // Parking-speed steering uses the actual scaled wheelbase and full lock.
         // Only reduce steering authority once speed makes tight turns unstable.
         const speed = Math.abs(forward);
-        const steer = input.steering / (1 + Math.pow(speed / 28, 2));
-        const desiredYaw = forward / 1.9 * Math.tan(steer) * (input.handbrake ? 1.15 : 1);
-        const maxYaw = Math.min(2.4, (input.handbrake ? 16 : 14) * grip / Math.max(1, speed));
-        const targetYaw = Math.max(-maxYaw, Math.min(maxYaw, desiredYaw));
+        const steer = input.steering / (1 + Math.pow(speed / cfg.steeringSpeedScale, 2));
+        const drift = this.rearLock * Math.min(1, speed / 6);
+        const desiredYaw = forward / cfg.wheelbase * Math.tan(steer) * (1 + drift * 0.35);
+        const maxYaw = Math.min(cfg.maxYawRate, (cfg.cornerGrip + (cfg.driftGrip - cfg.cornerGrip) * drift) * grip / Math.max(1, speed));
+        const slipAngle = Math.atan2(lateral, Math.max(1, speed));
+        const alignment = Math.sign(slipAngle) * Math.max(0, Math.abs(slipAngle) - cfg.maxDriftAngle) * cfg.driftStability;
+        const steeringYaw = Math.max(-maxYaw, Math.min(maxYaw, desiredYaw));
+        const targetYaw = Math.max(-maxYaw, Math.min(maxYaw, steeringYaw + alignment));
         const yawResponse = speed < 10 ? 20 : 12;
         this.yawRate += (targetYaw - this.yawRate) * (1 - Math.exp(-yawResponse * dt));
-        lateral *= Math.exp(-(input.handbrake ? 1.8 : 32) * grip * dt);
         const yawDelta = this.yawRate * dt;
         this.yaw += yawDelta;
-        // Ordinary tires carry the velocity around the turn. Deliberate drifting
-        // retains world-space momentum rather than making every corner feel icy.
-        const follow = input.handbrake ? 0.12 : Math.min(1, 0.98 * grip);
-        const velocityHeading = this.yaw - yawDelta * (1 - follow);
-        this.vx = Math.sin(velocityHeading) * forward + Math.cos(velocityHeading) * lateral;
-        this.vz = Math.cos(velocityHeading) * forward - Math.sin(velocityHeading) * lateral;
+        // Rotate the body without rotating its world momentum. Rear-wheel lock
+        // reduces lateral force; releasing E restores grip progressively.
+        const worldX = sin * forward + cos * lateral, worldZ = cos * forward - sin * lateral;
+        const nextSin = Math.sin(this.yaw), nextCos = Math.cos(this.yaw);
+        forward = worldX * nextSin + worldZ * nextCos;
+        lateral = worldX * nextCos - worldZ * nextSin;
+        const damping = cfg.lateralDamping + (cfg.driftDamping - cfg.lateralDamping) * drift;
+        const lateralGrip = cfg.cornerGrip + (cfg.driftLateralGrip - cfg.cornerGrip) * drift;
+        const correction = Math.min(Math.abs(lateral) * (1 - Math.exp(-damping * grip * dt)), lateralGrip * grip * dt);
+        lateral -= Math.sign(lateral) * correction;
+        this.vx = nextSin * forward + nextCos * lateral;
+        this.vz = nextCos * forward - nextSin * lateral;
+        if (input.handbrake && Math.abs(throttle) < 0.1 && Math.hypot(this.vx, this.vz) < 0.15) this.vx = this.vz = this.yawRate = 0;
         this.x += this.vx * dt;
         this.z += this.vz * dt;
         this.slip = Math.abs(this.vx * Math.cos(this.yaw) - this.vz * Math.sin(this.yaw));
@@ -86,6 +107,7 @@ export class VehiclePhysics {
 /** Discard suspension time, and cap catch-up work to avoid a spiral after a slow frame. */
 export class PhysicsClock {
     private accumulator = 0;
+    get alpha(): number { return Math.max(0, Math.min(1, this.accumulator / FIXED_STEP)); }
     reset(): void { this.accumulator = 0; }
     advance(delta: number, step: (dt: number) => void): void {
         if (!Number.isFinite(delta) || delta < 0 || delta > 0.25) {

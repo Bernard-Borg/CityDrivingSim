@@ -3,9 +3,18 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VehiclePhysics } from './VehiclePhysics';
 import type { CollisionWorld } from '../scene/CollisionWorld';
 import type { SurfaceSample } from '../scene/ElevationTerrain';
+import { DEFAULT_VEHICLE, targetEngineRPM } from './VehicleConfig';
+import type { VehicleConfig, EngineState } from './VehicleConfig';
 
 export class Car {
-    readonly physics = new VehiclePhysics();
+    readonly physics: VehiclePhysics;
+    private engineState: EngineState = 'running';
+    private ignitionRemaining = 0;
+    private rpm = 0;
+    private previousPosition = new THREE.Vector3();
+    private previousRotation = new THREE.Quaternion();
+    private renderPosition = new THREE.Vector3();
+    private renderRotation = new THREE.Quaternion();
     readonly ready: Promise<void>;
     private disposed = false;
     private groundOffset = 0.4;
@@ -24,11 +33,11 @@ export class Car {
     private position: THREE.Vector3;
     private rotation: THREE.Quaternion;
     private speed: number = 0; // km/h
-    public readonly maxSpeed: number = 200; // km/h 
+    get maxSpeed(): number { return this.config.physics.maxSpeed; }
     private throttleInput: number = 0;
     private brakeInput: number = 0;
     private steeringAngle: number = 0;
-    public readonly maxSteeringAngle: number = 0.65;
+    get maxSteeringAngle(): number { return this.config.physics.maxSteeringAngle; }
 
     // Drift/handbrake properties
     private handbrakeActive: boolean = false;
@@ -37,7 +46,9 @@ export class Car {
     private isBoosting: boolean = false;
     private boostAmount: number = 100; // Boost meter (0-100)
 
-    constructor(scene: THREE.Scene) {
+    constructor(scene: THREE.Scene, readonly config: VehicleConfig = DEFAULT_VEHICLE) {
+        this.physics = new VehiclePhysics(config.physics);
+        this.rpm = config.audio.idleRPM;
         this.scene = scene;
         this.position = new THREE.Vector3(0, 0.25, 0);
         this.rotation = new THREE.Quaternion();
@@ -53,7 +64,7 @@ export class Car {
 
     private async loadCarModel(): Promise<void> {
         const loader = new GLTFLoader();
-        const gltf = await loader.loadAsync('/models/car.gltf');
+        const gltf = await loader.loadAsync(this.config.model.path);
         if (this.disposed) {
             this.disposeModel(gltf.scene);
             return;
@@ -69,7 +80,7 @@ export class Car {
         const box = new THREE.Box3().setFromObject(model);
         const size = new THREE.Vector3();
         box.getSize(size);
-        const targetLength = 2.6; // meters (smaller to fit road scale)
+        const targetLength = this.config.model.length;
         const scaleFactor = size.z > 0 ? targetLength / size.z : 1;
         model.scale.setScalar(scaleFactor);
 
@@ -82,7 +93,7 @@ export class Car {
         this.groundOffset = centeredSize.y / 2;
         // Eye point inside the cabin, below the roof and behind the windshield.
         // Use the scaled model bounds so this remains relative to the actual car.
-        this.driverEyeOffset.set(centeredSize.x * 0.22, centeredSize.y * 0.24, -centeredSize.z * 0.08);
+        this.driverEyeOffset.set(centeredSize.x * this.config.model.eye[0], centeredSize.y * this.config.model.eye[1], centeredSize.z * this.config.model.eye[2]);
 
         this.mesh.add(model);
         this.mesh.position.copy(this.position);
@@ -154,20 +165,29 @@ export class Car {
     }
 
     update(delta: number): void {
+        this.previousPosition.copy(this.position);
+        this.previousRotation.copy(this.rotation);
+        if (this.engineState === 'starting') {
+            this.ignitionRemaining = Math.max(0, this.ignitionRemaining - delta);
+            if (this.ignitionRemaining === 0) this.engineState = 'running';
+        }
         const contact = this.surface(this.physics.x, this.physics.z, this.position.y);
         this.physics.step(delta, {
             throttle: this.throttleInput,
             brake: this.brakeInput,
             steering: this.steeringAngle,
             handbrake: this.handbrakeActive,
-            boost: this.isBoosting
+            boost: this.isBoosting,
+            parkingBrake: this.engineState !== 'running',
         }, contact.grip, contact.slopeX, contact.slopeZ);
         const proposed = this.surface(this.physics.x, this.physics.z, this.position.y);
-        this.impact = Math.max(this.impact, this.world?.resolve(this.physics, proposed.height + this.groundOffset) ?? 0);
+        this.impact = Math.max(this.impact, this.engineState === 'running' ? this.world?.resolve(this.physics, proposed.height + this.groundOffset, this.config.collision) ?? 0 : 0);
         const road = this.surface(this.physics.x, this.physics.z, this.position.y);
-        this.alignToGround(road, 1 - Math.exp(-14 * delta));
+        this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
         this.position.set(this.physics.x, road.height + this.groundOffset / this.groundNormal.y, this.physics.z);
         this.speed = this.physics.forwardSpeed * 3.6;
+        const targetRPM = this.engineState === 'running' ? targetEngineRPM(this.speed, this.throttleInput, this.config.audio) : this.engineState === 'starting' ? 240 : 0;
+        this.rpm += (targetRPM - this.rpm) * (1 - Math.exp(-7 * delta));
         this.boostAmount = this.physics.boost;
         this.mesh.position.copy(this.position);
         this.mesh.quaternion.copy(this.rotation);
@@ -176,7 +196,7 @@ export class Car {
         // Animate wheels (rotate when moving)
         if (this.gltfWheelSpinMeshes.length > 0) {
             if (Math.abs(this.speed) > 0.5) {
-                const wheelRotation = -speedMps * delta * 2.5;
+                const wheelRotation = -speedMps * delta / this.config.model.wheelRadius;
                 this.gltfWheelSpinMeshes.forEach(wheelMesh => {
                     wheelMesh.rotateX(wheelRotation);
                 });
@@ -231,7 +251,7 @@ export class Car {
     }
 
     isHandbrakeActive(): boolean {
-        return this.handbrakeActive;
+        return this.handbrakeActive || this.engineState !== 'running';
     }
 
     getPosition(): THREE.Vector3 {
@@ -239,11 +259,11 @@ export class Car {
     }
 
     getCameraTargetPosition(): THREE.Vector3 {
-        return this.mesh.localToWorld(this.cameraTargetOffset.clone());
+        return this.cameraTargetOffset.clone().applyQuaternion(this.renderRotation).add(this.renderPosition);
     }
 
     getDriverEyePosition(): THREE.Vector3 {
-        return this.driverEyeOffset.clone().applyQuaternion(this.rotation).add(this.position);
+        return this.driverEyeOffset.clone().applyQuaternion(this.renderRotation).add(this.renderPosition);
     }
 
     getRotation(): THREE.Quaternion {
@@ -268,6 +288,7 @@ export class Car {
         this.position.set(x, road.height + this.groundOffset / this.groundNormal.y, z);
         this.mesh.position.copy(this.position);
         this.mesh.quaternion.copy(this.rotation);
+        this.snapRenderPose();
     }
 
     setRotation(y: number): void {
@@ -277,6 +298,7 @@ export class Car {
         this.alignToGround(this.surface(this.physics.x, this.physics.z, this.position.y), 1);
         this.mesh.setRotationFromQuaternion(this.rotation);
         this.steeringAngle = 0;
+        this.snapRenderPose();
     }
 
     setSpeed(speed: number): void {
@@ -322,6 +344,29 @@ export class Car {
         const impact = this.impact;
         this.impact = 0;
         return impact;
+    }
+
+    render(alpha: number): void {
+        this.renderPosition.lerpVectors(this.previousPosition, this.position, alpha);
+        this.renderRotation.copy(this.previousRotation).slerp(this.rotation, alpha);
+        this.mesh.position.copy(this.renderPosition); this.mesh.quaternion.copy(this.renderRotation);
+    }
+    getRenderPosition(): THREE.Vector3 { return this.renderPosition.clone(); }
+    getRenderRotation(): THREE.Quaternion { return this.renderRotation.clone(); }
+    resetInterpolation(): void { this.snapRenderPose(); }
+    private snapRenderPose(): void {
+        this.previousPosition.copy(this.position); this.renderPosition.copy(this.position);
+        this.previousRotation.copy(this.rotation); this.renderRotation.copy(this.rotation);
+    }
+    getEngineState(): EngineState { return this.engineState; }
+    getRPM(): number { return this.rpm; }
+    toggleIgnition(): EngineState {
+        this.engineState = this.engineState === 'off' ? 'starting' : 'off';
+        this.ignitionRemaining = this.engineState === 'starting' ? this.config.audio.ignitionDuration : 0;
+        this.rpm = this.engineState === 'starting' ? 240 : 0;
+        this.resetPhysics();
+        this.snapRenderPose();
+        return this.engineState;
     }
 
     private disposeModel(root: THREE.Object3D): void {

@@ -3,6 +3,9 @@
  * Generates dynamic engine sounds that react to car speed and acceleration
  */
 
+import { DEFAULT_VEHICLE, targetEngineRPM } from '@/core/vehicle/VehicleConfig';
+import type { VehicleConfig } from '@/core/vehicle/VehicleConfig';
+
 export class EngineSoundGenerator {
     private audioContext: AudioContext | null = null;
     private masterGain: GainNode | null = null;
@@ -19,14 +22,15 @@ export class EngineSoundGenerator {
     private gainNodes: GainNode[] = [];
 
     // Sound parameters
-    private readonly BASE_FREQUENCY = 30; // Base engine frequency (Hz) - deep idle rumble
-    private readonly MIN_RPM = 800; // Idle RPM
-    private readonly MAX_RPM = 6000; // Max RPM
-    private readonly MAX_CAR_SPEED = 250; // km/h (max speed with boost)
+    private get BASE_FREQUENCY() { return this.config.baseFrequency; }
+    private get MIN_RPM() { return this.config.idleRPM; }
+    private get MAX_RPM() { return this.config.maxRPM; }
+    getRPM(): number { return this.isPlaying ? this.currentRPM : 0; }
+    unlock(): void { if (this.audioContext?.state === 'suspended') this.audioContext.resume().catch(() => {}); }
 
     private isEnabled: boolean = true;
 
-    constructor() {
+    constructor(private config: VehicleConfig['audio'] = DEFAULT_VEHICLE.audio, private MAX_CAR_SPEED = DEFAULT_VEHICLE.physics.boostSpeed) {
         // Initialize AudioContext (may need user interaction first)
         this.initAudioContext();
     }
@@ -45,7 +49,7 @@ export class EngineSoundGenerator {
             // Create master gain node for volume control
             this.masterGain = this.audioContext.createGain();
             this.masterGain.connect(this.audioContext.destination);
-            this.masterGain.gain.value = 0.6; // Master volume
+            this.masterGain.gain.value = this.config.engineVolume;
 
             // Create engine gain node
             this.engineGain = this.audioContext.createGain();
@@ -242,19 +246,12 @@ export class EngineSoundGenerator {
         // When speed is 0, RPM should be around idle (MIN_RPM)
         // When speed is max, RPM should be close to MAX_RPM
         // Approximate automatic gears: pitch falls on upshift, rather than one long drone.
-        const gearEnds = [45, 80, 120, 165, 210, this.MAX_CAR_SPEED];
-        const gear = gearEnds.findIndex(end => Math.abs(speed) < end);
-        const gearIndex = gear < 0 ? gearEnds.length - 1 : gear;
-        const gearStart = gearIndex === 0 ? 0 : gearEnds[gearIndex - 1] * 0.6;
-        const gearRatio = Math.max(0, Math.min(1, (Math.abs(speed) - gearStart) / (gearEnds[gearIndex] - gearStart)));
-        const speedBasedRPM = this.MIN_RPM + gearRatio * 4000;
 
         // Add RPM boost when accelerating (even when speed is low)
         // This makes the sound respond immediately to throttle input
-        const accelerationRPMBoost = acceleration > 0 ? acceleration * 1500 : 0;
 
         // Target RPM is based on speed, with additional boost when accelerating
-        const targetRPM = Math.max(this.MIN_RPM, Math.min(this.MAX_RPM, speedBasedRPM + accelerationRPMBoost));
+        const targetRPM = targetEngineRPM(speed, acceleration, this.config);
 
         // Smooth RPM transition for realistic sound changes
         const rpmChangeRate = 3200 * Math.min(delta, 0.1); // RPM change per frame (60fps = ~480 RPM/second)

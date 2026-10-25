@@ -2,17 +2,19 @@
  * Procedural road noise generator using Web Audio API.
  * Uses filtered noise whose volume and tone depend on speed and surface type.
  */
+import { vehicleSound } from './VehicleAudio';
+import { DEFAULT_VEHICLE } from '@/core/vehicle/VehicleConfig';
+import type { VehicleConfig } from '@/core/vehicle/VehicleConfig';
+
 export class RoadSoundGenerator {
     private audioContext: AudioContext | null = null;
     private masterGain: GainNode | null = null;
     private noiseSource: AudioBufferSourceNode | null = null;
     private noiseGain: GainNode | null = null;
     private lowpassFilter: BiquadFilterNode | null = null;
-    private skidSource: AudioBufferSourceNode | null = null;
-    private skidFilter: BiquadFilterNode | null = null;
-    private skidGain: GainNode | null = null;
     private effects = new Set<AudioBufferSourceNode>();
     private impactBuffer: AudioBuffer | null = null;
+    private ignitionBuffer: AudioBuffer | null = null;
     private isEnabled: boolean = true;
     private isPlaying: boolean = false;
 
@@ -27,7 +29,7 @@ export class RoadSoundGenerator {
         sand: { gain: 0.18, cutoff: 550 }
     };
 
-    constructor() {
+    constructor(private config: VehicleConfig['audio'] = DEFAULT_VEHICLE.audio) {
         this.initAudioContext();
     }
 
@@ -44,38 +46,12 @@ export class RoadSoundGenerator {
             this.masterGain = this.audioContext.createGain();
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 0.6;
-            this.skidGain = this.audioContext.createGain();
-            this.skidGain.gain.value = 0;
-            this.skidGain.connect(this.masterGain);
-            // Broad, textured friction noise instead of a pitched oscillator beep.
-            const skidBuffer = this.audioContext.createBuffer(2, this.audioContext.sampleRate * 3, this.audioContext.sampleRate);
-            for (let channel = 0; channel < 2; channel++) {
-                const samples = skidBuffer.getChannelData(channel);
-                let low = 0, texture = 0;
-                for (let i = 0; i < samples.length; i++) {
-                    const white = Math.random() * 2 - 1;
-                    low = low * 0.96 + white * 0.04;
-                    texture = texture * 0.998 + Math.random() * 0.002;
-                    const edgeFade = Math.min(1, i / 256, (samples.length - 1 - i) / 256);
-                    samples[i] = (white * 0.55 + low * 2) * (0.55 + texture) * edgeFade;
-                }
-            }
-            this.skidFilter = this.audioContext.createBiquadFilter();
-            this.skidFilter.type = 'bandpass';
-            this.skidFilter.frequency.value = 1400;
-            this.skidFilter.Q.value = 0.65;
-            this.skidFilter.connect(this.skidGain);
-            this.skidSource = this.audioContext.createBufferSource();
-            this.skidSource.buffer = skidBuffer;
-            this.skidSource.loop = true;
-            this.skidSource.connect(this.skidFilter);
-            this.skidSource.start();
-            this.impactBuffer = this.audioContext.createBuffer(1, this.audioContext.sampleRate * 0.25, this.audioContext.sampleRate);
-            const impactSamples = this.impactBuffer.getChannelData(0);
-            for (let i = 0; i < impactSamples.length; i++) {
-                const time = i / this.audioContext.sampleRate;
-                impactSamples[i] = ((Math.random() * 2 - 1) * 0.6 + Math.sin(time * 400) * 0.4) * Math.exp(-time * 24);
-            }
+            const impact = vehicleSound('impact', this.audioContext.sampleRate);
+            this.impactBuffer = this.audioContext.createBuffer(1, impact.length, this.audioContext.sampleRate);
+            this.impactBuffer.getChannelData(0).set(impact);
+            const ignition = vehicleSound('ignition', this.audioContext.sampleRate, this.config.ignitionDuration);
+            this.ignitionBuffer = this.audioContext.createBuffer(1, ignition.length, this.audioContext.sampleRate);
+            this.ignitionBuffer.getChannelData(0).set(ignition);
 
             this.lowpassFilter = this.audioContext.createBiquadFilter();
             this.lowpassFilter.type = 'lowpass';
@@ -168,26 +144,23 @@ export class RoadSoundGenerator {
     }
 
     playImpact(strength: number): void {
-        if (!this.isEnabled || !this.audioContext || !this.impactBuffer || !this.masterGain) return;
+        this.playEffect(this.impactBuffer, Math.pow(Math.max(0, Math.min(1, strength)), 0.7) * this.config.impactVolume, 0.85 + strength * 0.3);
+    }
+
+    playIgnition(): void { this.start(); this.playEffect(this.ignitionBuffer, 0.65); }
+
+    private playEffect(buffer: AudioBuffer | null, volume: number, rate = 1): void {
+        if (!this.isEnabled || !this.audioContext || !buffer || !this.masterGain) return;
         const source = this.audioContext.createBufferSource();
         const gain = this.audioContext.createGain();
-        source.buffer = this.impactBuffer;
-        gain.gain.value = Math.max(0, Math.min(1, strength));
+        source.buffer = buffer;
+        source.playbackRate.value = rate;
+        gain.gain.value = volume;
         source.connect(gain);
         gain.connect(this.masterGain);
         this.effects.add(source);
         source.onended = () => { source.disconnect(); gain.disconnect(); this.effects.delete(source); };
         source.start();
-    }
-
-    setSkid(slip: number, speed: number): void {
-        if (!this.audioContext || !this.skidGain || !this.skidFilter || !this.skidSource) return;
-        const intensity = this.isEnabled && speed > 15 ? Math.max(0, Math.min(1, slip)) : 0;
-        const now = this.audioContext.currentTime;
-        // Gentle onset/release and restrained volume keep ordinary driving quiet.
-        this.skidGain.gain.setTargetAtTime(Math.pow(intensity, 1.3) * 0.14, now, 0.12);
-        this.skidFilter.frequency.setTargetAtTime(900 + intensity * 900, now, 0.15);
-        this.skidSource.playbackRate.setTargetAtTime(0.85 + Math.min(1, speed / 160) * 0.3, now, 0.2);
     }
 
     setEnabled(enabled: boolean): void {
@@ -199,7 +172,6 @@ export class RoadSoundGenerator {
     }
 
     stop(): void {
-        if (this.skidGain) this.skidGain.gain.value = 0;
         this.effects.forEach(source => source.stop());
         this.effects.clear();
         if (this.noiseSource) {
@@ -219,10 +191,6 @@ export class RoadSoundGenerator {
 
     dispose(): void {
         this.stop();
-        this.skidSource?.stop();
-        this.skidSource?.disconnect();
-        this.skidFilter?.disconnect();
-        this.skidGain?.disconnect();
         if (this.audioContext && this.audioContext.state !== 'closed') {
             this.audioContext.close().catch(err => {
                 console.debug('Failed to close audio context:', err);

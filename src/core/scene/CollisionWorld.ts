@@ -53,11 +53,12 @@ export class CollisionWorld {
         this.addPolygon([ring], baseHeight, baseHeight + 3);
     }
     /** Three overlapping circles approximate the 2.6 m car, including its front/rear corners. */
-    resolve(body: { x: number; z: number; yaw: number; vx: number; vz: number }, y: number): number {
+    resolve(body: { x: number; z: number; yaw: number; vx: number; vz: number }, y: number,
+        shape = { radius: 0.55, halfLength: 0.75, halfHeight: 0.4 }): number {
         let impact = 0;
         if (this.bounds) {
-            const ex = 0.55 + 0.75 * Math.abs(Math.sin(body.yaw));
-            const ez = 0.55 + 0.75 * Math.abs(Math.cos(body.yaw));
+            const ex = shape.radius + shape.halfLength * Math.abs(Math.sin(body.yaw));
+            const ez = shape.radius + shape.halfLength * Math.abs(Math.cos(body.yaw));
             const x = Math.max(this.bounds.minX + ex, Math.min(this.bounds.maxX - ex, body.x));
             const z = Math.max(this.bounds.minZ + ez, Math.min(this.bounds.maxZ - ez, body.z));
             if ((body.x - x) * body.vx > 0) { impact = Math.max(impact, Math.abs(body.vx)); body.vx = 0; }
@@ -66,10 +67,10 @@ export class CollisionWorld {
         }
         for (let pass = 0; pass < 6; pass++) {
             let moved = false;
-            for (const offset of [-0.75, 0, 0.75]) {
+            for (const offset of [-shape.halfLength, 0, shape.halfLength]) {
                 const p = { x: body.x + Math.sin(body.yaw) * offset, z: body.z + Math.cos(body.yaw) * offset };
                 for (const obstacle of this.grid.at(p.x, p.z)) {
-                    if (y + 0.4 < obstacle.minY || y - 0.4 > obstacle.maxY) continue;
+                    if (y + shape.halfHeight < obstacle.minY || y - shape.halfHeight > obstacle.maxY) continue;
                     if (obstacle.category === 'scenery' && this.inTunnel?.(p.x, p.z, y)) continue;
                     const solid = inside(p, obstacle.rings[0]) && !obstacle.rings.slice(1).some(r => inside(p, r));
                     let nearest = { x: 0, z: 0 }, best = Infinity;
@@ -80,7 +81,7 @@ export class CollisionWorld {
                             if (d < best) { best = d; nearest = q; }
                         }
                     }
-                    const radius = 0.55;
+                    const radius = shape.radius;
                     if (!solid && best >= radius) continue;
                     let nx = (p.x - nearest.x) / (best || 1), nz = (p.z - nearest.z) / (best || 1);
                     if (solid) { nx = -nx; nz = -nz; }
