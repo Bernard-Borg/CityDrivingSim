@@ -117,7 +117,11 @@ export interface GeoJSONPolygon {
     coordinates: Array<Array<[number, number]>>;
 }
 
-export type GeoJSONGeometry = GeoJSONPoint | GeoJSONLineString | GeoJSONPolygon;
+export interface GeoJSONMultiPolygon {
+    type: 'MultiPolygon';
+    coordinates: Array<Array<Array<[number, number]>>>;
+}
+export type GeoJSONGeometry = GeoJSONPoint | GeoJSONLineString | GeoJSONPolygon | GeoJSONMultiPolygon;
 
 export interface GeoJSONFeature {
     type: 'Feature';

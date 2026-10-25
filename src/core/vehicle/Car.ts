@@ -18,6 +18,7 @@ export class Car {
     readonly ready: Promise<void>;
     private disposed = false;
     private groundOffset = 0.4;
+    private creativeSpawnHeight: number | null = null;
     private world: CollisionWorld | null = null;
     private surface: (x: number, z: number, y: number) => SurfaceSample & { grip: number } = () => ({ height: 0.06, grip: 1, slopeX: 0, slopeZ: 0 });
     private groundNormal = new THREE.Vector3(0, 1, 0);
@@ -193,7 +194,8 @@ export class Car {
         if (impact > 0) this.physics.yawRate = 0;
         const road = this.surface(this.physics.x, this.physics.z, this.position.y);
         this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
-        this.position.set(this.physics.x, road.height + this.groundOffset / this.groundNormal.y, this.physics.z);
+        if (this.engineState === 'running') this.creativeSpawnHeight = null;
+        this.position.set(this.physics.x, this.creativeSpawnHeight ?? road.height + this.groundOffset / this.groundNormal.y, this.physics.z);
         const motion = this.config.bodyMotion;
         const leanResponse = 1 - Math.exp(-motion.response * delta);
         this.bodyLean.x += (THREE.MathUtils.clamp(-this.physics.longitudinalAcceleration * motion.pitchGain, -0.025, 0.025) - this.bodyLean.x) * leanResponse;
@@ -293,12 +295,13 @@ export class Car {
         return this.speed;
     }
 
-    setPosition(x: number, y: number, z: number): void {
+    setPosition(x: number, y: number, z: number, preserveElevation = false): void {
+        this.creativeSpawnHeight = preserveElevation ? y : null;
         this.physics.x = x;
         this.physics.z = z;
         const road = this.surface(x, z, y);
         this.alignToGround(road, 1);
-        this.position.set(x, road.height + this.groundOffset / this.groundNormal.y, z);
+        this.position.set(x, preserveElevation ? y : road.height + this.groundOffset / this.groundNormal.y, z);
         this.mesh.position.copy(this.position);
         this.mesh.quaternion.copy(this.rotation);
         this.snapRenderPose();

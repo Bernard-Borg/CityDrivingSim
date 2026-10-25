@@ -20,7 +20,8 @@ export class DecorGenerator {
         const metal = 0x454e52, wood = 0x9c714b, stone = 0xb8afa0, green = 0x46643c, blue = 0x3c779b;
         for (const feature of data.features) {
             const p = feature.properties, g = feature.geometry;
-            const coords = g.type === 'Point' ? [g.coordinates] : g.type === 'LineString' ? g.coordinates : g.coordinates[0];
+            const coords = g.type === 'Point' ? [g.coordinates] : g.type === 'LineString' ? g.coordinates
+                : g.type === 'Polygon' ? g.coordinates[0] : g.coordinates[0]?.[0];
             if (!coords?.length) continue;
             const points = coords.map(([lon, lat]) => project(lat, lon));
             const layer = Number(p.layer) || 0;

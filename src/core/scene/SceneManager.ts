@@ -52,7 +52,7 @@ export class SceneManager {
         const geometry = feature.geometry;
         if (geometry.type === "Point") return [geometry.coordinates];
         if (geometry.type === "LineString") return geometry.coordinates;
-        return geometry.coordinates.flat();
+        return geometry.type === "MultiPolygon" ? geometry.coordinates.flat(2) : geometry.coordinates.flat();
     }
 
     private coveredData(data: GeoJSON, label: string): GeoJSON {

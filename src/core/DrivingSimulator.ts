@@ -431,6 +431,9 @@ export class DrivingSimulator {
     }
     setCreativeMode(enabled: boolean): void {
         if (!this.car || !this.carControls || !this.flight || this.paused) return;
+        if (enabled === this.flight.enabled) return;
+        if (enabled) this.camera.position.copy(this.car.getPosition());
+        else this.car.setPosition(this.camera.position.x, this.camera.position.y, this.camera.position.z, true);
         useStateStore().creativeMode = enabled;
         if (enabled && this.car.getEngineState() !== 'off') this.car.toggleIgnition();
         this.car.resetPhysics(); this.car.setVisible(!enabled);

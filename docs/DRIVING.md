@@ -15,16 +15,17 @@ npm run build
 Press **C** or the HUD **Fly** button to switch between driving and free flight.
 The shared mode flag lives in the Pinia state store. Flight hides the car, switches
 its ignition off, clears motion/held controls, silences vehicle effects and pauses
-vehicle simulation. The parked car stays at its last driving position; returning
-to driving restores it there with ignition off. Flight position is not saved as a
-car spawn. The selected mode carries across city switches during this session.
+vehicle simulation. Entering flight starts at the car?s coordinates and elevation.
+Returning to driving places the car at the flight position with ignition off,
+preserving its altitude while parked. Starting the engine restores road contact.
+The selected mode carries across city switches during this session.
 
 - WASD / arrow keys: fly forward/backward and sideways. Forward follows your view.
 - Space or E: rise; Q: descend along world vertical.
 - Hold Shift: fly three times faster.
 - Drag left mouse: look around freely, including up/down (pitch limited near vertical).
 - Mouse wheel: adjust base speed between 3 and 200 metres/second (default 30).
-- C / Drive button: return to the parked car. Reset view returns above city spawn.
+- C / Drive button: place the car at the current flight position. Reset view returns above city spawn.
 
 Flight has no collisions, gravity or water reset. Navigation coordinates/heading
 and nearby scenery activation follow the flight camera. Help/pause, hidden tabs
