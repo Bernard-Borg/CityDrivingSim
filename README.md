@@ -24,7 +24,7 @@ A virtual city driving simulator built with **Vue 3**, **TypeScript**, **Three.j
 
 ### Prerequisites
 
-- Node.js (v16 or higher recommended)
+- Node.js 24 or newer
 - npm or yarn or pnpm
 
 ### Installation
@@ -55,6 +55,8 @@ The built files will be in the `dist/` folder.
 ```bash
 npm run preview
 ```
+
+See [Driving simulation](docs/DRIVING.md) for physics, collisions, audio, and validation details.
 
 ## Controls
 
@@ -144,10 +146,10 @@ The UI components use Tailwind CSS utility classes. You can customize:
 
 ## Scripts
 
+- `npm run typecheck` - Check Vue and TypeScript
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
-- `npm run lint` - Lint code with ESLint
 
 ## Future Enhancements
 

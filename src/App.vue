@@ -31,7 +31,7 @@
       >
         Switch City
       </button>
-      
+
       <!-- City Switcher Dropdown -->
       <div v-if="showCitySwitcher" class="absolute bottom-full right-0 mb-2 bg-gray-900/95 backdrop-blur-md rounded-lg border border-white/20 overflow-hidden min-w-[150px]">
         <button
@@ -57,8 +57,9 @@
           <p><strong class="text-white">E</strong> for handbrake (drift)</p>
           <p><strong class="text-white">Shift</strong> for boost</p>
           <p><strong class="text-white">Space</strong> for brake</p>
-          <p><strong class="text-white">Mouse</strong> to look around</p>
-          <p><strong class="text-white">Scroll Wheel</strong> to zoom camera</p>
+          <p><strong class="text-white">V</strong> to toggle first/third person</p>
+          <p><strong class="text-white">Mouse Drag</strong> to look around (first person: left/right ±80°)</p>
+          <p><strong class="text-white">Scroll Wheel</strong> to zoom third-person camera</p>
         </div>
       </div>
     </div>
@@ -89,7 +90,7 @@
         <div class="relative w-28 h-28">
           <!-- Compass background circle -->
           <div class="absolute inset-0 rounded-full border-2 border-white/30 bg-black/40"></div>
-          
+
           <!-- Compass rose -->
           <div class="absolute inset-0 flex items-center justify-center">
             <div class="relative w-full h-full">
@@ -101,10 +102,10 @@
               <div class="absolute right-0.5 top-1/2 -translate-y-1/2 text-white/70 font-bold text-xs">E</div>
               <!-- West (left side) -->
               <div class="absolute left-0.5 top-1/2 -translate-y-1/2 text-white/70 font-bold text-xs">W</div>
-              
+
               <!-- Direction indicator (rotating needle) -->
               <!-- Compass arrow rotates opposite to car heading to show North relative to car -->
-              <div 
+              <div
                 class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 transition-transform duration-75 ease-out"
                 :style="{ transform: `translate(-50%, -50%) rotate(${-displayedHeading}deg)` }"
               >
@@ -120,7 +121,7 @@
                   </div>
                 </div>
               </div>
-              
+
               <!-- Center dot -->
               <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-white/50"></div>
             </div>
@@ -145,7 +146,7 @@
       <div class="bg-black/70 backdrop-blur-md p-4 rounded-2xl border-2 border-white/20">
         <div class="text-xs uppercase tracking-wider text-gray-400 mb-2">Boost</div>
         <div class="w-32 h-4 bg-gray-800 rounded-full overflow-hidden border border-gray-600">
-          <div 
+          <div
             class="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-600 transition-all duration-100"
             :style="{ width: `${boostAmount}%` }"
           ></div>
@@ -167,13 +168,13 @@
           Reset Location
         </span>
       </button>
-      
+
       <button
         @click="toggleStreetNames"
         :class="[
           'bg-black/70 hover:bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border-2 transition-colors text-sm font-medium',
-          showStreetNames 
-            ? 'border-green-500/50 text-green-400' 
+          showStreetNames
+            ? 'border-green-500/50 text-green-400'
             : 'border-white/20 text-gray-300'
         ]"
       >
@@ -187,13 +188,13 @@
           Street Names
         </span>
       </button>
-      
+
       <button
         @click="toggleMute"
         :class="[
           'bg-black/70 hover:bg-black/80 backdrop-blur-md px-4 py-2 rounded-lg border-2 transition-colors text-sm font-medium',
-          !isSoundMuted 
-            ? 'border-blue-500/50 text-blue-400' 
+          !isSoundMuted
+            ? 'border-blue-500/50 text-blue-400'
             : 'border-red-500/50 text-red-400'
         ]"
       >
@@ -207,6 +208,15 @@
           {{ isSoundMuted ? 'Unmute' : 'Mute' }}
         </span>
       </button>
+    </div>
+
+    <div v-if="loadError" role="alert" class="absolute inset-0 z-50 flex items-center justify-center bg-black/90">
+      <div class="max-w-md rounded-xl bg-gray-900 p-8 text-center text-white">
+        <h2 class="mb-3 text-2xl font-bold">Unable to start driving</h2>
+        <p class="mb-6 text-gray-300">{{ loadError }}</p>
+        <button class="mr-3 rounded-lg bg-blue-600 px-5 py-3" @click="selectCity(currentCity!)">Retry</button>
+        <button class="rounded-lg bg-gray-700 px-5 py-3" @click="loadError = ''; showCityMenu = true">Choose city</button>
+      </div>
     </div>
 
     <!-- Loading Screen -->
@@ -230,6 +240,8 @@ const heading = ref(0)
 const displayedHeading = ref(0)
 const boostAmount = ref(100)
 const isLoading = ref(true)
+const loadError = ref('')
+let unmounted = false
 const showCityMenu = ref(false)
 const showCitySwitcher = ref(false)
 const availableCities = ref<string[]>([])
@@ -246,66 +258,80 @@ const getCityName = (city: string): string => {
 }
 
 const selectCity = async (city: string) => {
-  currentCity.value = city
-  CityManager.setSelectedCity(city)
-  showCityMenu.value = false
-  isLoading.value = true
-  
-  if (simulator) {
-    simulator.dispose()
-  }
-  
-  const savedPos = CityManager.getSavedPosition(city)
-  simulator = new DrivingSimulator(canvasContainer.value!)
-  
-  // Subscribe to all callbacks
-  simulator.onSpeedUpdate((newSpeed: number) => {
-    speed.value = newSpeed
-  })
-  
-  simulator.onFpsUpdate((newFps: number) => {
-    fps.value = newFps
-  })
-  
-  simulator.onHeadingUpdate((newHeading: number) => {
-    heading.value = newHeading
-    
-    // Normalize angle to 0-360 range
-    const normalizeAngle = (angle: number) => {
-      while (angle < 0) angle += 360
-      while (angle >= 360) angle -= 360
-      return angle
-    }
-    
-    let current = normalizeAngle(displayedHeading.value)
-    let target = normalizeAngle(newHeading)
-    
-    // Handle wrap-around (e.g., going from 359° to 1° should go the short way)
-    let diff = target - current
-    if (diff > 180) diff -= 360
-    if (diff < -180) diff += 360
-    
-    // Update displayed heading (smooth interpolation)
-    displayedHeading.value = normalizeAngle(current + diff)
-  })
-  
-  simulator.onBoostUpdate((newBoost: number) => {
-    boostAmount.value = newBoost
-  })
-  
-  simulator.onCoordinateUpdate((lat: number, lon: number) => {
-    coordinates.value = { lat, lon }
-  })
-  
-  simulator.onLoadComplete(() => {
-    isLoading.value = false
-    // Initialize street names visibility state
+  if (isLoading.value && simulator) return
+  loadError.value = ''
+  showCitySwitcher.value = false
+  try {
+    currentCity.value = city
+    showCityMenu.value = false
+    isLoading.value = true
+
     if (simulator) {
-      showStreetNames.value = simulator.getLabelsVisible()
+      simulator.dispose()
     }
-  })
-  
-  await simulator.init(city, savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined)
+
+    const savedPos = CityManager.getSavedPosition(city)
+    simulator = new DrivingSimulator(canvasContainer.value!)
+
+    // Subscribe to all callbacks
+    simulator.onSpeedUpdate((newSpeed: number) => {
+      speed.value = newSpeed
+    })
+
+    simulator.onFpsUpdate((newFps: number) => {
+      fps.value = newFps
+    })
+
+    simulator.onHeadingUpdate((newHeading: number) => {
+      heading.value = newHeading
+
+      // Normalize angle to 0-360 range
+      const normalizeAngle = (angle: number) => {
+        while (angle < 0) angle += 360
+        while (angle >= 360) angle -= 360
+        return angle
+      }
+
+      let current = normalizeAngle(displayedHeading.value)
+      let target = normalizeAngle(newHeading)
+
+      // Handle wrap-around (e.g., going from 359° to 1° should go the short way)
+      let diff = target - current
+      if (diff > 180) diff -= 360
+      if (diff < -180) diff += 360
+
+      // Update displayed heading (smooth interpolation)
+      displayedHeading.value = normalizeAngle(current + diff)
+    })
+
+    simulator.onBoostUpdate((newBoost: number) => {
+      boostAmount.value = newBoost
+    })
+
+    simulator.onCoordinateUpdate((lat: number, lon: number) => {
+      coordinates.value = { lat, lon }
+    })
+
+    simulator.onLoadComplete(() => {
+      isLoading.value = false
+      // Initialize street names visibility state
+      if (simulator) {
+        simulator.setLabelsVisible(showStreetNames.value)
+      }
+    })
+
+    await simulator.init(city, savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined)
+    if (!unmounted) {
+      CityManager.setSelectedCity(city)
+      simulator.setLabelsVisible(showStreetNames.value)
+    }
+  } catch (error) {
+    simulator?.dispose()
+    simulator = null
+    if (!unmounted) loadError.value = error instanceof Error ? error.message : 'City or vehicle data could not be loaded.'
+  } finally {
+    if (!unmounted) isLoading.value = false
+  }
 }
 
 const toggleStreetNames = () => {
@@ -325,7 +351,7 @@ const toggleMute = () => {
   const soundManager = SoundManager.getInstance()
   isSoundMuted.value = !soundManager.toggleMute()
   // Save mute state to localStorage
-  localStorage.setItem('cityDrivingSim_soundMuted', isSoundMuted.value.toString())
+  try { localStorage.setItem('cityDrivingSim_soundMuted', isSoundMuted.value.toString()) } catch { /* Storage may be disabled. */ }
 }
 
 const switchCity = async (city: string) => {
@@ -333,28 +359,15 @@ const switchCity = async (city: string) => {
     showCitySwitcher.value = false
     return
   }
-  
-  showCitySwitcher.value = false
-  isLoading.value = true
-  
-  const savedPos = CityManager.getSavedPosition(city)
-  currentCity.value = city
-  CityManager.setSelectedCity(city)
-  
-  if (simulator) {
-    await simulator.reloadCity(city)
-    // Restore street names visibility state after city reload
-    simulator.setLabelsVisible(showStreetNames.value)
-  }
-  
-  isLoading.value = false
+  await selectCity(city)
 }
 
 onMounted(async () => {
   if (!canvasContainer.value) return
 
   // Initialize mute state from localStorage or SoundManager
-  const savedMuteState = localStorage.getItem('cityDrivingSim_soundMuted')
+  let savedMuteState: string | null = null
+  try { savedMuteState = localStorage.getItem('cityDrivingSim_soundMuted') } catch { /* Use default. */ }
   if (savedMuteState !== null) {
     isSoundMuted.value = savedMuteState === 'true'
     const soundManager = SoundManager.getInstance()
@@ -367,10 +380,12 @@ onMounted(async () => {
 
   // Detect available cities
   availableCities.value = await CityManager.detectAvailableCities()
-  
+
+  if (unmounted) return
+
   // Check if user has a saved city preference
   const savedCity = CityManager.getSelectedCity()
-  
+
   if (savedCity && availableCities.value.includes(savedCity)) {
     // Load saved city
     await selectCity(savedCity)
@@ -382,6 +397,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  unmounted = true
   if (simulator) {
     simulator.dispose()
   }

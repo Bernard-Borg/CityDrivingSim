@@ -1,261 +1,69 @@
 import * as THREE from 'three';
 import type { GeoJSON } from '@/types';
+import type { CollisionWorld } from './CollisionWorld';
 
 export class BuildingGenerator {
     private buildings: THREE.Mesh[] = [];
-    private buildingGroup: THREE.Group;
-    private sharedMaterial: THREE.MeshStandardMaterial;
+    private buildingGroup = new THREE.Group();
+    private sharedMaterial = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.7, metalness: 0.1, side: THREE.DoubleSide });
 
-    // Default building height per level (in meters)
-    private readonly HEIGHT_PER_LEVEL = 3.0; // ~10 feet per story
-    private readonly DEFAULT_HEIGHT = 3.0; // Default height if no levels specified
-
-    constructor(private scene: THREE.Scene) {
-        this.buildingGroup = new THREE.Group();
-        // Mark group so it's not removed during scene clearing
+    constructor(private scene: THREE.Scene, private collisions?: CollisionWorld) {
         this.buildingGroup.userData.isBuildingGroup = true;
-        this.scene.add(this.buildingGroup);
-
-        // Shared material for all buildings
-        this.sharedMaterial = new THREE.MeshStandardMaterial({
-            color: 0xCCCCCC, // Light gray for buildings
-            roughness: 0.7,
-            metalness: 0.1,
-            side: THREE.DoubleSide // Make visible from both sides
-        });
+        scene.add(this.buildingGroup);
     }
 
-    /**
-     * Convert lat/lon to local 3D coordinates
-     */
-    private latLonToLocal(lat: number, lon: number, centerLat: number, centerLon: number): { x: number; z: number; } {
-        const R = 6371000; // Earth radius in meters
-        const dLat = (lat - centerLat) * Math.PI / 180;
-        const dLon = (lon - centerLon) * Math.PI / 180;
-
-        const x = dLon * R * Math.cos(centerLat * Math.PI / 180);
-        const z = -dLat * R;
-
-        return { x, z };
-    }
-
-    /**
-     * Parse building height from properties
-     */
-    private getBuildingHeight(properties: any): number {
-        // Check for 'levels' or 'building:levels' property
-        const levels = properties.levels || properties['building:levels'];
-
-        if (levels) {
-            const numLevels = typeof levels === 'string' ? parseFloat(levels) : levels;
-            if (!isNaN(numLevels) && numLevels > 0) {
-                return numLevels * this.HEIGHT_PER_LEVEL;
+    generateBuildingsFromGeoJSON(data: GeoJSON, centerLat: number, centerLon: number, heightAt: (x: number, z: number) => number = () => 0): void {
+        const scale = Math.PI / 180 * 6371000;
+        const local = ([lon, lat]: [number, number]) => ({ x: (lon - centerLon) * scale * Math.cos(centerLat * Math.PI / 180), z: -(lat - centerLat) * scale });
+        for (const feature of data.features) {
+            if (feature.geometry.type !== 'Polygon') continue;
+            const rings = feature.geometry.coordinates.map(ring => ring.map(local));
+            if (!rings[0] || rings[0].length < 3) continue;
+            const shape = new THREE.Shape();
+            const addRing = (path: THREE.Path, ring: typeof rings[number]) => {
+                path.moveTo(ring[0].x, -ring[0].z);
+                for (const point of ring.slice(1)) path.lineTo(point.x, -point.z);
+                path.closePath();
+            };
+            addRing(shape, rings[0]);
+            for (const ring of rings.slice(1)) {
+                if (ring.length < 3) continue;
+                const hole = new THREE.Path(); addRing(hole, ring); shape.holes.push(hole);
             }
+            const explicit = parseFloat(String(feature.properties.height ?? ''));
+            const levels = parseFloat(String(feature.properties['building:levels'] ?? feature.properties.levels ?? 1));
+            const height = Number.isFinite(explicit) && explicit > 0 ? explicit : (Number.isFinite(levels) && levels > 0 ? levels : 1) * 3;
+            const elevations: number[] = [];
+            // Include wall interiors, not only sparse polygon corners, when seating foundations.
+            for (const ring of rings) for (let i = 0; i < ring.length; i++) {
+                const a = ring[i], b = ring[(i + 1) % ring.length];
+                const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 5));
+                for (let j = 0; j < steps; j++) elevations.push(heightAt(a.x + (b.x - a.x) * j / steps, a.z + (b.z - a.z) * j / steps));
+            }
+            const base = Math.min(...elevations) - 0.25;
+            const roof = Math.max(...elevations) + height;
+            const geometry = new THREE.ExtrudeGeometry(shape, { depth: roof - base, bevelEnabled: false });
+            geometry.rotateX(-Math.PI / 2);
+            geometry.computeVertexNormals();
+            const building = new THREE.Mesh(geometry, this.sharedMaterial);
+            building.position.y = base;
+            building.castShadow = building.receiveShadow = true;
+            this.buildingGroup.add(building);
+            this.buildings.push(building);
+            this.collisions?.addPolygon(rings, base, roof);
         }
-
-        return this.DEFAULT_HEIGHT;
+        console.log(`Generated ${this.buildings.length} buildings`);
     }
 
-    /**
-     * Create a 3D building mesh from a polygon
-     */
-    private createBuildingFromPolygon(
-        coordinates: Array<Array<[number, number]>>,
-        height: number,
-        centerLat: number,
-        centerLon: number
-    ): THREE.Mesh | null {
-        // Polygon coordinates: first array is outer ring, others are holes
-        const outerRing = coordinates[0];
-        if (!outerRing || outerRing.length < 3) {
-            return null; // Need at least 3 points for a polygon
-        }
-
-        // Convert coordinates to local space and create a 2D shape
-        // GeoJSON Polygon coordinates are [lon, lat] format
-        const shape = new THREE.Shape();
-
-        // Convert first point: outerRing[0] is [lon, lat]
-        const [firstLon, firstLat] = outerRing[0];
-        const firstPoint = this.latLonToLocal(firstLat, firstLon, centerLat, centerLon);
-        shape.moveTo(firstPoint.x, firstPoint.z);
-
-        // Check if polygon is already closed (last point == first point, with tolerance for floating point)
-        const lastPoint = outerRing[outerRing.length - 1];
-        const tolerance = 1e-10; // Small tolerance for floating point comparison
-        const isClosed = outerRing.length > 3 &&
-            Math.abs(firstLon - lastPoint[0]) < tolerance &&
-            Math.abs(firstLat - lastPoint[1]) < tolerance;
-
-        // Process all points except the last one if the polygon is already closed
-        const endIndex = isClosed ? outerRing.length - 1 : outerRing.length;
-
-        for (let i = 1; i < endIndex; i++) {
-            // Convert each point: outerRing[i] is [lon, lat]
-            const [lon, lat] = outerRing[i];
-            const point = this.latLonToLocal(lat, lon, centerLat, centerLon);
-            shape.lineTo(point.x, point.z);
-        }
-
-        // Always explicitly close the shape to ensure it's a complete polygon
-        // Use closePath() which is more reliable than lineTo back to first point
-        shape.closePath();
-
-        // Handle holes (interior rings) if present
-        for (let holeIndex = 1; holeIndex < coordinates.length; holeIndex++) {
-            const holeRing = coordinates[holeIndex];
-            if (holeRing && holeRing.length >= 3) {
-                const hole = new THREE.Path();
-                // Convert first hole point: holeRing[0] is [lon, lat]
-                const [firstHoleLon, firstHoleLat] = holeRing[0];
-                const firstHolePoint = this.latLonToLocal(firstHoleLat, firstHoleLon, centerLat, centerLon);
-                hole.moveTo(firstHolePoint.x, firstHolePoint.z);
-
-                // Check if hole is already closed
-                const lastHolePoint = holeRing[holeRing.length - 1];
-                const holeIsClosed = holeRing.length > 3 &&
-                    firstHoleLon === lastHolePoint[0] &&
-                    firstHoleLat === lastHolePoint[1];
-                const holeEndIndex = holeIsClosed ? holeRing.length - 1 : holeRing.length;
-
-                for (let i = 1; i < holeEndIndex; i++) {
-                    // Convert each hole point: holeRing[i] is [lon, lat]
-                    const [lon, lat] = holeRing[i];
-                    const point = this.latLonToLocal(lat, lon, centerLat, centerLon);
-                    hole.lineTo(point.x, point.z);
-                }
-
-                // Always explicitly close the hole path to ensure it's complete
-                hole.closePath();
-                shape.holes.push(hole);
-            }
-        }
-
-        // Extrude the shape to create a 3D building
-        const extrudeSettings = {
-            depth: height,
-            bevelEnabled: false
-        };
-
-        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-
-        // ExtrudeGeometry creates geometry from Shape in XY plane, extruding along +Z
-        // Our Shape uses moveTo(x, z), which Shape interprets as (x, y) in its XY plane
-        // So ExtrudeGeometry creates: base vertices at (x, z, 0), top vertices at (x, z, depth)
-        // where x and z come from our Shape coordinates
-
-        // Rotate -90° around X axis to convert from XY plane (Z-up) to XZ plane (Y-up)
-        // rotateX(-90°): (x, y, z) -> (x, z, -y)
-        // Base: (x, z, 0) -> (x, 0, -z)
-        // Top: (x, z, depth) -> (x, depth, -z)
-
-        // This means the Z coordinate gets negated! To fix this, we need to negate z in the Shape
-        // OR we can negate z after rotation. Actually, let me check the rotation more carefully:
-
-        // Standard rotateX(-90°):
-        // [1    0       0   ] [x]   [x     ]
-        // [0  cos  -sin   ] [y] = [z     ]
-        // [0  sin   cos   ] [z]   [-y    ]
-        // where cos(-90°)=0, sin(-90°)=-1
-        // So: x' = x, y' = z, z' = -y
-
-        // If our Shape has (x, z) as (x, y) in ExtrudeGeometry:
-        // Base: (x, z, 0) -> after rotateX(-90°): (x, 0, -z)
-        // This negates the Z coordinate! That's why negating dLat "fixes" it - it's double-negating.
-
-        // The fix: negate z when creating the Shape, so after rotation it becomes correct
-        // OR rotate differently. Let me use rotateX(+90°) instead, which would be: (x, y, z) -> (x, -z, y)
-        // Base: (x, z, 0) -> (x, 0, z) ✓ (but y and z are swapped)
-
-        // Actually, the correct solution: since rotateX(-90°) negates Z, we should negate z in the Shape
-        // But wait, that's what changing dLat does... so maybe the issue is we need to negate z AFTER the conversion?
-
-        // Better solution: Don't negate z in latLonToLocal (keep it correct), but negate it when passing to Shape
-        // OR: Use rotateX(+90°) and swap coordinates
-
-        // Actually, let me try the simplest fix: negate z coordinate in the Shape after rotation
-        geometry.rotateX(-Math.PI / 2);
-
-        // The rotation negates z, so we need to flip it back
-        // We can do this by scaling geometry by (1, 1, -1) on Z, or by using the shape coordinates differently
-
-        // Actually, the real fix: when we create the Shape with moveTo(x, z), we need to use -z instead
-        // But that would be messy. Better: rotate +90° and adjust, OR use a different approach.
-
-        // Let's try: rotate +90° instead, which gives: (x, y, z) -> (x, -z, y)
-        // Base: (x, z, 0) -> (x, 0, z) - wait that's still wrong...
-
-        // The correct solution: The Shape needs to use coordinates in the right order
-        // Since ExtrudeGeometry uses XY plane and extrudes along Z, and we want XZ plane with Y-up,
-        // we should use Shape coordinates as (x, -z) so after rotation they become (x, z)
-
-        // Recompute normals after rotation
-        geometry.computeVertexNormals();
-
-        // Negate Z coordinates to fix the rotation issue
-        // rotateX(-90°) transforms (x, y, z) -> (x, z, -y)
-        // Since our Shape uses (x, z) as (x, y), after rotation Z gets negated
-        // We need to flip Z back to match the correct coordinate system (same as roads/trees)
-        const positions = geometry.attributes.position;
-        for (let i = 0; i < positions.count; i++) {
-            positions.setZ(i, -positions.getZ(i));
-        }
-        positions.needsUpdate = true;
-
-        const building = new THREE.Mesh(geometry, this.sharedMaterial);
-        // Position building base at ground level (y=0.01 to match roads slightly above ground)
-        building.position.y = 0.01;
-        building.castShadow = true;
-        building.receiveShadow = true;
-
-        return building;
-    }
-
-    /**
-     * Generate buildings from GeoJSON data
-     */
-    generateBuildingsFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number): void {
-        let buildingsCreated = 0;
-
-        for (const feature of geoJSON.features) {
-            // Only process Polygon geometry types
-            const geom = feature.geometry as any;
-            if (geom.type !== 'Polygon' || !geom.coordinates) {
-                continue;
-            }
-
-            const coordinates = geom.coordinates as Array<Array<[number, number]>>;
-            const height = this.getBuildingHeight(feature.properties || {});
-
-            const building = this.createBuildingFromPolygon(coordinates, height, centerLat, centerLon);
-
-            if (building) {
-                this.buildingGroup.add(building);
-                this.buildings.push(building);
-                buildingsCreated++;
-            }
-        }
-
-        console.log(`Generated ${buildingsCreated} buildings`);
-    }
-
-    /**
-     * Clear all buildings from the scene
-     */
     clear(): void {
-        // Dispose of all building meshes
-        this.buildings.forEach(building => {
-            if (building.geometry) {
-                building.geometry.dispose();
-            }
-        });
-
-        // Remove all children from the group
-        const children = [...this.buildingGroup.children];
-        children.forEach(child => {
-            this.buildingGroup.remove(child);
-        });
-
+        this.buildings.forEach(building => building.geometry.dispose());
+        this.buildingGroup.clear();
         this.buildings = [];
+    }
+
+    dispose(): void {
+        this.clear();
+        this.sharedMaterial.dispose();
+        this.scene.remove(this.buildingGroup);
     }
 }

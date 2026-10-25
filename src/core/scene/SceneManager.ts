@@ -1,11 +1,15 @@
 import * as THREE from 'three';
-import { RoadGenerator } from './RoadGenerator';
+import { CollisionWorld } from './CollisionWorld';
+import { RoadGenerator, ROAD_HEIGHT } from './RoadGenerator';
 import { TreeGenerator } from './TreeGenerator';
 import { BuildingGenerator } from './BuildingGenerator';
-import type { GeoJSON } from '@/types';
+import { ElevationTerrain, HgtTile } from './ElevationTerrain';
+import type { GeoJSON, GeoJSONFeature } from '@/types';
 import { CityManager } from '@/utils/cityManager';
 
 export class SceneManager {
+    readonly collisions = new CollisionWorld();
+    private disposed = false;
     private roadGenerator: RoadGenerator;
     private treeGenerator: TreeGenerator;
     private buildingGenerator: BuildingGenerator;
@@ -13,154 +17,160 @@ export class SceneManager {
     private centerLat: number = 0;
     private centerLon: number = 0;
     private currentCity: string = '';
-    private groundMesh: THREE.Mesh | null = null;
+    private groundGroup: THREE.Group | null = null;
+    private groundMaterial: THREE.MeshStandardMaterial | null = null;
+    private terrain: ElevationTerrain | null = null;
+    private elevationTile: HgtTile | null = null;
 
     constructor(private scene: THREE.Scene) {
-        this.roadGenerator = new RoadGenerator(scene);
+        this.roadGenerator = new RoadGenerator(scene, this.collisions);
         this.treeGenerator = new TreeGenerator(scene);
-        this.buildingGenerator = new BuildingGenerator(scene);
-        this.startPosition = new THREE.Vector3(0, 0.41, 0);
+        this.buildingGenerator = new BuildingGenerator(scene, this.collisions);
+        this.startPosition = new THREE.Vector3(0, ROAD_HEIGHT + 0.4, 0);
     }
 
-    async loadCityMap(city: string, savedPosition?: { lat: number; lon: number; y?: number; }): Promise<void> {
+    private coordinates(feature: GeoJSONFeature): Array<[number, number]> {
+        const geometry = feature.geometry;
+        if (geometry.type === 'Point') return [geometry.coordinates];
+        if (geometry.type === 'LineString') return geometry.coordinates;
+        return geometry.coordinates.flat();
+    }
+
+    private coveredData(data: GeoJSON, label: string): GeoJSON {
+        if (!this.elevationTile) return data;
+        const features = data.features.filter(feature => this.coordinates(feature).every(([lon, lat]) => {
+            if (!this.elevationTile!.covers(lat, lon)) return false;
+            const p = this.latLonToLocal(lat, lon);
+            return !this.terrain || this.terrain.contains(p.x, p.z);
+        }));
+        const omitted = data.features.length - features.length;
+        if (omitted) console.warn(`Omitted ${omitted} ${label} features outside the supplied elevation coverage.`);
+        return { ...data, features };
+    }
+
+    private async optionalData(path: string): Promise<GeoJSON | null> {
         try {
-            const cityConfig = CityManager.getCityConfig(city);
-            if (!cityConfig) {
-                throw new Error(`City config not found: ${city}`);
+            const response = await fetch(path, { signal: AbortSignal.timeout(15000) });
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) { console.warn(`Optional scenery unavailable: ${path}`, error); return null; }
+    }
+
+    async loadCityMap(city: string, savedPosition?: { lat: number; lon: number; y?: number }): Promise<void> {
+        const config = CityManager.getCityConfig(city);
+        if (!config) throw new Error(`City config not found: ${city}`);
+        this.currentCity = city;
+        this.centerLat = config.centerLat;
+        this.centerLon = config.centerLon;
+        const response = await fetch(`/data/roads/${config.file}`, { signal: AbortSignal.timeout(30000) });
+        if (!response.ok) throw new Error(`Failed to load ${config.file}: ${response.status}`);
+        let data: GeoJSON = await response.json();
+        if (this.disposed) return;
+        this.clearScene();
+        this.terrain = null;
+        this.elevationTile = null;
+        if (config.elevation) {
+            const elevationResponse = await fetch(`/data/elevation/${config.elevation.file}`, { signal: AbortSignal.timeout(60000) });
+            if (!elevationResponse.ok) throw new Error(`Failed to load elevation: ${elevationResponse.status}`);
+            const buffer = await elevationResponse.arrayBuffer();
+            if (this.disposed) return;
+            this.elevationTile = new HgtTile(buffer, config.elevation.south, config.elevation.west);
+            data = this.coveredData(data, 'road');
+            const bounds = { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity };
+            for (const feature of data.features) for (const [lon, lat] of this.coordinates(feature)) {
+                const p = this.latLonToLocal(lat, lon);
+                bounds.minX = Math.min(bounds.minX, p.x); bounds.maxX = Math.max(bounds.maxX, p.x);
+                bounds.minZ = Math.min(bounds.minZ, p.z); bounds.maxZ = Math.max(bounds.maxZ, p.z);
             }
-
-            this.currentCity = city;
-            this.centerLat = cityConfig.centerLat;
-            this.centerLon = cityConfig.centerLon;
-
-            // Load city GeoJSON data
-            const response = await fetch(`/data/roads/${cityConfig.file}`);
-            if (!response.ok) {
-                throw new Error(`Failed to load ${cityConfig.file}: ${response.status}`);
-            }
-
-            const geoJSON: GeoJSON = await response.json();
-
-            // Clear existing scene (except lights)
-            this.clearScene();
-
-            // Create ground plane
-            this.createGround();
-
-            // Generate roads from GeoJSON
-            this.roadGenerator.generateRoadsFromGeoJSON(geoJSON, this.centerLat, this.centerLon);
-
-            // Load and generate trees
-            try {
-                const treeResponse = await fetch(`/data/trees/${cityConfig.file}`);
-                if (treeResponse.ok) {
-                    const treeGeoJSON: GeoJSON = await treeResponse.json();
-                    this.treeGenerator.generateTreesFromGeoJSON(treeGeoJSON, this.centerLat, this.centerLon);
-                } else {
-                    console.log(`No tree data found for ${cityConfig.name}`);
-                }
-            } catch (error) {
-                console.warn(`Failed to load tree data for ${city}:`, error);
-            }
-
-            // Load and generate buildings
-            try {
-                const buildingResponse = await fetch(`/data/buildings/${cityConfig.file}`);
-                if (buildingResponse.ok) {
-                    const buildingGeoJSON: GeoJSON = await buildingResponse.json();
-                    this.buildingGenerator.generateBuildingsFromGeoJSON(buildingGeoJSON, this.centerLat, this.centerLon);
-                } else {
-                    console.log(`No building data found for ${cityConfig.name}`);
-                }
-            } catch (error) {
-                console.warn(`Failed to load building data for ${city}:`, error);
-            }
-
-            // Clear GeoJSON reference to allow garbage collection
-            // (The geoJSON object will be garbage collected after this scope)
-
-            // Set starting position
-            if (savedPosition) {
-                // Convert saved lat/lon position to local coordinates
-                const local = this.latLonToLocal(savedPosition.lat, savedPosition.lon);
-                this.startPosition.set(local.x, 0.41, local.z);
-                console.log(`Restored position: Lat ${savedPosition.lat.toFixed(6)}, Lon ${savedPosition.lon.toFixed(6)} -> Local (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
-            } else if (geoJSON.features.length > 0) {
-                // Use first feature coordinate
-                const firstFeature = geoJSON.features[0];
-                if (firstFeature.geometry.type === 'LineString' && firstFeature.geometry.coordinates.length > 0) {
-                    const [lon, lat] = firstFeature.geometry.coordinates[0];
-                    const local = this.latLonToLocal(lat, lon);
-                    this.startPosition.set(local.x, 0.41, local.z);
-                    console.log(`Starting position: (${local.x.toFixed(2)}, ${local.z.toFixed(2)})`);
-                }
-            }
-
-            console.log(`Loaded ${geoJSON.features.length} road features from ${cityConfig.name}`);
-        } catch (error) {
-            console.error(`Failed to load ${city} data:`, error);
-            throw error;
+            if (!Number.isFinite(bounds.minX)) throw new Error('No city roads overlap the supplied HGT tile.');
+            this.terrain = new ElevationTerrain(this.elevationTile, this.centerLat, this.centerLon, bounds);
+            console.log(`Elevation enabled: ${this.terrain.columns} x ${this.terrain.rows} terrain grid; reference ${this.terrain.referenceHeight.toFixed(1)} m AMSL`);
         }
+        this.roadGenerator.setTerrain(this.terrain);
+        this.roadGenerator.generateRoadsFromGeoJSON(data, this.centerLat, this.centerLon);
+        this.collisions.setBounds(this.terrain?.bounds ?? null);
+        if (!this.roadGenerator.getRoads().length) throw new Error('This city has no drivable roads.');
+        this.createGround();
+        const [treeData, buildingData] = await Promise.all([
+            this.optionalData(`/data/trees/${config.file}`), this.optionalData(`/data/buildings/${config.file}`)
+        ]);
+        if (this.disposed) return;
+        const heightAt = (x: number, z: number) => this.terrain?.sample(x, z).height ?? 0;
+        if (treeData) {
+            const trees = this.coveredData(treeData, 'tree');
+            this.treeGenerator.generateTreesFromGeoJSON(trees, this.centerLat, this.centerLon, heightAt);
+            for (const feature of trees.features) if (feature.geometry.type === 'Point') {
+                const [lon, lat] = feature.geometry.coordinates;
+                const p = this.latLonToLocal(lat, lon);
+                this.collisions.addTrunk(p, 0.25, heightAt(p.x, p.z));
+            }
+        }
+        if (buildingData) this.buildingGenerator.generateBuildingsFromGeoJSON(
+            this.coveredData(buildingData, 'building'), this.centerLat, this.centerLon, heightAt);
+        if (savedPosition) {
+            const local = this.latLonToLocal(savedPosition.lat, savedPosition.lon);
+            if (!this.terrain || this.terrain.contains(local.x, local.z)) this.startPosition.set(local.x, heightAt(local.x, local.z) + ROAD_HEIGHT + 0.4, local.z);
+            else this.startPosition.copy(this.roadGenerator.getSpawnPosition());
+        } else this.startPosition.copy(this.roadGenerator.getSpawnPosition());
+        const spawn = { x: this.startPosition.x, z: this.startPosition.z, yaw: 0, vx: 0, vz: 0 };
+        this.collisions.resolve(spawn, this.startPosition.y);
+        this.startPosition.set(spawn.x, this.getRoadState(spawn.x, spawn.z, this.startPosition.y).height + 0.4, spawn.z);
     }
 
     private clearScene(): void {
-        // Dispose ground mesh if it exists
-        if (this.groundMesh) {
-            if (this.groundMesh.geometry) {
-                this.groundMesh.geometry.dispose();
-            }
-            if (this.groundMesh.material instanceof THREE.Material) {
-                this.groundMesh.material.dispose();
-            }
-            this.scene.remove(this.groundMesh);
-            this.groundMesh = null;
+        this.collisions.clear();
+        if (this.groundGroup) {
+            this.groundGroup.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
+            this.scene.remove(this.groundGroup);
+            this.groundGroup = null;
         }
-
-        // Clear road groups instead of removing them (they're needed by RoadGenerator)
-        // Clear the road generator's groups
+        this.groundMaterial?.dispose();
+        this.groundMaterial = null;
         this.roadGenerator.clear();
-
-        // Clear trees
         this.treeGenerator.clear();
-
-        // Clear buildings
         this.buildingGenerator.clear();
-
-        // Remove other meshes and groups, but keep lights, camera, road groups, tree groups, and building groups
-        const objectsToRemove: THREE.Object3D[] = [];
-        this.scene.children.forEach((child) => {
-            // Keep lights, camera, road groups, tree groups, and building groups
-            if (!(child instanceof THREE.Light) &&
-                !(child instanceof THREE.Camera) &&
-                !(child instanceof THREE.Group && (child.userData.isRoadGroup || child.userData.isTreeGroup || child.userData.isBuildingGroup))) {
-                objectsToRemove.push(child);
-            }
-        });
-        objectsToRemove.forEach((obj) => {
-            this.scene.remove(obj);
-        });
     }
 
     private createGround(): void {
-        // Create a much larger ground plane to ensure it covers all roads
-        const groundSize = 50000; // 50km x 50km
-        const groundGeometry = new THREE.PlaneGeometry(groundSize, groundSize);
-        const groundMaterial = new THREE.MeshStandardMaterial({
-            color: new THREE.Color(0.17, 1, 0.23), // Green grass color
-            roughness: 0.8,
-            metalness: 0,
+        this.groundMaterial = new THREE.MeshStandardMaterial({
+            color: 0x36b34a, roughness: 0.9, metalness: 0,
+            polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2
         });
-        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
-
-        // Rotate to lay flat on XZ plane (Y is up)
-        const { x, z } = this.latLonToLocal(this.centerLat, this.centerLon);
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.set(x, -1, z); // Center at origin
-        ground.receiveShadow = true;
-        // Ensure ground is not culled
-        ground.frustumCulled = false;
-        this.groundMesh = ground; // Store reference for disposal
-        this.scene.add(ground);
+        this.groundGroup = new THREE.Group();
+        this.scene.add(this.groundGroup);
+        if (!this.terrain) {
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(50000, 50000), this.groundMaterial);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.receiveShadow = true;
+            this.groundGroup.add(mesh);
+            return;
+        }
+        const terrain = this.terrain;
+        // Small chunks allow normal frustum culling instead of drawing a whole island per frame.
+        const chunk = 32;
+        for (let row = 0; row < terrain.rows - 1; row += chunk) for (let col = 0; col < terrain.columns - 1; col += chunk) {
+            const width = Math.min(chunk, terrain.columns - col - 1), depth = Math.min(chunk, terrain.rows - row - 1);
+            const positions: number[] = [], normals: number[] = [], indices: number[] = [];
+            for (let j = 0; j <= depth; j++) for (let i = 0; i <= width; i++) {
+                const c = col + i, r = row + j;
+                const x = terrain.bounds.minX + c * terrain.stepX, z = terrain.bounds.minZ + r * terrain.stepZ;
+                positions.push(x, terrain.heights[r * terrain.columns + c], z);
+                const nx = (terrain.sample(x + 1, z).height - terrain.sample(x - 1, z).height) / 2;
+                const nz = (terrain.sample(x, z + 1).height - terrain.sample(x, z - 1).height) / 2;
+                const n = new THREE.Vector3(-nx, 1, -nz).normalize(); normals.push(n.x, n.y, n.z);
+            }
+            for (let j = 0; j < depth; j++) for (let i = 0; i < width; i++) {
+                const a = j * (width + 1) + i, b = a + 1, c = a + width + 1, d = c + 1;
+                indices.push(a, c, b, b, c, d);
+            }
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            geometry.setIndex(indices); geometry.computeBoundingSphere();
+            const mesh = new THREE.Mesh(geometry, this.groundMaterial);
+            mesh.receiveShadow = true;
+            this.groundGroup.add(mesh);
+        }
     }
 
     private latLonToLocal(lat: number, lon: number): { x: number; z: number; } {
@@ -204,10 +214,25 @@ export class SceneManager {
      * Get the center position of the map (default spawn location when no saved position)
      */
     getCenterPosition(): THREE.Vector3 {
-        // Convert centerLat/centerLon to local coordinates
-        // This ensures the center position matches where the ground is positioned
-        const local = this.latLonToLocal(this.centerLat, this.centerLon);
-        return new THREE.Vector3(local.x, 0.41, local.z);
+        const pos = this.roadGenerator.getSpawnPosition();
+        const body = { x: pos.x, z: pos.z, yaw: 0, vx: 0, vz: 0 };
+        this.collisions.resolve(body, pos.y);
+        return new THREE.Vector3(body.x, this.getRoadState(body.x, body.z, pos.y).height + 0.4, body.z);
+    }
+
+    getRoadState(x: number, z: number, y: number) {
+        return this.roadGenerator.getRoadState(x, z, y);
+    }
+
+    dispose(): void {
+        this.disposed = true;
+        this.clearScene();
+        this.roadGenerator.dispose();
+        this.treeGenerator.dispose();
+        this.buildingGenerator.dispose();
+        this.terrain = null;
+        this.elevationTile = null;
+        this.roadGenerator.setTerrain(null);
     }
 
     getCurrentCity(): string {

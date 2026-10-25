@@ -19,11 +19,8 @@ export class CarControls {
     private soundManager: SoundManager;
     private engineSoundGenerator: EngineSoundGenerator;
     private roadSoundGenerator: RoadSoundGenerator;
-    private currentAcceleratingSound: HTMLAudioElement | null = null;
-    private currentStartupSound: HTMLAudioElement | null = null;
-    private previousWasAccelerating: boolean = false;
-    private previousForwardPressedAtStandstill: boolean = false;
-
+    private focused = true;
+    private soundCooldown = 0;
     private currentSurface: string = 'asphalt';
 
     private throttleInput: number = 0;
@@ -32,10 +29,8 @@ export class CarControls {
 
     private readonly throttleRiseRate = 3.5;
     private readonly throttleFallRate = 5.0;
-    private readonly brakeRiseRate = 6.0;
-    private readonly brakeFallRate = 8.0;
-    private readonly steerRate = 6.0;
-    private readonly steerReturnRate = 8.0;
+    private readonly steerRate = 14.0;
+    private readonly steerReturnRate = 18.0;
 
     private mouse: MouseState = {
         x: 0,
@@ -63,6 +58,10 @@ export class CarControls {
     private readonly cameraRotateSpeed = 0.005;
     private readonly cameraPitchSpeed = 0.004;
     private readonly cameraSmoothRate = 10;
+    private firstPerson = false;
+    private firstPersonYaw = 0;
+    private firstPersonYawTarget = 0;
+    private readonly firstPersonYawLimit = THREE.MathUtils.degToRad(80);
 
     constructor(
         private car: Car,
@@ -83,21 +82,14 @@ export class CarControls {
         this.roadSoundGenerator = new RoadSoundGenerator();
 
         this.setupEventListeners();
-        this.initSounds();
-    }
 
-    private async initSounds(): Promise<void> {
-        // Load sound files from public/sounds/ directory
-        try {
-            await this.soundManager.loadSound('startup', '/sounds/startup.wav');
-            await this.soundManager.loadSound('accelerating', '/sounds/accelerating.wav');
-        } catch (error) {
-            console.warn('Failed to load some sound files:', error);
-        }
     }
 
     private setupEventListeners(): void {
         // Keyboard controls
+        window.addEventListener('blur', this.handleBlur);
+        window.addEventListener('focus', this.handleFocus);
+        document.addEventListener('visibilitychange', this.handleVisibility);
         document.addEventListener('keydown', this.keyDownHandler);
         document.addEventListener('keyup', this.keyUpHandler);
 
@@ -113,6 +105,7 @@ export class CarControls {
 
     private handleWheel(e: WheelEvent): void {
         e.preventDefault();
+        if (this.firstPerson) return;
         const zoomDelta = e.deltaY > 0 ? 1.5 : -1.5;
         this.cameraZoomDistance = Math.max(this.minZoom, Math.min(this.maxZoom, this.cameraZoomDistance + zoomDelta));
     }
@@ -122,7 +115,18 @@ export class CarControls {
     }
 
     private handleKeyDown(e: KeyboardEvent): void {
+        if (this.soundManager.getEnabled() && ['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
+            this.engineSoundGenerator.start();
+            this.roadSoundGenerator.start();
+        }
         switch (e.key.toLowerCase()) {
+            case 'v':
+                e.preventDefault();
+                if (!e.repeat) {
+                    this.firstPerson = !this.firstPerson;
+                    this.firstPersonYaw = this.firstPersonYawTarget = 0;
+                }
+                break;
             case 'w':
             case 'arrowup':
                 this.keys.forward = true;
@@ -203,9 +207,16 @@ export class CarControls {
             const deltaX = e.clientX - this.mouse.x;
             const deltaY = e.clientY - this.mouse.y;
 
-            // Accumulate camera angle
-            this.cameraAngleTarget -= deltaX * this.cameraRotateSpeed;
-            this.cameraPitchTarget = Math.max(this.minPitch, Math.min(this.maxPitch, this.cameraPitchTarget - deltaY * this.cameraPitchSpeed));
+            if (this.firstPerson) {
+                this.firstPersonYawTarget = THREE.MathUtils.clamp(
+                    this.firstPersonYawTarget - deltaX * this.cameraRotateSpeed,
+                    -this.firstPersonYawLimit,
+                    this.firstPersonYawLimit
+                );
+            } else {
+                this.cameraAngleTarget -= deltaX * this.cameraRotateSpeed;
+                this.cameraPitchTarget = Math.max(this.minPitch, Math.min(this.maxPitch, this.cameraPitchTarget - deltaY * this.cameraPitchSpeed));
+            }
 
             this.mouse.x = e.clientX;
             this.mouse.y = e.clientY;
@@ -220,6 +231,14 @@ export class CarControls {
         return this.cameraPitch;
     }
 
+    isFirstPerson(): boolean {
+        return this.firstPerson;
+    }
+
+    getFirstPersonYaw(): number {
+        return this.firstPersonYaw;
+    }
+
     setRoadSurface(surface: string): void {
         this.currentSurface = surface || 'asphalt';
     }
@@ -228,48 +247,31 @@ export class CarControls {
         // Smooth camera angles to reduce jank
         this.cameraAngle = THREE.MathUtils.damp(this.cameraAngle, this.cameraAngleTarget, this.cameraSmoothRate, delta);
         this.cameraPitch = THREE.MathUtils.damp(this.cameraPitch, this.cameraPitchTarget, this.cameraSmoothRate, delta);
-        // Check if startup sound is still playing - if so, prevent movement
-        const isStartupPlaying = this.currentStartupSound &&
-            !this.currentStartupSound.paused &&
-            !this.currentStartupSound.ended &&
-            this.currentStartupSound.currentTime < this.currentStartupSound.duration;
-
+        this.firstPersonYaw = THREE.MathUtils.damp(this.firstPersonYaw, this.firstPersonYawTarget, this.cameraSmoothRate, delta);
         // Throttle with smoother input response
+        const speed = this.car.getSpeed();
+        const changingDirection = (this.keys.backward && speed > 1) || (this.keys.forward && speed < -1);
         let targetThrottle = 0;
-        if (!isStartupPlaying) {
+        if (this.focused && !changingDirection) {
             if (this.keys.forward) {
                 targetThrottle = 1;
             } else if (this.keys.backward) {
-                targetThrottle = -0.6; // Reverse throttle
+                targetThrottle = -1; // Reverse throttle
             }
         }
 
         // Brake input (separate from throttle)
-        const targetBrake = this.keys.brake ? 1 : 0;
+        const targetBrake = this.keys.brake || changingDirection ? 1 : 0;
 
         // Smooth throttle and brake
         const throttleRate = targetThrottle > this.throttleInput ? this.throttleRiseRate : this.throttleFallRate;
         this.throttleInput = THREE.MathUtils.damp(this.throttleInput, targetThrottle, throttleRate, delta);
-        const brakeRate = targetBrake > this.brakeInput ? this.brakeRiseRate : this.brakeFallRate;
-        this.brakeInput = THREE.MathUtils.damp(this.brakeInput, targetBrake, brakeRate, delta);
+        this.brakeInput = targetBrake;
 
         // Steering input (speed-dependent)
         const rawSteer = (this.keys.left ? 1 : 0) + (this.keys.right ? -1 : 0);
-        const currentSpeed = Math.abs(this.car.getSpeed());
 
-        const fullSteerSpeed = 20; // km/h where max steering is still allowed
-        const maxSteerSpeed = 120; // km/h where steering is most limited
-        const minSteerFactor = 0.2;
-        let speedFactor = 1;
-        if (currentSpeed > fullSteerSpeed) {
-            const normalizedSpeed = THREE.MathUtils.clamp(
-                (currentSpeed - fullSteerSpeed) / (maxSteerSpeed - fullSteerSpeed),
-                0,
-                1
-            );
-            speedFactor = Math.max(minSteerFactor, Math.pow(1 - normalizedSpeed, 1.5));
-        }
-        const targetSteer = rawSteer * speedFactor;
+        const targetSteer = rawSteer;
         const steerRate = Math.abs(targetSteer) > Math.abs(this.steeringInput) ? this.steerRate : this.steerReturnRate;
         this.steeringInput = THREE.MathUtils.damp(this.steeringInput, targetSteer, steerRate, delta);
 
@@ -281,111 +283,56 @@ export class CarControls {
         this.car.setHandbrake(this.keys.handbrake);
 
         // Boost
-        const wasBoosting = this.car.isBoostActive();
         this.car.setBoost(this.keys.boost && this.car.getBoostAmount() > 0);
 
-        // Sound effects for acceleration
-        const isAtStandstill = currentSpeed < 0.5;
-        const throttleAmount = Math.max(0, this.throttleInput);
-        const isAccelerating = throttleAmount > 0.1 && !this.car.isBoostActive();
-
-        // Play startup sound when at standstill and gas is pressed (only once when key is first pressed)
-        const forwardPressedAtStandstill = isAtStandstill && this.keys.forward;
-        if (forwardPressedAtStandstill && !this.previousForwardPressedAtStandstill) {
-            // Stop any existing startup sound
-            if (this.currentStartupSound) {
-                this.currentStartupSound.pause();
-                this.currentStartupSound.currentTime = 0;
-            }
-            // Play startup sound and store reference
-            this.currentStartupSound = this.soundManager.play('startup', 0.7, false);
-
-            // Clean up startup sound reference when it finishes
-            if (this.currentStartupSound) {
-                this.currentStartupSound.addEventListener('ended', () => {
-                    this.currentStartupSound = null;
-                });
-            }
-        }
-        this.previousForwardPressedAtStandstill = forwardPressedAtStandstill;
-
-        // Sync engine sound with mute state
-        const isSoundEnabled = this.soundManager.getEnabled();
-        this.engineSoundGenerator.setEnabled(isSoundEnabled);
-
-        // Update procedural engine sound
-        // Wait for startup sound to finish before starting engine sound
-        if (!isStartupPlaying && isSoundEnabled) {
-            if (isAccelerating || currentSpeed > 0.1) {
-                // Start engine sound if not already playing
-                if (!this.previousWasAccelerating) {
-                    this.engineSoundGenerator.start();
-                }
-                // Update engine sound based on speed and acceleration
-                this.engineSoundGenerator.update(currentSpeed, throttleAmount, isAccelerating);
-                this.previousWasAccelerating = true;
-            } else {
-                // Stop engine sound when car is stopped and not accelerating
-                if (this.previousWasAccelerating) {
-                    this.engineSoundGenerator.stop();
-                }
-                this.previousWasAccelerating = false;
-            }
-        } else {
-            // Stop engine sound while startup is playing or when muted
-            if (this.previousWasAccelerating) {
-                this.engineSoundGenerator.stop();
-                this.previousWasAccelerating = false;
-            }
-        }
-
-        // Road noise based on surface type
-        this.roadSoundGenerator.setEnabled(isSoundEnabled);
-        if (!isStartupPlaying && isSoundEnabled) {
-            this.roadSoundGenerator.update(currentSpeed, this.currentSurface);
-        } else {
-            this.roadSoundGenerator.stop();
-        }
-
-        // Play boost sound effect if boost state changed
-        if (this.car.isBoostActive() && !wasBoosting) {
-            // Stop accelerating sound when boost starts
-            if (this.currentAcceleratingSound) {
-                this.currentAcceleratingSound.pause();
-                this.currentAcceleratingSound.currentTime = 0;
-                this.currentAcceleratingSound = null;
-            }
-            // this.soundManager.play('boost', 0.8, true)
-        } else if (!this.car.isBoostActive() && wasBoosting) {
-            // this.soundManager.stop('boost')
-        }
-
-        // Play drift sound effect if handbrake state changed
-        if (this.keys.handbrake) {
-            // this.soundManager.play('drift', 0.6, true)
-        }
-
-        // Engine sound (would play based on speed)
-        // const speedRatio = Math.abs(this.car.getSpeed()) / this.car.maxSpeed
-        // this.soundManager.play('engine', 0.3 + speedRatio * 0.4, true)
-
-        // Update car physics
-        this.car.update(delta);
     }
 
-    dispose(): void {
-        // Stop any playing sounds
-        if (this.currentAcceleratingSound) {
-            this.currentAcceleratingSound.pause();
-            this.currentAcceleratingSound.currentTime = 0;
-            this.currentAcceleratingSound = null;
+    updateAudio(delta: number): void {
+        this.soundCooldown = Math.max(0, this.soundCooldown - delta);
+        const enabled = this.soundManager.getEnabled() && this.focused;
+        this.engineSoundGenerator.setEnabled(enabled);
+        this.roadSoundGenerator.setEnabled(enabled);
+        const impact = this.car.consumeImpact();
+        if (!enabled) return;
+        const speed = Math.abs(this.car.getSpeed());
+        const throttle = Math.abs(this.throttleInput);
+        this.engineSoundGenerator.start();
+        this.engineSoundGenerator.update(speed, throttle, throttle > 0.1, delta);
+        this.roadSoundGenerator.update(speed, this.currentSurface);
+        if (impact > 1.5 && this.soundCooldown === 0) {
+            this.roadSoundGenerator.playImpact(Math.min(1, impact / 15));
+            this.soundCooldown = 0.18;
         }
-        if (this.currentStartupSound) {
-            this.currentStartupSound.pause();
-            this.currentStartupSound.currentTime = 0;
-            this.currentStartupSound = null;
-        }
+        // Dead zone keeps ordinary cornering quiet; loose surfaces crunch rather than squeal.
+        const tireSlip = Math.max(0, this.car.physics.slip - 1.2);
+        const onPavement = ['asphalt', 'concrete', 'paved', 'cobblestone'].includes(this.currentSurface);
+        this.roadSoundGenerator.setSkid(onPavement ? Math.min(1, tireSlip / 5) : 0, speed);
+    }
 
+    resetInput(): void {
+        for (const key of Object.keys(this.keys) as Array<keyof InputState>) this.keys[key] = false;
+        this.throttleInput = this.brakeInput = this.steeringInput = 0;
+        this.mouse.isDown = false;
+        this.car.setThrottle(0);
+        this.car.setBrake(0);
+        this.car.setSteering(0);
+        this.car.setBoost(false);
+        this.car.setHandbrake(false);
+    }
+
+    private handleBlur = (): void => {
+        this.focused = false;
+        this.resetInput();
+        this.engineSoundGenerator.stop();
+        this.roadSoundGenerator.stop();
+    };
+    private handleFocus = (): void => { this.focused = !document.hidden; };
+    private handleVisibility = (): void => {
+        if (document.hidden) this.handleBlur();
+        else this.handleFocus();
+    };
+
+    dispose(): void {
         // Stop and dispose procedural engine sound
         if (this.engineSoundGenerator) {
             this.engineSoundGenerator.dispose();
@@ -394,6 +341,9 @@ export class CarControls {
             this.roadSoundGenerator.dispose();
         }
 
+        window.removeEventListener('blur', this.handleBlur);
+        window.removeEventListener('focus', this.handleFocus);
+        document.removeEventListener('visibilitychange', this.handleVisibility);
         document.removeEventListener('keydown', this.keyDownHandler);
         document.removeEventListener('keyup', this.keyUpHandler);
         document.removeEventListener('mouseup', this.mouseUpHandler);

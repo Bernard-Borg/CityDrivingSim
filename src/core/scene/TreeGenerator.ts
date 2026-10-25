@@ -80,7 +80,7 @@ export class TreeGenerator {
     /**
      * Generate trees from GeoJSON data
      */
-    generateTreesFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number): void {
+    generateTreesFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number, heightAt: (x: number, z: number) => number = () => 0): void {
         let treesCreated = 0;
 
         for (const feature of geoJSON.features) {
@@ -92,7 +92,7 @@ export class TreeGenerator {
 
                 // Create tree model
                 const tree = this.createTreeModel();
-                tree.position.set(local.x, 0, local.z);
+                tree.position.set(local.x, heightAt(local.x, local.z), local.z);
 
                 this.treeGroup.add(tree);
                 this.trees.push(tree);
@@ -134,4 +134,10 @@ export class TreeGenerator {
             }
         });
     }
+    dispose(): void {
+        this.clear();
+        Object.values(this.sharedMaterials).forEach(material => material.dispose());
+        this.scene.remove(this.treeGroup);
+    }
+
 }

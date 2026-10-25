@@ -1,14 +1,69 @@
 import * as THREE from 'three';
-import type { GeoJSON, Feature } from '@/types';
+import { ElevationTerrain } from './ElevationTerrain';
+import type { SurfaceSample } from './ElevationTerrain';
+import type { GeoJSON } from '@/types';
+import { SpatialGrid, closestPoint, CollisionWorld } from './CollisionWorld';
+
+export const ROAD_HEIGHT = 0.06;
+interface RoadSegment { a: THREE.Vector3; b: THREE.Vector3; halfWidth: number; surface: string; }
+
+class TerrainRoadCurve extends THREE.Curve<THREE.Vector3> {
+    constructor(private path: THREE.CatmullRomCurve3, private height: (x: number, z: number) => number) { super(); }
+    getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
+        this.path.getPoint(t, target);
+        target.y = this.height(target.x, target.z);
+        return target;
+    }
+}
 
 export class RoadGenerator {
+    private terrain: ElevationTerrain | null = null;
+    setTerrain(terrain: ElevationTerrain | null): void { this.terrain = terrain; }
+    private groundSample(x: number, z: number): SurfaceSample {
+        return this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
+    }
+    private roadHeight(x: number, z: number): number { return this.groundSample(x, z).height + ROAD_HEIGHT; }
+
+    private drapeSurface(geometry: THREE.BufferGeometry, clearance: number): void {
+        if (!this.terrain) return;
+        const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv');
+        const index = geometry.getIndex();
+        const positions: number[] = [], uvs: number[] = [];
+        const count = index ? index.count : position.count;
+        for (let i = 0; i < count; i += 3) {
+            const ids = [0, 1, 2].map(j => index ? index.getX(i + j) : i + j);
+            const tri = ids.map(id => ({ x: position.getX(id), z: position.getZ(id) }));
+            const [a, b, c] = tri;
+            const det = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
+            if (Math.abs(det) < 1e-10) continue;
+            for (const poly of this.terrain.cutTriangle(tri)) {
+                for (let j = 1; j < poly.length - 1; j++) for (const p of [poly[0], poly[j], poly[j + 1]]) {
+                    positions.push(p.x, this.terrain.sample(p.x, p.z).height + clearance, p.z);
+                    if (uv) {
+                        const v = ((p.x - a.x) * (c.z - a.z) - (p.z - a.z) * (c.x - a.x)) / det;
+                        const w = ((b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x)) / det;
+                        const u = 1 - v - w;
+                        uvs.push(uv.getX(ids[0]) * u + uv.getX(ids[1]) * v + uv.getX(ids[2]) * w,
+                            uv.getY(ids[0]) * u + uv.getY(ids[1]) * v + uv.getY(ids[2]) * w);
+                    }
+                }
+            }
+        }
+        geometry.setIndex(null);
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        if (uv) geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.computeVertexNormals();
+        geometry.computeBoundingSphere();
+    }
+
     private roads: THREE.Mesh[] = [];
     private roadGroup: THREE.Group;
     private labelsGroup: THREE.Group;
     private tunnelGroup: THREE.Group;
     private labelTextures: THREE.CanvasTexture[] = [];
     private roadSurfaceSamples: Array<{ points: THREE.Vector3[]; halfWidth: number; surface: string; }> = [];
-    private readonly surfaceSampleSpacing = 5; // meters between surface samples
+    private surfaceGrid = new SpatialGrid<RoadSegment>();
+    private readonly surfaceSampleSpacing = 2; // meters between surface samples
 
     // Shared materials to avoid creating duplicates
     private sharedMaterials = {
@@ -16,24 +71,36 @@ export class RoadGenerator {
             color: 0x666666,
             roughness: 0.9,
             metalness: 0.1,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2,
             side: THREE.DoubleSide
         }),
         tunnelMaterial: new THREE.MeshStandardMaterial({
             color: 0x444444,
             roughness: 0.9,
             metalness: 0.1,
+            polygonOffset: true,
+            polygonOffsetFactor: -2,
+            polygonOffsetUnits: -2,
             side: THREE.DoubleSide
         }),
         edgeLineMaterial: new THREE.MeshStandardMaterial({
             color: 0xFFFF00,
             emissive: 0xFFFF00,
             emissiveIntensity: 0.5,
+            polygonOffset: true,
+            polygonOffsetFactor: -4,
+            polygonOffsetUnits: -4,
             side: THREE.DoubleSide
         }),
         laneDividerMaterial: new THREE.MeshStandardMaterial({
             color: 0xFFFFFF,
             emissive: 0xFFFFFF,
             emissiveIntensity: 0.3,
+            polygonOffset: true,
+            polygonOffsetFactor: -4,
+            polygonOffsetUnits: -4,
             side: THREE.DoubleSide
         }),
         ceilingMaterial: new THREE.MeshStandardMaterial({
@@ -44,7 +111,7 @@ export class RoadGenerator {
         })
     };
 
-    constructor(private scene: THREE.Scene) {
+    constructor(private scene: THREE.Scene, private collisions?: CollisionWorld) {
         this.roadGroup = new THREE.Group();
         this.labelsGroup = new THREE.Group();
         this.tunnelGroup = new THREE.Group();
@@ -121,6 +188,7 @@ export class RoadGenerator {
 
         this.roads = [];
         this.roadSurfaceSamples = [];
+        this.surfaceGrid.clear();
     }
 
     /**
@@ -137,9 +205,9 @@ export class RoadGenerator {
         let roadsCreated = 0;
         let roadsSkipped = 0;
 
-        geoJSON.features.forEach((feature: Feature) => {
+        geoJSON.features.forEach((feature) => {
             if (feature.geometry.type === 'LineString' && feature.properties.highway) {
-                const highwayType = feature.properties.highway;
+                const highwayType = String(feature.properties.highway);
 
                 // Skip service roads and footpaths for performance
                 if (highwayType === 'service' ||
@@ -164,10 +232,10 @@ export class RoadGenerator {
 
                 // Check if this is a tunnel or bridge
                 const isTunnel = feature.properties.tunnel === 'yes' || feature.properties.tunnel === 'building_passage';
-                const layer = feature.properties.layer ? parseInt(feature.properties.layer, 10) : 0;
+                const layer = feature.properties.layer ? parseInt(String(feature.properties.layer), 10) : 0;
 
                 // Parse lanes count (default to 1 if not specified)
-                const lanesCount = feature.properties.lanes ? parseInt(feature.properties.lanes, 10) : 1;
+                const lanesCount = feature.properties.lanes ? parseInt(String(feature.properties.lanes), 10) : 1;
 
                 // Determine surface type (default to asphalt)
                 const surface = typeof feature.properties.surface === 'string'
@@ -175,7 +243,7 @@ export class RoadGenerator {
                     : 'asphalt';
 
                 // Create road from points
-                this.createRoadFromPoints(points, feature.properties.highway, feature.properties.name, isTunnel, layer, lanesCount, surface);
+                this.createRoadFromPoints(points, highwayType, typeof feature.properties.name === 'string' ? feature.properties.name : undefined, isTunnel, layer, lanesCount, surface);
                 roadsCreated++;
             } else {
                 roadsSkipped++;
@@ -212,7 +280,7 @@ export class RoadGenerator {
         surface: string = 'asphalt'
     ): void {
         const roadWidth = this.getRoadWidth(highwayType, lanesCount);
-        const roadY = 0.01;
+        const roadY = ROAD_HEIGHT;
 
         if (points.length < 2) return;
 
@@ -221,7 +289,7 @@ export class RoadGenerator {
 
         // Create a smooth curve through all points using CatmullRom spline
         // This automatically handles smooth transitions between segments
-        const curve = new THREE.CatmullRomCurve3(curvePoints, false, 'centripetal');
+        const curve = new TerrainRoadCurve(new THREE.CatmullRomCurve3(curvePoints, false, 'centripetal'), (x, z) => this.roadHeight(x, z));
 
         // Get total curve length
         const curveLength = curve.getLength();
@@ -266,50 +334,70 @@ export class RoadGenerator {
      * Store simplified surface samples along a curve for surface lookup
      */
     private storeSurfaceSamples(
-        curve: THREE.CatmullRomCurve3,
+        curve: THREE.Curve<THREE.Vector3>,
         roadWidth: number,
         curveLength: number,
         surface: string
     ): void {
         const sampleCount = Math.max(2, Math.ceil(curveLength / this.surfaceSampleSpacing));
         const points = curve.getPoints(sampleCount);
-        this.roadSurfaceSamples.push({
-            points,
-            halfWidth: roadWidth * 0.5,
-            surface
-        });
+        this.roadSurfaceSamples.push({ points, halfWidth: roadWidth * 0.5, surface });
+        for (let i = 1; i < points.length; i++) {
+            const segment = { a: points[i - 1], b: points[i], halfWidth: roadWidth * 0.5, surface };
+            this.surfaceGrid.insert(segment,
+                Math.min(segment.a.x, segment.b.x) - segment.halfWidth,
+                Math.min(segment.a.z, segment.b.z) - segment.halfWidth,
+                Math.max(segment.a.x, segment.b.x) + segment.halfWidth,
+                Math.max(segment.a.z, segment.b.z) + segment.halfWidth);
+        }
     }
 
     /**
      * Get the road surface type at a given world position
      */
     getSurfaceAtPosition(position: THREE.Vector3): string {
-        let closestSurface = 'asphalt';
-        let closestDistance = Infinity;
+        return this.getRoadState(position.x, position.z, position.y).surface;
+    }
 
-        for (const road of this.roadSurfaceSamples) {
-            for (const point of road.points) {
-                const dx = position.x - point.x;
-                const dz = position.z - point.z;
-                const dist = Math.sqrt(dx * dx + dz * dz);
-                if (dist <= road.halfWidth && dist < closestDistance) {
-                    closestDistance = dist;
-                    closestSurface = road.surface;
-                    if (closestDistance < 1) {
-                        return closestSurface;
-                    }
-                }
-            }
+    getRoadState(x: number, z: number, y: number): SurfaceSample & { surface: string; grip: number } {
+        let best = Infinity;
+        const ground = this.groundSample(x, z);
+        let result = { ...ground, surface: 'ground', grip: 0.55 };
+        for (const road of this.surfaceGrid.at(x, z)) {
+            const q = closestPoint({ x, z }, road.a, road.b);
+            const distance = Math.hypot(x - q.x, z - q.z);
+            if (distance > road.halfWidth) continue;
+            const height = ground.height + ROAD_HEIGHT;
+            const score = distance + Math.abs(y - 0.4 - height) * 2;
+            if (score >= best) continue;
+            best = score;
+            const grip = ['gravel', 'dirt', 'ground', 'sand'].includes(road.surface) ? 0.6 : road.surface === 'cobblestone' ? 0.8 : 1;
+            result = { ...ground, height, surface: road.surface, grip };
         }
+        return result;
+    }
 
-        return closestSurface;
+    getSpawnPosition(): THREE.Vector3 {
+        let closest: THREE.Vector3 | null = null;
+        let distance = Infinity;
+        for (const road of this.roadSurfaceSamples) for (const point of road.points) {
+            const d = point.x * point.x + point.z * point.z;
+            if (d < distance) { distance = d; closest = point; }
+        }
+        return closest ? closest.clone().add(new THREE.Vector3(0, 0.4, 0)) : new THREE.Vector3(0, ROAD_HEIGHT + 0.4, 0);
+    }
+
+    dispose(): void {
+        this.clear();
+        Object.values(this.sharedMaterials).forEach(material => material.dispose());
+        for (const group of [this.roadGroup, this.labelsGroup, this.tunnelGroup]) this.scene.remove(group);
     }
 
     /**
      * Create a single road mesh along a curve
      */
     private createRoadMeshAlongCurve(
-        curve: THREE.CatmullRomCurve3,
+        curve: THREE.Curve<THREE.Vector3>,
         roadWidth: number,
         numSegments: number,
         isTunnel: boolean = false
@@ -375,12 +463,13 @@ export class RoadGenerator {
         geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
 
         // Compute normals from geometry (don't set manually, let Three.js calculate them)
-        geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+        geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
         geometry.computeVertexNormals();
 
         // Use shared material to avoid memory leaks
         const roadMaterial = isTunnel ? this.sharedMaterials.tunnelMaterial : this.sharedMaterials.roadMaterial;
 
+        this.drapeSurface(geometry, ROAD_HEIGHT);
         const roadMesh = new THREE.Mesh(geometry, roadMaterial);
         roadMesh.receiveShadow = true;
 
@@ -397,14 +486,14 @@ export class RoadGenerator {
      * Create 3D tunnel structure (walls and ceiling) above the road along a curve
      */
     private createTunnelStructureAlongCurve(
-        curve: THREE.CatmullRomCurve3,
+        curve: THREE.Curve<THREE.Vector3>,
         roadWidth: number,
         numSegments: number,
         curveLength: number
     ): void {
         const tunnelHeight = 3; // Height of tunnel interior
         const wallThickness = 1; // Thickness of tunnel walls
-        const roadY = 0.01;
+        const roadY = ROAD_HEIGHT;
         const halfWidth = roadWidth / 2;
 
         // Use shared material
@@ -426,6 +515,20 @@ export class RoadGenerator {
 
             const segmentLength = point1.distanceTo(point2);
             if (segmentLength < 0.1) continue;
+
+            // Match the rendered arch edges; leave both tunnel entrances open.
+            for (const side of [-1, 1]) {
+                const edge = (point: THREE.Vector3, normal: THREE.Vector3, width: number) => ({
+                    x: point.x + normal.x * width * side,
+                    z: point.z + normal.z * width * side
+                });
+                const n1 = new THREE.Vector3(-tangent1.z, 0, tangent1.x).normalize();
+                const n2 = new THREE.Vector3(-tangent2.z, 0, tangent2.x).normalize();
+                this.collisions?.addPolygon([[
+                    edge(point1, n1, halfWidth), edge(point2, n2, halfWidth),
+                    edge(point2, n2, halfWidth + wallThickness), edge(point1, n1, halfWidth + wallThickness)
+                ]], Math.min(point1.y, point2.y), Math.max(point1.y, point2.y) + tunnelHeight);
+            }
 
             const midpoint = point1.clone().add(point2).multiplyScalar(0.5);
             const yawAngle = Math.atan2(tangent.x, tangent.z);
@@ -462,7 +565,7 @@ export class RoadGenerator {
                     const innerLeftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth));
                     const innerRightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth));
                     const innerArchPos = innerLeftEdge.clone().lerp(innerRightEdge, widthT);
-                    innerArchPos.y = roadY + archY;
+                    innerArchPos.y = this.roadHeight(innerArchPos.x, innerArchPos.z) + archY;
 
                     archVertices.push(innerArchPos.x, innerArchPos.y, innerArchPos.z);
                 }
@@ -479,7 +582,7 @@ export class RoadGenerator {
                     const outerLeftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth - wallThickness));
                     const outerRightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth + wallThickness));
                     const outerArchPos = outerLeftEdge.clone().lerp(outerRightEdge, widthT);
-                    outerArchPos.y = roadY + archY;
+                    outerArchPos.y = this.roadHeight(outerArchPos.x, outerArchPos.z) + archY;
 
                     archVertices.push(outerArchPos.x, outerArchPos.y, outerArchPos.z);
                 }
@@ -570,7 +673,7 @@ export class RoadGenerator {
         isTunnel: boolean = false,
         layer: number = 0
     ): void {
-        const roadY = 0.01;
+        const roadY = ROAD_HEIGHT;
 
         // Calculate the angle between incoming and outgoing directions
         const angle = Math.acos(Math.max(-1, Math.min(1, incomingDir.dot(outgoingDir))));
@@ -621,12 +724,13 @@ export class RoadGenerator {
         // Use shared material
         const roadMaterial = isTunnel ? this.sharedMaterials.tunnelMaterial : this.sharedMaterials.roadMaterial;
 
+        this.drapeSurface(geometry, ROAD_HEIGHT);
         const cornerMesh = new THREE.Mesh(geometry, roadMaterial);
         cornerMesh.receiveShadow = true;
 
         if (isTunnel) {
             // Adjust Y for tunnel depth
-            cornerMesh.position.y = -(layer <= 0 ? Math.abs(layer) * 2 : 0);
+            // OSM layer is ordering, not a measured tunnel depth.
             this.tunnelGroup.add(cornerMesh);
         } else {
             this.roadGroup.add(cornerMesh);
@@ -638,7 +742,7 @@ export class RoadGenerator {
      * Create edge lines along a curve as continuous curved ribbons (like the road surface)
      */
     private createEdgeLinesAlongCurve(
-        curve: THREE.CatmullRomCurve3,
+        curve: THREE.Curve<THREE.Vector3>,
         roadWidth: number,
         numSegments: number,
         curveLength: number
@@ -668,8 +772,8 @@ export class RoadGenerator {
                 const leftEdge = edgePoint.clone().add(perp.clone().multiplyScalar(-halfLineWidth * offsetMultiplier));
                 const rightEdge = edgePoint.clone().add(perp.clone().multiplyScalar(halfLineWidth * offsetMultiplier));
 
-                vertices.push(leftEdge.x, leftEdge.y - 0.01, leftEdge.z);
-                vertices.push(rightEdge.x, rightEdge.y - 0.01, rightEdge.z);
+                vertices.push(leftEdge.x, this.roadHeight(leftEdge.x, leftEdge.z) + 0.015, leftEdge.z);
+                vertices.push(rightEdge.x, this.roadHeight(rightEdge.x, rightEdge.z) + 0.015, rightEdge.z);
             }
 
             if (vertices.length < 6) return null;
@@ -683,16 +787,20 @@ export class RoadGenerator {
 
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
-            geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+            geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
             geometry.computeVertexNormals();
 
             const material = new THREE.MeshStandardMaterial({
                 color: 0xFFFF00,
                 emissive: 0xFFFF00,
                 emissiveIntensity: 0.5,
+                polygonOffset: true,
+                polygonOffsetFactor: -4,
+                polygonOffsetUnits: -4,
                 side: THREE.DoubleSide
             });
 
+            this.drapeSurface(geometry, ROAD_HEIGHT + 0.015);
             const mesh = new THREE.Mesh(geometry, material);
             mesh.castShadow = false;
             mesh.receiveShadow = false;
@@ -712,7 +820,7 @@ export class RoadGenerator {
      * Create lane dividers along a curve as continuous ribbons with repeating pattern
      */
     private createLaneDividersAlongCurve(
-        curve: THREE.CatmullRomCurve3,
+        curve: THREE.Curve<THREE.Vector3>,
         roadWidth: number,
         lanesCount: number,
         numSegments: number,
@@ -766,8 +874,8 @@ export class RoadGenerator {
                 const leftEdge = dividerPoint.clone().add(perp.clone().multiplyScalar(-halfWidth));
                 const rightEdge = dividerPoint.clone().add(perp.clone().multiplyScalar(halfWidth));
 
-                vertices.push(leftEdge.x, leftEdge.y, leftEdge.z);
-                vertices.push(rightEdge.x, rightEdge.y, rightEdge.z);
+                vertices.push(leftEdge.x, this.roadHeight(leftEdge.x, leftEdge.z) + 0.015, leftEdge.z);
+                vertices.push(rightEdge.x, this.roadHeight(rightEdge.x, rightEdge.z) + 0.015, rightEdge.z);
 
                 // Calculate UV coordinates using actual accumulated arc length
                 // This ensures pattern remains consistent even in tight corners
@@ -818,7 +926,7 @@ export class RoadGenerator {
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
             geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvs), 2));
-            geometry.setIndex(new THREE.BufferAttribute(new Uint16Array(indices), 1));
+            geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
             geometry.computeVertexNormals();
 
             // Calculate how many pattern repeats along the curve
@@ -830,12 +938,16 @@ export class RoadGenerator {
                 emissive: 0xFFFFFF,
                 emissiveIntensity: 0.3,
                 transparent: true,
+                polygonOffset: true,
+                polygonOffsetFactor: -4,
+                polygonOffsetUnits: -4,
                 alphaTest: 0.01, // Low threshold for transparency
                 side: THREE.DoubleSide
             });
 
             // Texture repeat is handled by UV coordinates and RepeatWrapping
 
+            this.drapeSurface(geometry, ROAD_HEIGHT + 0.015);
             const divider = new THREE.Mesh(geometry, material);
             divider.castShadow = false;
             divider.receiveShadow = false;
@@ -939,7 +1051,7 @@ export class RoadGenerator {
         sprite.scale.set(scale * (textWidth / fontSize), scale, 1);
 
         // Position sprite above the road
-        sprite.position.set(position.x, 6, position.z); // 3 units above ground
+        sprite.position.set(position.x, this.roadHeight(position.x, position.z) + 6, position.z); // 3 units above ground
 
         // Rotate sprite to face the road direction (sprite already faces camera, so just rotate Y)
         sprite.rotation.y = rotation;

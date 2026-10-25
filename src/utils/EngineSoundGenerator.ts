@@ -22,7 +22,7 @@ export class EngineSoundGenerator {
     private readonly BASE_FREQUENCY = 30; // Base engine frequency (Hz) - deep idle rumble
     private readonly MIN_RPM = 800; // Idle RPM
     private readonly MAX_RPM = 6000; // Max RPM
-    private readonly MAX_CAR_SPEED = 324; // km/h (max speed with boost)
+    private readonly MAX_CAR_SPEED = 250; // km/h (max speed with boost)
 
     private isEnabled: boolean = true;
 
@@ -75,7 +75,7 @@ export class EngineSoundGenerator {
      * Start generating engine sound
      */
     start(): void {
-        if (!this.isEnabled || !this.audioContext || this.isPlaying) return;
+        if (!this.isEnabled || !this.audioContext) return;
 
         // Resume audio context if suspended (browser autoplay policy)
         if (this.audioContext.state === 'suspended') {
@@ -83,6 +83,8 @@ export class EngineSoundGenerator {
                 console.debug('Failed to resume audio context:', err);
             });
         }
+
+        if (this.isPlaying) return;
 
         if (!this.engineGain) {
             this.initAudioContext().then(() => {
@@ -107,11 +109,13 @@ export class EngineSoundGenerator {
         this.oscillators.forEach(osc => {
             try {
                 osc.stop();
+                osc.disconnect();
             } catch (e) {
                 // Oscillator may already be stopped
             }
         });
 
+        this.gainNodes.forEach(gain => gain.disconnect());
         this.oscillators = [];
         this.gainNodes = [];
         if (this.noiseSource) {
@@ -222,7 +226,7 @@ export class EngineSoundGenerator {
      * @param acceleration Current acceleration (0-1)
      * @param isAccelerating Whether the car is actively accelerating
      */
-    update(speed: number, acceleration: number, isAccelerating: boolean): void {
+    update(speed: number, acceleration: number, isAccelerating: boolean, delta = 1 / 60): void {
         if (!this.isEnabled || !this.audioContext || !this.isPlaying) {
             // Auto-start if not playing and we should be
             if (this.isEnabled && isAccelerating && speed > 0.5) {
@@ -237,7 +241,13 @@ export class EngineSoundGenerator {
         // Calculate base RPM from speed (linear mapping from MIN_RPM to MAX_RPM)
         // When speed is 0, RPM should be around idle (MIN_RPM)
         // When speed is max, RPM should be close to MAX_RPM
-        const speedBasedRPM = this.MIN_RPM + (speedRatio * (this.MAX_RPM - this.MIN_RPM));
+        // Approximate automatic gears: pitch falls on upshift, rather than one long drone.
+        const gearEnds = [45, 80, 120, 165, 210, this.MAX_CAR_SPEED];
+        const gear = gearEnds.findIndex(end => Math.abs(speed) < end);
+        const gearIndex = gear < 0 ? gearEnds.length - 1 : gear;
+        const gearStart = gearIndex === 0 ? 0 : gearEnds[gearIndex - 1] * 0.6;
+        const gearRatio = Math.max(0, Math.min(1, (Math.abs(speed) - gearStart) / (gearEnds[gearIndex] - gearStart)));
+        const speedBasedRPM = this.MIN_RPM + gearRatio * 4000;
 
         // Add RPM boost when accelerating (even when speed is low)
         // This makes the sound respond immediately to throttle input
@@ -247,7 +257,7 @@ export class EngineSoundGenerator {
         const targetRPM = Math.max(this.MIN_RPM, Math.min(this.MAX_RPM, speedBasedRPM + accelerationRPMBoost));
 
         // Smooth RPM transition for realistic sound changes
-        const rpmChangeRate = 8; // RPM change per frame (60fps = ~480 RPM/second)
+        const rpmChangeRate = 3200 * Math.min(delta, 0.1); // RPM change per frame (60fps = ~480 RPM/second)
         if (targetRPM > this.currentRPM) {
             this.currentRPM = Math.min(targetRPM, this.currentRPM + rpmChangeRate);
         } else if (targetRPM < this.currentRPM) {
@@ -264,7 +274,7 @@ export class EngineSoundGenerator {
         const rpmRatio = Math.min(1, Math.max(0, Number.isFinite(rpmRatioRaw) ? rpmRatioRaw : 0)); // 0 to 1
         // Use a cubic curve (even slower growth) to keep frequencies low at all RPMs
         const frequencyCurve = Math.pow(rpmRatio, 0.7); // Grows very slowly - stays in bass range
-        const frequencyRange = 25; // Very limited frequency range (Hz) - deep engine rumble
+        const frequencyRange = 95; // Very limited frequency range (Hz) - deep engine rumble
         const baseFreq = this.BASE_FREQUENCY + (frequencyCurve * frequencyRange); // ~30 Hz to ~55 Hz (deep, rumbly)
 
         // Update oscillator frequencies - keep everything deep and low-pitched
@@ -283,8 +293,8 @@ export class EngineSoundGenerator {
 
         // Adjust volume based on acceleration (louder when accelerating)
         if (this.engineGain) {
-            const volumeBase = 0.7;
-            const volumeBoost = acceleration * 0.4;
+            const volumeBase = 0.2;
+            const volumeBoost = acceleration * 0.5;
             const volume = Math.min(1.0, volumeBase + volumeBoost);
             this.engineGain.gain.setTargetAtTime(volume, this.audioContext.currentTime, 0.1);
         }

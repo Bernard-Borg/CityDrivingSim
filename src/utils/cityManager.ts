@@ -9,6 +9,7 @@ export interface CityConfig {
     file: string;
     centerLat: number;
     centerLon: number;
+    elevation?: { file: string; south: number; west: number };
 }
 
 // Available cities configuration
@@ -16,12 +17,14 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     monaco: {
         name: 'Monaco',
         file: 'monaco.json',
+        elevation: { file: 'Monaco.hgt', south: 43, west: 7 },
         centerLat: 43.7384,
         centerLon: 7.4246
     },
     rabat: {
         name: 'Rabat',
         file: 'rabat.json',
+        elevation: { file: 'Rabat.hgt', south: 35, west: 14 },
         centerLat: 35.8807,
         centerLon: 14.3977
     },
@@ -44,19 +47,21 @@ export class CityManager {
     private static readonly STORAGE_KEY_POSITION = 'cityDrivingSim_lastPosition';
 
     static getSelectedCity(): string | null {
-        return localStorage.getItem(this.STORAGE_KEY_CITY);
+        try { return localStorage.getItem(this.STORAGE_KEY_CITY); } catch { return null; }
     }
 
     static setSelectedCity(city: string): void {
-        localStorage.setItem(this.STORAGE_KEY_CITY, city);
+        try { localStorage.setItem(this.STORAGE_KEY_CITY, city); } catch { /* Storage may be disabled. */ }
     }
 
     static getSavedPosition(city: string): SavedPosition | null {
         const key = `${this.STORAGE_KEY_POSITION}_${city}`;
-        const saved = localStorage.getItem(key);
-        if (!saved) return null;
         try {
-            return JSON.parse(saved) as SavedPosition;
+            const saved = localStorage.getItem(key);
+            if (!saved) return null;
+            const position = JSON.parse(saved) as SavedPosition;
+            return position && Number.isFinite(position.lat) && Number.isFinite(position.lon)
+                && Math.abs(position.lat) <= 90 && Math.abs(position.lon) <= 180 ? position : null;
         } catch {
             return null;
         }
