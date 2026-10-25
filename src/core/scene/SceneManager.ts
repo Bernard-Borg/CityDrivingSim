@@ -33,6 +33,7 @@ export class SceneManager {
         this.roadGenerator = new RoadGenerator(scene, this.collisions);
         this.treeGenerator = new TreeGenerator(scene);
         this.buildingGenerator = new BuildingGenerator(scene, this.collisions);
+        this.buildingGenerator.setGeometryCutter(geometry => this.roadGenerator.cutSceneryGeometry(geometry));
         this.water = new WaterGenerator(scene);
         this.natural = new NaturalGenerator(scene);
         this.decor = new DecorGenerator(scene, this.collisions);
@@ -164,10 +165,8 @@ export class SceneManager {
             this.centerLon,
             roadLevels,
         );
-        this.collisions.setTunnelQuery(
-            (x, z, y) =>
-                this.roadGenerator.getRoadState(x, z, y).structure === "tunnel",
-        );
+        this.collisions.setTunnelQuery((x, z, y) => this.roadGenerator.isInTunnel(x, z, y));
+        this.collisions.setRoadOpeningQuery((x, z, y, owner) => this.roadGenerator.isTunnelOpening(x, z, y, owner));
         this.collisions.setBounds(this.terrain?.bounds ?? null);
         if (!this.roadGenerator.getRoads().length)
             throw new Error("This city has no drivable roads.");

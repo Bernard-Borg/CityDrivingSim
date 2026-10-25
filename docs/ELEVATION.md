@@ -38,7 +38,7 @@ Road ribbons and lane markings are clipped at terrain cell boundaries and
 diagonals before being raised by their small rendering clearance. This prevents
 wide road triangles from slicing through a hillside. Marking UVs are interpolated
 through clipping so dashed lines retain their pattern. Road labels and tunnel
-arches also follow the new heights.
+linings also follow the new heights.
 
 Buildings retain level roofs. Their foundations extend below the lowest sampled
 footprint height, while roofs sit above the highest, preventing floating walls on
@@ -67,11 +67,35 @@ Road meshes, markings, slope gravity, car pitch, surface audio and spawns all us
 the same profiles. Contact selects reachable surfaces by height, preventing an
 overhead bridge from pulling the car off the road underneath. Bridge side barriers
 and tunnel walls collide with the car. Scenery collisions are suppressed within
-the selected tunnel corridor so building foundations cannot block a tunnel.
+height-aware tunnel volumes so building foundations cannot block a tunnel.
 [RoadCutouts](../src/core/scene/RoadCutouts.ts) cuts narrow openings in terrain at
 portals and lowered approaches; retaining walls fill their sides. Terrain remains
 over fully buried tunnel sections. Buildings themselves retain terrain-based
 foundations rather than being lifted onto decks.
+
+### Junctions, paint and tunnel clearance
+
+[RoadCorridors](../src/core/scene/RoadCorridors.ts) builds spatially indexed,
+sloped 3D volumes from all road profiles. Yellow edge ribbons are subtracted
+where they lie inside another road at the same height (a narrow road-height
+band rather than every projected overlap). Coincident outer edges use stable
+way-ID ordering to retain one outline. Roads above/below keep their own paint.
+This trims markings rather than rebuilding the road network or changing OSM.
+
+Tunnel lining uses vertical sides and a full-width flat ceiling at configured
+headroom. It has no transverse end caps. Other road corridors cut openings in
+lining and approach/bridge barriers at matching heights, and matching collision
+queries allow cars through those openings. Tunnel sides no longer extend to the
+terrain surface; shallow portal terrain cutouts remain in place. Connected ways
+still share their estimated floor elevations through the profile network.
+
+Building wall/roof triangles are clipped only within tunnel volumes, preserving
+interpolated facade, colour and texture attributes and retaining the building
+above and beside a passage. Collision bypass uses those same tunnel volumes.
+Other scenery meshes are not geometrically carved. Clipping is approximate at
+2 metre corridor samples; missing connectivity or inaccurate OSM layer/height
+tags may still require per-way overrides. Separate roads genuinely within the
+paint height band are treated as one drivable overlap.
 
 ### Tuning estimates and correcting individual ways
 
@@ -128,8 +152,8 @@ configurable estimates rather than interpreting SRTM as deck/floor measurements.
 Accurate reconstruction still needs surveyed heights or manual way overrides.
 Connectivity is inferred from shared coordinates because the exported GeoJSON
 does not preserve OSM node IDs; missing tags or disconnected endpoints can need
-correction. Building passages receive generic tunnel geometry, not detailed
-architectural openings in building meshes.
+correction. Building passages use generic, full-width tunnel linings with matching
+openings cut into intersecting building geometry; they are not architectural replicas.
 
 ## Higher-resolution options
 

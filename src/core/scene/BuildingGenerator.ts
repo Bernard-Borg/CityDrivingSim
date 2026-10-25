@@ -8,6 +8,8 @@ interface MeshData { position: number[]; uv: number[]; color: number[]; facade: 
 const styles: BuildingStyle[] = ['home', 'apartments', 'church', 'civic', 'commercial', 'industrial', 'garage', 'greenhouse', 'ruins', 'construction', 'canopy', 'parking', 'bunker'];
 
 export class BuildingGenerator {
+    private cutGeometry: ((geometry: THREE.BufferGeometry) => void) | null = null;
+    setGeometryCutter(cut: (geometry: THREE.BufferGeometry) => void): void { this.cutGeometry = cut; }
     private buildingGroup = new THREE.Group();
     private materials = createBuildingMaterials();
     constructor(private scene: THREE.Scene, private collisions?: CollisionWorld) {
@@ -138,6 +140,7 @@ export class BuildingGenerator {
             const geometry = new THREE.BufferGeometry();
             for (const [name, size] of [['position', 3], ['uv', 2], ['color', 3], ['facade', 4], ['shutters', 3], ['finish', 2], ['roofFinish', 1]] as const)
                 geometry.setAttribute(name, new THREE.Float32BufferAttribute(meshData[name], size));
+            this.cutGeometry?.(geometry);
             geometry.computeVertexNormals(); geometry.computeBoundingSphere();
             const mesh = new THREE.Mesh(geometry, kind === 'walls' ? this.materials.wall : this.materials.roof);
             mesh.name = `Buildings ${key} ${kind}`; mesh.castShadow = mesh.receiveShadow = true;

@@ -1,7 +1,7 @@
 import type { TerrainBounds } from './ElevationTerrain';
 
 export interface Point { x: number; z: number; }
-interface Obstacle { rings: Point[][]; minY: number; maxY: number; category: 'scenery' | 'road'; }
+interface Obstacle { rings: Point[][]; minY: number; maxY: number; category: 'scenery' | 'road'; owner?: string; }
 
 export function closestPoint(p: Point, a: Point, b: Point): Point {
     const dx = b.x - a.x, dz = b.z - a.z;
@@ -40,13 +40,15 @@ export class CollisionWorld {
     private grid = new SpatialGrid<Obstacle>();
     private bounds: TerrainBounds | null = null;
     private inTunnel: ((x: number, z: number, y: number) => boolean) | null = null;
+    private roadOpening: ((x: number, z: number, y: number, owner: string) => boolean) | null = null;
+    setRoadOpeningQuery(query: (x: number, z: number, y: number, owner: string) => boolean): void { this.roadOpening = query; }
     setTunnelQuery(query: ((x: number, z: number, y: number) => boolean) | null): void { this.inTunnel = query; }
     setBounds(bounds: TerrainBounds | null): void { this.bounds = bounds; }
-    clear(): void { this.grid.clear(); this.bounds = null; this.inTunnel = null; }
-    addPolygon(rings: Point[][], minY = 0, maxY = 100, category: 'scenery' | 'road' = 'scenery'): void {
+    clear(): void { this.grid.clear(); this.bounds = null; this.inTunnel = null; this.roadOpening = null; }
+    addPolygon(rings: Point[][], minY = 0, maxY = 100, category: 'scenery' | 'road' = 'scenery', owner?: string): void {
         if (!rings[0] || rings[0].length < 3) return;
         const xs = rings[0].map(p => p.x), zs = rings[0].map(p => p.z);
-        this.grid.insert({ rings, minY, maxY, category }, Math.min(...xs) - 2, Math.min(...zs) - 2, Math.max(...xs) + 2, Math.max(...zs) + 2);
+        this.grid.insert({ rings, minY, maxY, category, owner }, Math.min(...xs) - 2, Math.min(...zs) - 2, Math.max(...xs) + 2, Math.max(...zs) + 2);
     }
     addTrunk(p: Point, radius: number, baseHeight = 0): void {
         const ring = Array.from({ length: 12 }, (_, i) => ({ x: p.x + Math.cos(i * Math.PI / 6) * radius, z: p.z + Math.sin(i * Math.PI / 6) * radius }));
@@ -72,6 +74,7 @@ export class CollisionWorld {
                 for (const obstacle of this.grid.at(p.x, p.z)) {
                     if (y + shape.halfHeight < obstacle.minY || y - shape.halfHeight > obstacle.maxY) continue;
                     if (obstacle.category === 'scenery' && this.inTunnel?.(p.x, p.z, y)) continue;
+                    if (obstacle.owner && this.roadOpening?.(p.x, p.z, y, obstacle.owner)) continue;
                     const solid = inside(p, obstacle.rings[0]) && !obstacle.rings.slice(1).some(r => inside(p, r));
                     let nearest = { x: 0, z: 0 }, best = Infinity;
                     for (const ring of obstacle.rings) {

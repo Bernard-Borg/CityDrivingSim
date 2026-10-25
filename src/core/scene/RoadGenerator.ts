@@ -5,6 +5,7 @@ import type { GeoJSON } from '@/types';
 import { RoadProfileNetwork, DEFAULT_ROAD_LEVELS } from './RoadProfiles';
 import type { RoadProfile, RoadInput, RoadLevelSettings, RoadContact } from './RoadProfiles';
 import { RoadCutouts } from './RoadCutouts';
+import { RoadCorridors } from './RoadCorridors';
 import { SpatialGrid, closestPoint, CollisionWorld } from './CollisionWorld';
 
 export const ROAD_HEIGHT = 0.06;
@@ -16,6 +17,10 @@ export class RoadGenerator {
     private profiles: RoadProfile[] = [];
     private settings: RoadLevelSettings = DEFAULT_ROAD_LEVELS;
     private cutouts = new RoadCutouts();
+    private corridors = new RoadCorridors();
+    isInTunnel(x: number, z: number, y: number): boolean { return this.corridors.contains(x, z, y); }
+    isTunnelOpening(x: number, z: number, y: number, owner: string): boolean { return this.corridors.contains(x, z, y, owner, false); }
+    cutSceneryGeometry(geometry: THREE.BufferGeometry): void { this.corridors.cut(geometry); }
     setTerrain(terrain: ElevationTerrain | null): void { this.terrain = terrain; }
     private groundSample(x: number, z: number): SurfaceSample {
         return this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
@@ -190,6 +195,7 @@ export class RoadGenerator {
         this.activeProfile = null;
         this.profiles = [];
         this.cutouts.clear();
+        this.corridors.clear();
     }
 
     /**
@@ -219,6 +225,7 @@ export class RoadGenerator {
         const network = new RoadProfileNetwork(inputs, (x, z) => this.groundSample(x, z), options, this.terrain?.referenceHeight ?? 0);
         this.settings = network.settings;
         this.profiles = network.profiles;
+        this.corridors.build(this.profiles);
         for (const profile of this.profiles) {
             this.activeProfile = profile;
             this.createRoadFromProfile(profile, names.get(profile.input.id));
@@ -304,6 +311,9 @@ export class RoadGenerator {
                 this.cutouts.add([a.clone().addScaledVector(pa, half), b.clone().addScaledVector(pb, half),
                     b.clone().addScaledVector(pb, -half), a.clone().addScaledVector(pa, -half)]);
             }
+            // Tunnel lining supplies the side walls; extending a second wall to the surface
+            // exposes two strips above buried tunnels and blocks their junctions.
+            if (profile.input.kind === 'tunnel') continue;
             const raised = Math.max(a.y - ga, b.y - gb) > 0.2;
             if (profile.input.kind === 'ground' && !lowered && !raised) continue;
             for (const side of [-1, 1]) {
@@ -321,13 +331,13 @@ export class RoadGenerator {
                     }
                     const oa = ea.clone().addScaledVector(pa, side * 0.15), ob = eb.clone().addScaledVector(pb, side * 0.15);
                     this.collisions?.addPolygon([[ea, eb, ob, oa]], Math.min(ea.y, eb.y) - this.settings.deckThickness,
-                        Math.max(ea.y, eb.y) + 0.45, 'road');
+                        Math.max(ea.y, eb.y) + 0.45, 'road', profile.input.id);
                 } else if (lowered || portal) {
                     const topA = Math.max(ea.y, this.groundSample(ea.x, ea.z).height), topB = Math.max(eb.y, this.groundSample(eb.x, eb.z).height);
                     face(ea, eb, ea.y - 0.1, eb.y - 0.1, topA, topB);
                     if (profile.input.kind === 'ground') {
                         const oa = ea.clone().addScaledVector(pa, side * 0.2), ob = eb.clone().addScaledVector(pb, side * 0.2);
-                        this.collisions?.addPolygon([[ea, eb, ob, oa]], Math.min(ea.y, eb.y) - 0.1, Math.max(topA, topB), 'road');
+                        this.collisions?.addPolygon([[ea, eb, ob, oa]], Math.min(ea.y, eb.y) - 0.1, Math.max(topA, topB), 'road', profile.input.id);
                     }
                 }
             }
@@ -338,7 +348,8 @@ export class RoadGenerator {
             }
         }
         if (vertices.length) {
-            const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3)); geometry.computeVertexNormals();
+            const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            this.corridors.cut(geometry, profile.input.id, false, false); geometry.computeVertexNormals();
             const mesh = new THREE.Mesh(geometry, this.sharedMaterials.ceilingMaterial); mesh.castShadow = mesh.receiveShadow = true;
             this.roadGroup.add(mesh);
         }
@@ -513,174 +524,34 @@ export class RoadGenerator {
         numSegments: number,
         curveLength: number
     ): void {
-        const tunnelHeight = this.activeProfile?.headroom ?? this.settings.tunnelHeadroom; // Height of tunnel interior
-        const wallThickness = 1; // Thickness of tunnel walls
-        const roadY = ROAD_HEIGHT;
-        const halfWidth = roadWidth / 2;
-
-        // Use shared material
-        const ceilingMaterial = this.sharedMaterials.ceilingMaterial;
-
-        // Create tunnel structure segments along the curve
+        const profile = this.activeProfile!;
+        const vertices: number[] = [], half = roadWidth / 2, height = profile.headroom;
+        const face = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => {
+            for (const p of [a, b, c, c, b, d]) vertices.push(p.x, p.y, p.z);
+        };
         for (let i = 0; i < numSegments; i++) {
-            const t1 = i / numSegments;
-            const t2 = (i + 1) / numSegments;
-
-            const point1 = curve.getPoint(t1);
-            const point2 = curve.getPoint(t2);
-            const tangent1 = curve.getTangent(t1);
-            const tangent2 = curve.getTangent(t2);
-
-            // Average tangent for this segment
-            const tangent = tangent1.clone().add(tangent2).normalize();
-            const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
-
-            const segmentLength = point1.distanceTo(point2);
-            if (segmentLength < 0.1) continue;
-
-            // Match the rendered arch edges; leave both tunnel entrances open.
+            const a = curve.getPoint(i / numSegments), b = curve.getPoint((i + 1) / numSegments);
+            const na = new THREE.Vector3(-curve.getTangent(i / numSegments).z, 0, curve.getTangent(i / numSegments).x).normalize();
+            const nb = new THREE.Vector3(-curve.getTangent((i + 1) / numSegments).z, 0, curve.getTangent((i + 1) / numSegments).x).normalize();
+            const edges: THREE.Vector3[] = [];
             for (const side of [-1, 1]) {
-                const edge = (point: THREE.Vector3, normal: THREE.Vector3, width: number) => ({
-                    x: point.x + normal.x * width * side,
-                    z: point.z + normal.z * width * side
-                });
-                const n1 = new THREE.Vector3(-tangent1.z, 0, tangent1.x).normalize();
-                const n2 = new THREE.Vector3(-tangent2.z, 0, tangent2.x).normalize();
-                this.collisions?.addPolygon([[
-                    edge(point1, n1, halfWidth), edge(point2, n2, halfWidth),
-                    edge(point2, n2, halfWidth + wallThickness), edge(point1, n1, halfWidth + wallThickness)
-                ]], Math.min(point1.y, point2.y), Math.max(point1.y, point2.y) + tunnelHeight, 'road');
+                const ea = a.clone().addScaledVector(na, half * side), eb = b.clone().addScaledVector(nb, half * side);
+                ea.y = profile.sample(ea.x, ea.z).height; eb.y = profile.sample(eb.x, eb.z).height;
+                const ta = ea.clone().add(new THREE.Vector3(0, height, 0)), tb = eb.clone().add(new THREE.Vector3(0, height, 0));
+                face(ea, eb, ta, tb); edges.push(ta, tb);
+                const oa = ea.clone().addScaledVector(na, side * 0.25), ob = eb.clone().addScaledVector(nb, side * 0.25);
+                this.collisions?.addPolygon([[ea, eb, ob, oa]], Math.min(ea.y, eb.y) - 0.1,
+                    Math.max(ea.y, eb.y) + height, 'road', profile.input.id);
             }
-
-            const midpoint = point1.clone().add(point2).multiplyScalar(0.5);
-            const yawAngle = Math.atan2(tangent.x, tangent.z);
-
-            // Create semi-circular arch ceiling with thickness (3D structure)
-            const archRadius = tunnelHeight; // Inner radius of the arch
-            const outerArchRadius = archRadius + wallThickness; // Outer radius
-            const numArchSegments = 16; // Number of segments for smooth arch
-            const archLengthSegments = 2; // Split each tunnel segment along length for smoother curve following
-
-            // Create arch vertices and indices for thick 3D structure
-            const archVertices: number[] = [];
-            const archIndices: number[] = [];
-
-            // Create vertices for both inner and outer arch surfaces
-            for (let lenSeg = 0; lenSeg <= archLengthSegments; lenSeg++) {
-                const lenT = lenSeg / archLengthSegments;
-                const archPoint = point1.clone().lerp(point2, lenT);
-
-                // Get tangent at this point along the curve
-                const t = t1 + (t2 - t1) * lenT;
-                const curveTangent = curve.getTangent(t);
-                const curvePerp = new THREE.Vector3(-curveTangent.z, 0, curveTangent.x).normalize();
-
-                // Create vertices for inner surface (tunnel interior)
-                for (let w = 0; w <= numArchSegments; w++) {
-                    const widthT = w / numArchSegments; // 0 to 1 across the width
-                    const archAngle = widthT * Math.PI; // 0 to PI (semi-circle)
-
-                    // Calculate position along arch curve (semi-circle)
-                    const archY = Math.sin(archAngle) * archRadius;
-
-                    // Calculate position across road width (inner edge)
-                    const innerLeftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth));
-                    const innerRightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth));
-                    const innerArchPos = innerLeftEdge.clone().lerp(innerRightEdge, widthT);
-                    innerArchPos.y = this.roadHeight(innerArchPos.x, innerArchPos.z) + archY;
-
-                    archVertices.push(innerArchPos.x, innerArchPos.y, innerArchPos.z);
-                }
-
-                // Create vertices for outer surface (tunnel exterior - offset by wallThickness)
-                for (let w = 0; w <= numArchSegments; w++) {
-                    const widthT = w / numArchSegments;
-                    const archAngle = widthT * Math.PI;
-
-                    // Calculate position along arch curve with outer radius
-                    const archY = Math.sin(archAngle) * outerArchRadius;
-
-                    // Calculate position across road width (outer edge)
-                    const outerLeftEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(-halfWidth - wallThickness));
-                    const outerRightEdge = archPoint.clone().add(curvePerp.clone().multiplyScalar(halfWidth + wallThickness));
-                    const outerArchPos = outerLeftEdge.clone().lerp(outerRightEdge, widthT);
-                    outerArchPos.y = this.roadHeight(outerArchPos.x, outerArchPos.z) + archY;
-
-                    archVertices.push(outerArchPos.x, outerArchPos.y, outerArchPos.z);
-                }
-            }
-
-            // Create triangles for thick 3D structure
-            const widthVerts = numArchSegments + 1;
-            const totalVertsPerLength = widthVerts * 2; // Inner + outer vertices per length segment
-
-            // Inner surface triangles (facing downward into tunnel)
-            for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
-                for (let w = 0; w < numArchSegments; w++) {
-                    const base = lenSeg * totalVertsPerLength + w;
-                    const nextBase = (lenSeg + 1) * totalVertsPerLength + w;
-
-                    // Inner surface (counter-clockwise when viewed from inside tunnel)
-                    archIndices.push(base, base + 1, nextBase);
-                    archIndices.push(base + 1, nextBase + 1, nextBase);
-                }
-            }
-
-            // Outer surface triangles (facing outward)
-            for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
-                for (let w = 0; w < numArchSegments; w++) {
-                    const base = lenSeg * totalVertsPerLength + widthVerts + w;
-                    const nextBase = (lenSeg + 1) * totalVertsPerLength + widthVerts + w;
-
-                    // Outer surface (counter-clockwise when viewed from outside)
-                    archIndices.push(base, nextBase, base + 1);
-                    archIndices.push(base + 1, nextBase, nextBase + 1);
-                }
-            }
-
-            // Side triangles connecting inner to outer surfaces (create thickness)
-            for (let lenSeg = 0; lenSeg < archLengthSegments; lenSeg++) {
-                for (let w = 0; w < numArchSegments; w++) {
-                    const innerBase = lenSeg * totalVertsPerLength + w;
-                    const innerNextBase = (lenSeg + 1) * totalVertsPerLength + w;
-                    const outerBase = lenSeg * totalVertsPerLength + widthVerts + w;
-                    const outerNextBase = (lenSeg + 1) * totalVertsPerLength + widthVerts + w;
-
-                    // Left side of arch (connect inner to outer)
-                    archIndices.push(innerBase, outerBase, innerNextBase);
-                    archIndices.push(outerBase, outerNextBase, innerNextBase);
-
-                    // Right side of arch (connect inner to outer)
-                    archIndices.push(innerBase + 1, innerNextBase + 1, outerBase + 1);
-                    archIndices.push(outerBase + 1, innerNextBase + 1, outerNextBase + 1);
-                }
-            }
-
-            // End caps (connect inner to outer at segment ends to close the structure)
-            if (i === 0 || i === numSegments - 1) {
-                const lenSeg = i === 0 ? 0 : archLengthSegments;
-                for (let w = 0; w < numArchSegments; w++) {
-                    const innerBase = lenSeg * totalVertsPerLength + w;
-                    const outerBase = lenSeg * totalVertsPerLength + widthVerts + w;
-
-                    // Create triangles connecting inner to outer at the end
-                    archIndices.push(innerBase, innerBase + 1, outerBase);
-                    archIndices.push(innerBase + 1, outerBase + 1, outerBase);
-                }
-            }
-
-            if (archVertices.length >= 6 && archIndices.length >= 3) {
-                const archGeometry = new THREE.BufferGeometry();
-                archGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(archVertices), 3));
-                archGeometry.setIndex(new THREE.BufferAttribute(new Uint16Array(archIndices), 1));
-                archGeometry.computeVertexNormals();
-
-                const archMesh = new THREE.Mesh(archGeometry, ceilingMaterial);
-                archMesh.receiveShadow = true;
-                archMesh.castShadow = true; // Now it can cast shadows as a 3D object
-                this.tunnelGroup.add(archMesh);
-            }
+            // Full-width headroom, with no end caps across entrances or shared nodes.
+            face(edges[0], edges[1], edges[2], edges[3]);
         }
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        this.corridors.cut(geometry, profile.input.id, false, false);
+        const mesh = new THREE.Mesh(geometry, this.sharedMaterials.ceilingMaterial);
+        mesh.name = `Tunnel lining ${profile.input.id}`; mesh.castShadow = mesh.receiveShadow = true;
+        this.tunnelGroup.add(mesh);
     }
 
     /**
@@ -823,6 +694,7 @@ export class RoadGenerator {
             });
 
             this.drapeSurface(geometry, ROAD_HEIGHT + 0.015);
+            this.corridors.cut(geometry, this.activeProfile?.input.id, true);
             const mesh = new THREE.Mesh(geometry, material);
             mesh.castShadow = false;
             mesh.receiveShadow = false;
@@ -970,6 +842,7 @@ export class RoadGenerator {
             // Texture repeat is handled by UV coordinates and RepeatWrapping
 
             this.drapeSurface(geometry, ROAD_HEIGHT + 0.015);
+            this.corridors.cut(geometry, this.activeProfile?.input.id, true);
             const divider = new THREE.Mesh(geometry, material);
             divider.castShadow = false;
             divider.receiveShadow = false;
