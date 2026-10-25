@@ -50,3 +50,24 @@ the entire terrain extent, including connected coastline beyond its edges.
 Export **GeoJSON** into `public/data/natural/` with the same filename as that
 city's road data. Native Overpass JSON is not the same format. Keep the OSM
 copyright/ODbL attribution from the export.
+
+## Stockholm coastline coverage
+
+The original Stockholm natural export contained 53 coastline features with open
+chains ending inside the loaded map. These could not be closed without inventing
+shoreline across land, so the generator skipped the incomplete chains.
+
+On 2026-10-26 the coastline subset was refreshed from the OpenStreetMap
+[Overpass API](https://overpass-api.de/api/interpreter), requesting coastline ways
+in `(59.27,17.98,59.39,18.18)` with full geometry. It now has 136 coastline features;
+all non-coastline features and the original OSM attribution are preserved. This
+provides complete surrounding context rather than guessing connections between
+nearby shoreline endpoints. In the current loaded bounds it produces three
+coastal water polygons without incomplete-chain warnings. Directional checks on
+1,711 in-bounds shoreline segments found water on the expected sea side.
+
+The [natural export query](../public/data/natural/osm_query.txt) now also requests
+coastline ways within 3 km of the selected coastline set. Export a map region that
+includes the entire drivable area; a buffer cannot repair disconnected or invalid
+source mapping. Inland lake/river polygons and their island holes remain separate
+from sea coastlines, including Lake Malaren's mapped elevation.

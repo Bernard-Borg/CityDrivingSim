@@ -95,3 +95,24 @@ Collision footprints preserve courtyard holes and use the generated vertical
 extent. Open shelters collide with their support posts instead of an invisible
 solid footprint. Clearing a city disposes its geometry; the materials and shared
 texture are reused across city switches and disposed when the generator is destroyed.
+
+## Overlapping walls and roofs
+
+[BuildingSurfaceIndex](../src/core/scene/BuildingSurfaceIndex.ts) subtracts portions
+of wall/roof triangles already occupied by a coplanar building surface. It runs
+across spatial building batches after tunnel openings are cut. This handles shared
+walls, repeated footprints and coincident outline/part surfaces without displacing
+geometry or applying polygon offsets to competing facades. Exposed upper sections
+of taller neighbours remain. Opposite face winding and differently divided edges
+are supported; per-vertex facade/colour/UV attributes are interpolated through cuts.
+
+Different-height roofs, separated walls and building collision footprints remain
+intact. This resolves duplicate surfaces, not every semantic ambiguity between a
+building outline and its parts. Source data is unchanged. Generation logs the
+number of original triangles trimmed; a trimmed triangle can leave several pieces.
+
+One-off full-export inspections trimmed 23,945 triangles in Stockholm, 23,574 in
+Monaco and 2,134 in Rabat, with finite geometry attributes and clean disposal.
+These counts use all exported polygons on flat ground for comparison, so actual
+terrain coverage/tunnel clipping can produce different figures. Visual review is
+still needed for any remaining near-coincident geometry in individual locations.

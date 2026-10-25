@@ -22,7 +22,6 @@ export class CarControls {
     private focused = true;
     private paused = false;
     private audioUnlocked = false;
-    private initialIgnitionPlayed = false;
     private soundCooldown = 0;
 
     private throttleInput: number = 0;
@@ -122,9 +121,7 @@ export class CarControls {
         if (this.paused || e.ctrlKey || e.metaKey || e.altKey || target?.matches('input,textarea,select,[contenteditable="true"]')) return;
         if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) {
             this.unlockAudio();
-            if (!this.initialIgnitionPlayed && this.car.getEngineState() === 'running') {
-                this.roadSoundGenerator.playIgnition(); this.initialIgnitionPlayed = true;
-            }
+
         }
         switch (e.key.toLowerCase()) {
             case 'i':
@@ -332,7 +329,7 @@ export class CarControls {
         this.silenceAudio();
         const state = this.car.toggleIgnition();
         if (state === 'starting') {
-            this.unlockAudio(); this.initialIgnitionPlayed = true;
+            this.unlockAudio();
             this.roadSoundGenerator.playIgnition();
         }
     }

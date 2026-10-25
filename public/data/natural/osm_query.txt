@@ -1,6 +1,12 @@
 [out:json][timeout:180];
 
+// Coastline ways need a surrounding buffer so chains close beyond the map.
+way["natural"="coastline"]({{bbox}})->.shore;
+
 (
+  .shore;
+  way(around.shore:3000)["natural"="coastline"];
+
   // All natural features
   nwr["natural"]["natural"!~"^(mountain_range|mountain_area|mountain|ridge|massif|wood|scrub|cliff|bay|heath|grassland)$"]({{bbox}});
 

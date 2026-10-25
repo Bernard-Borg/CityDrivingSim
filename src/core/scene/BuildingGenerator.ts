@@ -1,3 +1,4 @@
+import { BuildingSurfaceIndex } from './BuildingSurfaceIndex';
 import * as THREE from 'three';
 import type { GeoJSON } from '@/types';
 import type { CollisionWorld, Point } from './CollisionWorld';
@@ -135,18 +136,22 @@ export class BuildingGenerator {
             } else this.collisions?.addPolygon(rings, base, top);
             counts[a.style] = (counts[a.style] ?? 0) + 1; count++;
         }
+        const surfaces = new BuildingSurfaceIndex();
         for (const [key, batch] of batches) for (const [kind, meshData] of Object.entries(batch)) {
             if (!meshData.position.length) continue;
             const geometry = new THREE.BufferGeometry();
             for (const [name, size] of [['position', 3], ['uv', 2], ['color', 3], ['facade', 4], ['shutters', 3], ['finish', 2], ['roofFinish', 1]] as const)
                 geometry.setAttribute(name, new THREE.Float32BufferAttribute(meshData[name], size));
             this.cutGeometry?.(geometry);
+            surfaces.apply(geometry);
             geometry.computeVertexNormals(); geometry.computeBoundingSphere();
             const mesh = new THREE.Mesh(geometry, kind === 'walls' ? this.materials.wall : this.materials.roof);
             mesh.name = `Buildings ${key} ${kind}`; mesh.castShadow = mesh.receiveShadow = true;
             this.buildingGroup.add(mesh);
         }
         this.buildingGroup.userData.styles = counts;
+        this.buildingGroup.userData.trimmedTriangles = surfaces.trimmedTriangles;
+        console.log(`Trimmed ${surfaces.trimmedTriangles} overlapping building surface triangles`);
         console.log(`Generated ${count} procedural buildings in ${this.buildingGroup.children.length} batches`, counts);
     }
     private split(poly: Point[], plane: (p: Point) => number): Point[][] {

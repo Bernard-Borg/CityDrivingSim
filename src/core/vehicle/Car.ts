@@ -8,7 +8,7 @@ import type { VehicleConfig, EngineState } from './VehicleConfig';
 
 export class Car {
     readonly physics: VehiclePhysics;
-    private engineState: EngineState = 'running';
+    private engineState: EngineState = 'off';
     private ignitionRemaining = 0;
     private rpm = 0;
     private previousPosition = new THREE.Vector3();
@@ -51,7 +51,7 @@ export class Car {
 
     constructor(scene: THREE.Scene, readonly config: VehicleConfig = DEFAULT_VEHICLE) {
         this.physics = new VehiclePhysics(config.physics);
-        this.rpm = config.audio.idleRPM;
+        this.rpm = 0;
         this.scene = scene;
         this.position = new THREE.Vector3(0, 0.25, 0);
         this.rotation = new THREE.Quaternion();

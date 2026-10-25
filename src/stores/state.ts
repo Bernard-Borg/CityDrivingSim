@@ -19,7 +19,7 @@ export const useStateStore = defineStore("state", () => {
 
     const heading = ref(0);
     const displayedHeading = ref(0);
-    const vehicle = ref<VehicleTelemetry>({ engine: 'running', rpm: 800, maxRPM: 6000, maxSpeed: 250, handbrake: false, name: DEFAULT_VEHICLE.name, gear: 'D1' });
+    const vehicle = ref<VehicleTelemetry>({ engine: 'off', rpm: 0, maxRPM: 6000, maxSpeed: 250, handbrake: true, name: DEFAULT_VEHICLE.name, gear: 'P' });
     const showPerformance = ref(false);
     const performanceHistory = ref<PerformanceSample[]>([]);
 

@@ -24,6 +24,8 @@ npm run build
 - Mouse drag: orbit in third person; horizontal look up to 80 degrees either side
   in first person, with no vertical look. Entering first person recentres the view.
 - Mouse wheel: zoom the third-person camera; ignored in first person.
+- Each map loads with ignition off and the parking lock engaged. Press I or the
+  HUD power button to start before driving.
 - I or the HUD power button: switch the engine off/on. Switching off stops the car
   and sets a parking lock that holds on slopes. Starting plays the ignition sound
   and retains the lock until the configured start duration finishes. Space/E remain

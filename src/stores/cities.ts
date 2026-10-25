@@ -59,6 +59,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         name: "Stockholm",
         buildings: STOCKHOLM_BUILDINGS,
         file: "stockholm.json",
+        elevation: { file: "Stockholm.hgt", south: 59, west: 18 },
         centerLat: 59.3253,
         centerLon: 18.0654,
     },
