@@ -56,24 +56,33 @@ export class ElevationTerrain {
     private lonScale: number;
     private latScale = Math.PI / 180 * 6371000;
 
-    constructor(tile: HgtTile, readonly centerLat: number, readonly centerLon: number, bounds: TerrainBounds) {
+    constructor(tile: HgtTile | null, readonly centerLat: number, readonly centerLon: number, bounds: TerrainBounds) {
         this.lonScale = this.latScale * Math.cos(centerLat * Math.PI / 180);
-        this.referenceHeight = tile.sample(centerLat, centerLon);
+        this.referenceHeight = tile?.sample(centerLat, centerLon) ?? 0;
         // Keep all vertices inside the real tile, including the scenery margin.
-        this.bounds = {
+        this.bounds = tile ? {
             minX: Math.max(bounds.minX - 600, (tile.west - centerLon) * this.lonScale + 0.01),
             maxX: Math.min(bounds.maxX + 600, (tile.west + 1 - centerLon) * this.lonScale - 0.01),
             minZ: Math.max(bounds.minZ - 600, -(tile.south + 1 - centerLat) * this.latScale + 0.01),
             maxZ: Math.min(bounds.maxZ + 600, -(tile.south - centerLat) * this.latScale - 0.01)
-        };
-        this.columns = Math.max(2, Math.ceil((this.bounds.maxX - this.bounds.minX) / 20) + 1);
-        this.rows = Math.max(2, Math.ceil((this.bounds.maxZ - this.bounds.minZ) / 20) + 1);
+        } : { ...bounds };
+        const spacing = tile ? 20 : 40;
+        this.columns = Math.max(2, Math.ceil((this.bounds.maxX - this.bounds.minX) / spacing) + 1);
+        this.rows = Math.max(2, Math.ceil((this.bounds.maxZ - this.bounds.minZ) / spacing) + 1);
         this.stepX = (this.bounds.maxX - this.bounds.minX) / (this.columns - 1);
         this.stepZ = (this.bounds.maxZ - this.bounds.minZ) / (this.rows - 1);
         this.heights = new Float32Array(this.columns * this.rows);
         for (let row = 0; row < this.rows; row++) for (let col = 0; col < this.columns; col++) {
             const x = this.bounds.minX + col * this.stepX, z = this.bounds.minZ + row * this.stepZ;
-            this.heights[row * this.columns + col] = tile.sample(centerLat - z / this.latScale, centerLon + x / this.lonScale) - this.referenceHeight;
+            this.heights[row * this.columns + col] = (tile?.sample(centerLat - z / this.latScale, centerLon + x / this.lonScale) ?? 0) - this.referenceHeight;
+        }
+    }
+
+    raiseMinimum(minimumAt: (x: number, z: number) => number): void {
+        for (let row = 0; row < this.rows; row++) for (let col = 0; col < this.columns; col++) {
+            const x = this.bounds.minX + col * this.stepX, z = this.bounds.minZ + row * this.stepZ;
+            const index = row * this.columns + col;
+            this.heights[index] = Math.max(this.heights[index], minimumAt(x, z));
         }
     }
 

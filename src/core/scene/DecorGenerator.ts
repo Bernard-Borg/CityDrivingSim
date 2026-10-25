@@ -12,7 +12,7 @@ export class DecorGenerator {
         cylinder: new THREE.CylinderGeometry(0.5, 0.5, 1, 8), sphere: new THREE.SphereGeometry(0.5, 8, 6), cone: new THREE.ConeGeometry(0.5, 1, 8) };
     private materials = new Map<number, THREE.MeshStandardMaterial>();
     private batches = new Map<string, { shape: Shape; color: number; matrices: THREE.Matrix4[] }>();
-    constructor(private scene: THREE.Scene, private collisions: CollisionWorld) { this.group.name = 'Street furniture'; scene.add(this.group); scene.add(this.busStops.group); }
+    constructor(private scene: THREE.Scene, private collisions: CollisionWorld) { this.group.userData.cullDistance = 500; this.busStops.group.userData.cullDistance = 150; this.group.name = 'Street furniture'; scene.add(this.group); scene.add(this.busStops.group); }
     generate(data: GeoJSON, project: (lat: number, lon: number) => Point,
         heightAt: (x: number, z: number, layer: number) => number, contains: (x: number, z: number) => boolean): void {
         this.clear();

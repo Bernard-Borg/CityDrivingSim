@@ -1,3 +1,4 @@
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import * as THREE from 'three';
 import { ElevationTerrain } from './ElevationTerrain';
 import type { SurfaceSample } from './ElevationTerrain';
@@ -124,6 +125,9 @@ export class RoadGenerator {
         this.labelsGroup.userData.isRoadGroup = true;
         this.tunnelGroup.userData.isRoadGroup = true;
 
+        this.roadGroup.userData.cullDistance = 1200;
+        this.tunnelGroup.userData.cullDistance = 1200;
+        this.labelsGroup.userData.cullDistance = 220;
         this.scene.add(this.roadGroup);
         this.scene.add(this.labelsGroup);
         this.scene.add(this.tunnelGroup);
@@ -147,11 +151,11 @@ export class RoadGenerator {
                         material.dispose();
                     });
                 } else {
-                    if (object.material.map) object.material.map.dispose();
                     // Only dispose if not a shared material
                     const materialId = (object.material as any).uuid;
                     const isShared = Object.values(this.sharedMaterials).some(m => m.uuid === materialId);
                     if (!isShared) {
+                        object.material.map?.dispose();
                         object.material.dispose();
                     }
                 }
@@ -235,12 +239,44 @@ export class RoadGenerator {
             this.createRoadFromProfile(profile, names.get(profile.input.id));
         }
         this.activeProfile = null;
+        await report?.("Batching nearby road geometry");
+        this.batchRoadGeometry();
         console.log(`Created ${this.profiles.length} road profiles (${this.profiles.filter(p => p.input.kind === 'bridge').length} bridges, ${this.profiles.filter(p => p.input.kind === 'tunnel').length} tunnels)`);
     }
 
     /**
      * Convert lat/lon to local 3D coordinates
      */
+    private batchRoadGeometry(): void {
+        this.roadGroup.userData.unbatchedMeshes = this.roadGroup.children.length + this.tunnelGroup.children.length;
+        for (const group of [this.roadGroup, this.tunnelGroup]) {
+            const batches = new Map<string, THREE.Mesh[]>();
+            for (const object of [...group.children]) {
+                if (!(object instanceof THREE.Mesh) || Array.isArray(object.material)) continue;
+                object.geometry.computeBoundingSphere();
+                const center = object.geometry.boundingSphere!.center;
+                const key = `${Math.floor(center.x / 200)},${Math.floor(center.z / 200)},${object.material.uuid},${Object.keys(object.geometry.attributes).sort().join(',')}`;
+                const batch = batches.get(key) ?? []; batch.push(object); batches.set(key, batch);
+            }
+            for (const meshes of batches.values()) {
+                if (meshes.length < 2) continue;
+                const temporary: THREE.BufferGeometry[] = [];
+                const geometries = meshes.map(mesh => { if (!mesh.geometry.index) return mesh.geometry;
+                    const geometry = mesh.geometry.toNonIndexed(); temporary.push(geometry); return geometry; });
+                const geometry = mergeGeometries(geometries, false);
+                temporary.forEach(g => g.dispose());
+                if (!geometry) continue;
+                geometry.computeBoundingSphere();
+                const mesh = new THREE.Mesh(geometry, meshes[0].material);
+                mesh.castShadow = meshes.some(m => m.castShadow); mesh.receiveShadow = meshes.some(m => m.receiveShadow);
+                for (const old of meshes) { group.remove(old); old.geometry.dispose(); }
+                group.add(mesh);
+            }
+        }
+        this.roads = [...this.roadGroup.children, ...this.tunnelGroup.children].filter((o): o is THREE.Mesh => o instanceof THREE.Mesh
+            && (o.material === this.sharedMaterials.roadMaterial || o.material === this.sharedMaterials.tunnelMaterial));
+    }
+
     private latLonToLocal(lat: number, lon: number, centerLat: number, centerLon: number): { x: number; z: number; } {
         const R = 6371000; // Earth radius in meters
         const dLat = (lat - centerLat) * Math.PI / 180;
@@ -426,7 +462,7 @@ export class RoadGenerator {
 
     dispose(): void {
         this.clear();
-        Object.values(this.sharedMaterials).forEach(material => material.dispose());
+        Object.values(this.sharedMaterials).forEach(material => { material.map?.dispose(); material.dispose(); });
         for (const group of [this.roadGroup, this.labelsGroup, this.tunnelGroup]) this.scene.remove(group);
     }
 
@@ -687,15 +723,7 @@ export class RoadGenerator {
             geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
             geometry.computeVertexNormals();
 
-            const material = new THREE.MeshStandardMaterial({
-                color: 0xFFFF00,
-                emissive: 0xFFFF00,
-                emissiveIntensity: 0.5,
-                polygonOffset: true,
-                polygonOffsetFactor: -4,
-                polygonOffsetUnits: -4,
-                side: THREE.DoubleSide
-            });
+            const material = this.sharedMaterials.edgeLineMaterial;
 
             this.drapeSurface(geometry, ROAD_HEIGHT + 0.015);
             this.corridors.cut(geometry, this.activeProfile?.input.id, true);
@@ -793,32 +821,19 @@ export class RoadGenerator {
                 indices.push(base + 2, base + 3, base + 1);
             }
 
-            // Create texture for dashed pattern (white -> transparent -> white -> transparent)
-            const canvas = document.createElement('canvas');
-            canvas.width = 256;
-            canvas.height = 32;
-            const context = canvas.getContext('2d')!;
-
-            const dashPixelLength = (dashLength / patternLength) * canvas.width;
-            const gapPixelLength = (gapLength / patternLength) * canvas.width;
-
-            // Clear entire canvas (transparent background)
-            context.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw white dashes with alpha
-            let x = 0;
-            while (x < canvas.width) {
-                // White dash
-                context.fillStyle = '#FFFFFF';
-                context.fillRect(x, 0, dashPixelLength, canvas.height);
-                // Gap is transparent (already cleared)
-                x += dashPixelLength + gapPixelLength;
+            let patternTexture = this.sharedMaterials.laneDividerMaterial.map;
+            if (!patternTexture) {
+                const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 32;
+                const context = canvas.getContext('2d')!;
+                context.clearRect(0, 0, 256, 32); context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, dashLength / patternLength * 256, 32);
+                patternTexture = new THREE.CanvasTexture(canvas);
+                patternTexture.wrapS = THREE.RepeatWrapping;
+                this.sharedMaterials.laneDividerMaterial.map = patternTexture;
+                this.sharedMaterials.laneDividerMaterial.transparent = true;
+                this.sharedMaterials.laneDividerMaterial.alphaTest = 0.01;
+                this.sharedMaterials.laneDividerMaterial.needsUpdate = true;
             }
-
-            const patternTexture = new THREE.CanvasTexture(canvas);
-            patternTexture.wrapS = THREE.RepeatWrapping;
-            patternTexture.wrapT = THREE.ClampToEdgeWrapping;
-            patternTexture.needsUpdate = true;
 
             // Create geometry
             const geometry = new THREE.BufferGeometry();
@@ -831,17 +846,7 @@ export class RoadGenerator {
             const patternRepeats = curveLength / patternLength;
 
             // Create material with pattern texture
-            const material = new THREE.MeshStandardMaterial({
-                map: patternTexture,
-                emissive: 0xFFFFFF,
-                emissiveIntensity: 0.3,
-                transparent: true,
-                polygonOffset: true,
-                polygonOffsetFactor: -4,
-                polygonOffsetUnits: -4,
-                alphaTest: 0.01, // Low threshold for transparency
-                side: THREE.DoubleSide
-            });
+            const material = this.sharedMaterials.laneDividerMaterial;
 
             // Texture repeat is handled by UV coordinates and RepeatWrapping
 

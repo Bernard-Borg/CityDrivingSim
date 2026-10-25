@@ -1,143 +1,43 @@
 import * as THREE from 'three';
 import type { GeoJSON } from '@/types';
 
+/** Two shared primitives per 200 m cell instead of two meshes per tree. */
 export class TreeGenerator {
-    private trees: THREE.Group[] = [];
-    private treeGroup: THREE.Group;
-    private sharedMaterials: {
-        trunkMaterial: THREE.MeshStandardMaterial;
-        leavesMaterial: THREE.MeshStandardMaterial;
-    };
-
+    private treeGroup = new THREE.Group();
+    private trunk = new THREE.CylinderGeometry(1, 1.2, 1, 8);
+    private canopy = new THREE.ConeGeometry(1, 1, 8);
+    private bark = new THREE.MeshStandardMaterial({ color: 0x8b4513, roughness: 0.9 });
+    private leaves = new THREE.MeshStandardMaterial({ color: 0x228b22, roughness: 0.8 });
     constructor(private scene: THREE.Scene) {
-        this.treeGroup = new THREE.Group();
-        // Mark group so it's not removed during scene clearing
-        this.treeGroup.userData.isTreeGroup = true;
-        this.scene.add(this.treeGroup);
-
-        // Shared materials for all trees
-        this.sharedMaterials = {
-            trunkMaterial: new THREE.MeshStandardMaterial({
-                color: 0x8B4513, // Brown
-                roughness: 0.9,
-                metalness: 0.1
-            }),
-            leavesMaterial: new THREE.MeshStandardMaterial({
-                color: 0x228B22, // Forest green
-                roughness: 0.8,
-                metalness: 0.0
-            })
-        };
+        this.treeGroup.userData.isTreeGroup = true; this.treeGroup.userData.cullDistance = 650;
+        this.treeGroup.name = 'Trees'; scene.add(this.treeGroup);
     }
-
-    /**
-     * Convert lat/lon to local 3D coordinates
-     */
-    private latLonToLocal(lat: number, lon: number, centerLat: number, centerLon: number): { x: number; z: number; } {
-        const R = 6371000; // Earth radius in meters
-        const dLat = (lat - centerLat) * Math.PI / 180;
-        const dLon = (lon - centerLon) * Math.PI / 180;
-
-        const x = dLon * R * Math.cos(centerLat * Math.PI / 180);
-        const z = -dLat * R;
-
-        return { x, z };
-    }
-
-    /**
-     * Create a simple 3D tree model
-     */
-    private createTreeModel(): THREE.Group {
-        const tree = new THREE.Group();
-
-        // Trunk (cylinder)
-        const trunkHeight = 2.5 + Math.random() * 1.5; // Random height between 2.5-4m
-        const trunkRadius = 0.15 + Math.random() * 0.1; // Random radius between 0.15-0.25m
-        const trunkGeometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius * 1.2, trunkHeight, 8);
-        const trunk = new THREE.Mesh(trunkGeometry, this.sharedMaterials.trunkMaterial);
-        trunk.position.y = trunkHeight / 2;
-        trunk.castShadow = true;
-        trunk.receiveShadow = true;
-        tree.add(trunk);
-
-        // Leaves (cone or multiple cones for more natural look)
-        const leavesHeight = trunkHeight * 0.8 + Math.random() * trunkHeight * 0.4;
-        const leavesRadius = leavesHeight * 0.6;
-        const leavesGeometry = new THREE.ConeGeometry(leavesRadius, leavesHeight, 8);
-        const leaves = new THREE.Mesh(leavesGeometry, this.sharedMaterials.leavesMaterial);
-        leaves.position.y = trunkHeight + leavesHeight / 2;
-        leaves.castShadow = true;
-        leaves.receiveShadow = true;
-        tree.add(leaves);
-        tree.scale.set(0.5, 0.5, 0.5);
-
-        // Add slight random rotation for variety
-        tree.rotation.y = Math.random() * Math.PI * 2;
-
-        return tree;
-    }
-
-    /**
-     * Generate trees from GeoJSON data
-     */
-    generateTreesFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number, heightAt: (x: number, z: number) => number = () => 0): void {
-        let treesCreated = 0;
-
-        for (const feature of geoJSON.features) {
-            if (feature.properties.natural === 'tree' && feature.geometry.type === 'Point' && feature.geometry.coordinates.length >= 2) {
-                const [lon, lat] = feature.geometry.coordinates;
-
-                // Convert to local coordinates
-                const local = this.latLonToLocal(lat, lon, centerLat, centerLon);
-
-                // Create tree model
-                const tree = this.createTreeModel();
-                tree.position.set(local.x, heightAt(local.x, local.z), local.z);
-
-                this.treeGroup.add(tree);
-                this.trees.push(tree);
-                treesCreated++;
-            }
-        }
-
-        console.log(`Generated ${treesCreated} trees`);
-    }
-
-    /**
-     * Clear all trees from the scene
-     */
-    clear(): void {
-        // Dispose of all tree meshes
-        this.trees.forEach(tree => {
-            this.disposeTree(tree);
-        });
-
-        // Remove all children from the group
-        const children = [...this.treeGroup.children];
-        children.forEach(child => {
-            this.treeGroup.remove(child);
-        });
-
-        this.trees = [];
-    }
-
-    /**
-     * Dispose of a tree's resources
-     */
-    private disposeTree(tree: THREE.Group): void {
-        tree.traverse((object) => {
-            if (object instanceof THREE.Mesh) {
-                if (object.geometry) {
-                    object.geometry.dispose();
-                }
-                // Don't dispose shared materials - they're reused
-            }
-        });
-    }
-    dispose(): void {
+    generateTreesFromGeoJSON(data: GeoJSON, centerLat: number, centerLon: number, heightAt: (x: number, z: number) => number = () => 0): void {
         this.clear();
-        Object.values(this.sharedMaterials).forEach(material => material.dispose());
-        this.scene.remove(this.treeGroup);
+        const cells = new Map<string, { trunks: THREE.Matrix4[]; leaves: THREE.Matrix4[] }>();
+        const scale = Math.PI / 180 * 6371000; let count = 0;
+        for (const f of data.features) {
+            if (f.properties.natural !== 'tree' || f.geometry.type !== 'Point') continue;
+            const [lon, lat] = f.geometry.coordinates, x = (lon - centerLon) * scale * Math.cos(centerLat * Math.PI / 180), z = -(lat - centerLat) * scale;
+            const key = `${Math.floor(x / 200)},${Math.floor(z / 200)}`;
+            let cell = cells.get(key); if (!cell) { cell = { trunks: [], leaves: [] }; cells.set(key, cell); }
+            let seed = 2166136261; for (const c of String(f.id ?? f.properties['@id'] ?? `${lon},${lat}`)) seed = Math.imul(seed ^ c.charCodeAt(0), 16777619);
+            const random = (shift: number) => ((seed >>> shift) % 1000) / 1000;
+            const h = (2.5 + random(0) * 1.5) * 0.5, radius = (0.15 + random(4) * 0.1) * 0.5;
+            const crown = h * (0.8 + random(8) * 0.4), y = heightAt(x, z);
+            const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), random(3) * Math.PI * 2);
+            cell.trunks.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y + h / 2, z), q, new THREE.Vector3(radius, h, radius)));
+            cell.leaves.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y + h + crown / 2, z), q, new THREE.Vector3(crown * 0.6, crown, crown * 0.6)));
+            count++;
+        }
+        for (const cell of cells.values()) for (const [matrices, geometry, material] of [[cell.trunks, this.trunk, this.bark], [cell.leaves, this.canopy, this.leaves]] as const) {
+            const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+            matrices.forEach((matrix, i) => mesh.setMatrixAt(i, matrix)); mesh.computeBoundingSphere();
+            mesh.castShadow = mesh.receiveShadow = true; this.treeGroup.add(mesh);
+        }
+        this.treeGroup.userData.treeCount = count;
+        console.log(`Generated ${count} trees in ${this.treeGroup.children.length} spatial batches`);
     }
-
+    clear(): void { for (const mesh of this.treeGroup.children) (mesh as THREE.InstancedMesh).dispose(); this.treeGroup.clear(); }
+    dispose(): void { this.clear(); this.trunk.dispose(); this.canopy.dispose(); this.bark.dispose(); this.leaves.dispose(); this.scene.remove(this.treeGroup); }
 }

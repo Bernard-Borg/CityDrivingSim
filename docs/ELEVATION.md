@@ -165,3 +165,23 @@ openings cut into intersecting building geometry; they are not architectural rep
 - [Copernicus DEM](https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM):
   alternative 30/90 m global surface data, with buildings/vegetation and attribution
   requirements to account for.
+
+## Land clearance above water
+
+Water levels are resolved before road profiles, scenery, collision heights and
+spawns. The shared height field has a minimum of 0.15 metres above sea level and
+is raised above nearby inland water levels along shorelines, including island
+holes. An 80 metre sampling buffer covers the terrain triangles touching each
+shore, keeping their interpolated land height above the rendered water plane.
+Other terrain elevations are preserved; an elevated pond does not raise an entire
+mountain/city to its level. Water footprints remain cut out of visible ground.
+
+Maps without HGT use a 40 metre shared flat grid, raised uniformly above the
+highest mapped shoreline level in coverage. Their outer backdrop uses the same
+height. Roads, markings, trees, buildings and car contact use this corrected grid.
+Bridge/tunnel profiles retain their own levels, including underwater tunnels.
+No supplied HGT file is modified.
+
+Inspections of Stockholm, Monaco and Rabat checked 1,212, 635 and 550 shoreline
+samples respectively with no terrain below the corresponding water surface. All
+five cities loaded with finite terrain heights and clean disposal.

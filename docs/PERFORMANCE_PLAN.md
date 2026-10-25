@@ -1,7 +1,10 @@
 # Performance improvement plan
 
-Status: investigation and plan only. No performance optimizations from this plan
-have been implemented. Tunnel and junction corrections are separate functional fixes.
+Status: road material/dash-texture sharing, spatial road/tunnel batching, tree
+instancing, buffered distance activation and static-transform freezing are now
+implemented. The recommendations below retain their original rationale; shadow
+quality, label atlases, workers and true chunk streaming remain future work.
+Tunnel and junction corrections are separate functional fixes.
 
 ## Current evidence
 
@@ -116,7 +119,8 @@ switches and report observed results rather than estimated FPS gains.
 
 ## Resolved Stockholm terrain-loading stall
 
-Stockholm currently has no elevation source configured. Its flat ground previously
+At the time of the original stall, Stockholm had no elevation source configured.
+Its flat ground previously
 used two triangles covering 50 by 50 kilometres. Subtracting all tunnel/water
 openings from those triangles gathered millions of spatial cells and repeatedly
 fragmented city-wide polygons. This was a loading scalability defect.
@@ -133,3 +137,39 @@ disposal. Road/marking generation took 6.12 seconds and building generation 1.87
 seconds in that run. These local wall-clock figures exclude browser GPU uploads,
 shader compilation and actual rendering; they are not browser load-time guarantees.
 The broader optimization candidates above remain proposals.
+
+## Implemented nearby-scene rendering
+
+[SceneVisibility](../src/core/scene/SceneVisibility.ts) activates nearby static
+scenery at 10 Hz using bounding spheres and a 100 metre exit buffer. Roads and
+buildings use a 1,200 metre range; trees 650 metres, furniture 500 metres, and
+street-name labels 220 metres. Stop-name signs retain their closer LOD. Normal
+camera-frustum culling still runs, and fog reaches full opacity at 1,200 metres.
+Large meshes stay active while any part of their bounding sphere is nearby.
+This is conservative distance activation, not occlusion culling behind buildings.
+
+Geometry remains cached in memory for immediate reactivation; there are no runtime
+OSM requests or drive-time downloads. This does not yet unload GPU buffers or
+stream building generation. Static scenery transforms are frozen after generation;
+the moving car/camera and shader water animation remain independent. Collision and
+road-profile indices remain available even when their visual mesh is hidden.
+
+Road/marking/tunnel geometry is merged by compatible material and 200 metre cell
+using each source mesh's centre. A long source way can therefore span cells; it
+retains a conservative bound and stays active until the whole mesh is distant.
+Trees use shared geometry and two InstancedMeshes per occupied 200 metre cell.
+Yellow paint and dashed lane markings now share materials, with one dash texture.
+
+Current full-scene Node inspections (including elevation-backed Stockholm) gave:
+
+| City | Road/tunnel meshes before | After batching | Tree meshes before | After instancing | Total meshes | Active meshes near spawn |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Stockholm | 16,687 | 1,378 | 6,128 | 410 | 7,829 | 1,119 |
+| Monaco | 2,682 | 269 | 1,694 | 148 | 2,586 | 869 |
+| Balzan | 395 | 61 | 2 | 2 | 103 | 101 |
+
+Active counts precede camera-frustum culling and include local sign LOD faces;
+they are not draw-call measurements. Dataset changes affect counts. Distant
+objects reactivated correctly when the observer moved to them, all geometry
+attributes were finite, and final disposal left no scene objects. Browser FPS,
+GPU time and memory still need measurements on the target device.

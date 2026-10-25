@@ -376,6 +376,7 @@ export class Car {
         this.previousPosition.copy(this.position); this.renderPosition.copy(this.position);
         this.previousRotation.copy(this.rotation); this.renderRotation.copy(this.rotation);
     }
+    setVisible(visible: boolean): void { this.mesh.visible = visible; }
     getEngineState(): EngineState { return this.engineState; }
     getRPM(): number { return this.rpm; }
     toggleIgnition(): EngineState {

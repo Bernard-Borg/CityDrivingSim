@@ -12,18 +12,19 @@ const state = useStateStore();
 const help = ref<InstanceType<typeof ControlsHelp> | null>(null);
 const actions = ref<InstanceType<typeof HudActions> | null>(null);
 
+const playing = computed(
+    () => !state.showCityMenu && !state.isLoading && !state.loadError,
+);
+
 const emit = defineEmits<{
     (e: "toggleStreetNames"): void;
     (e: "resetLocation"): void;
     (e: "citySelected", city: string): void;
     (e: "toggleIgnition"): void;
+    (e: "creativeChanged", enabled: boolean): void;
     (e: "pauseChanged", paused: boolean): void;
     (e: "performanceChanged", enabled: boolean): void;
 }>();
-
-const playing = computed(
-    () => !state.showCityMenu && !state.isLoading && !state.loadError,
-);
 
 const togglePerformance = () => {
     state.showPerformance = !state.showPerformance;
@@ -39,6 +40,17 @@ const onKey = (e: KeyboardEvent) => {
         )
     )
         return;
+    if (
+        e.key.toLowerCase() === "c" &&
+        !e.repeat &&
+        !help.value?.isOpen() &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+    ) {
+        e.preventDefault();
+        emit("creativeChanged", !state.creativeMode);
+    }
     if (e.key === "F3") {
         e.preventDefault();
         if (!e.repeat) togglePerformance();
@@ -55,9 +67,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <template>
     <template v-if="playing">
         <NavigationCompass />
-        <VehicleInstruments />
+        <VehicleInstruments v-if="!state.creativeMode" />
         <HudActions
             ref="actions"
+            @creative-changed="emit('creativeChanged', $event)"
             @help="help?.open()"
             @performance="togglePerformance"
             @toggle-ignition="emit('toggleIgnition')"

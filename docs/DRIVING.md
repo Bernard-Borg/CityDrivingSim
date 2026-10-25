@@ -10,6 +10,27 @@ npm run build
 
 `npm run typecheck` runs the Vue/TypeScript checks without creating a bundle.
 
+## Creative mode
+
+Press **C** or the HUD **Fly** button to switch between driving and free flight.
+The shared mode flag lives in the Pinia state store. Flight hides the car, switches
+its ignition off, clears motion/held controls, silences vehicle effects and pauses
+vehicle simulation. The parked car stays at its last driving position; returning
+to driving restores it there with ignition off. Flight position is not saved as a
+car spawn. The selected mode carries across city switches during this session.
+
+- WASD / arrow keys: fly forward/backward and sideways. Forward follows your view.
+- Space or E: rise; Q: descend along world vertical.
+- Hold Shift: fly three times faster.
+- Drag left mouse: look around freely, including up/down (pitch limited near vertical).
+- Mouse wheel: adjust base speed between 3 and 200 metres/second (default 30).
+- C / Drive button: return to the parked car. Reset view returns above city spawn.
+
+Flight has no collisions, gravity or water reset. Navigation coordinates/heading
+and nearby scenery activation follow the flight camera. Help/pause, hidden tabs
+and window blur clear held flight inputs. All flight listeners are removed when
+the simulator is disposed. Driving camera limits and compass math are unchanged.
+
 ## Handling
 
 - W / Up: accelerate forward; brake first when reversing.
@@ -45,6 +66,10 @@ uses available grip rather than stacking arbitrary speed attenuation on full loc
 Steering reversals respond faster than initial steering input.
 
 Front/rear weight distribution and longitudinal load transfer affect tyre capacity.
+Load transfer includes the uphill gravity component rather than only net vehicle
+acceleration, preserving the rear axle's climbing traction. `hillClimbAssist`
+(default 0.65) adds throttle-dependent uphill torque compensation. Coasting gravity,
+downhill acceleration and both brakes remain independent of that assist.
 A combined-force budget reduces acceleration in hard corners; braking reserves
 some steering capacity and traction control avoids deliberately breaking rear grip.
 There is no drift mode or handbrake grip reduction. Both brakes cut throttle and

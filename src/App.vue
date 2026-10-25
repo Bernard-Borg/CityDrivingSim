@@ -169,6 +169,7 @@ onUnmounted(() => {
             @toggleStreetNames="toggleStreetNames"
             @resetLocation="simulator && simulator.resetCarPosition()"
             @toggleIgnition="simulator?.toggleIgnition()"
+            @creativeChanged="simulator?.setCreativeMode($event)"
             @pauseChanged="simulator?.setPaused($event)"
             @performanceChanged="simulator?.setPerformanceEnabled($event)"
         />

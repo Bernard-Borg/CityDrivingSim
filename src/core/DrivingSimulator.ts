@@ -1,3 +1,5 @@
+import { FreeFlightControls } from "./FreeFlightControls";
+import { useStateStore } from "@/stores/state";
 import { useLoadingStore } from "@/stores/loading";
 import * as THREE from "three";
 import { SceneManager } from "./scene/SceneManager";
@@ -20,6 +22,7 @@ export class DrivingSimulator {
     private sceneManager: SceneManager;
     private car: Car | null = null;
     private carControls: CarControls | null = null;
+    private flight: FreeFlightControls | null = null;
     private lastFrame = performance.now();
     private physicsClock = new PhysicsClock();
     private firstPersonView = false;
@@ -84,6 +87,7 @@ export class DrivingSimulator {
         this.loading = true;
         this.savePosition();
         this.isLoaded = false;
+        this.flight?.dispose(); this.flight = null;
         this.carControls?.dispose();
         this.carControls = null;
         this.car?.dispose();
@@ -117,7 +121,7 @@ export class DrivingSimulator {
             }
 
             // Add fog for depth
-            this.scene.fog = new THREE.Fog(0x87ceeb, 500, 2000);
+            this.scene.fog = new THREE.Fog(0x87ceeb, 450, 1200);
 
             // Load city map with saved position
             await this.sceneManager.loadCityMap(city, savedPosition);
@@ -165,6 +169,8 @@ export class DrivingSimulator {
             this.physicsClock.reset();
             this.cameraReset = true;
             this.isLoaded = true;
+            this.flight = new FreeFlightControls(this.camera, this.renderer.domElement);
+            if (useStateStore().creativeMode) this.setCreativeMode(true);
             this.loadCompleteCallbacks.forEach((callback) => callback());
 
             // Start saving position periodically
@@ -233,6 +239,16 @@ export class DrivingSimulator {
         const delta = Math.min(elapsed, 0.1);
 
         if (this.isLoaded && this.carControls && this.car) {
+            if (this.flight?.enabled) {
+                this.physicsClock.reset();
+                if (!this.paused) this.flight.update(elapsed);
+                this.sceneManager.update(nowFrame / 1000, this.camera.position);
+                const coords = this.sceneManager.localToLatLon(this.camera.position.x, this.camera.position.z);
+                this.coordinateUpdateCallbacks.forEach(callback => callback(coords.lat, coords.lon));
+                const direction = this.camera.getWorldDirection(new THREE.Vector3());
+                const heading = (Math.atan2(direction.x, direction.z) * 180 / Math.PI + 360) % 360;
+                this.headingUpdateCallbacks.forEach(callback => callback(heading));
+            } else {
             if (!document.hidden && !this.paused) {
                 if (elapsed > 0.25) this.car.resetInterpolation();
                 let enteredWater = false;
@@ -246,7 +262,7 @@ export class DrivingSimulator {
                 this.carControls.updateAudio(delta);
             } else { this.physicsClock.reset(); this.carControls.silenceAudio(); }
             this.car.render(this.paused || document.hidden ? 1 : this.physicsClock.alpha);
-            this.sceneManager.update(nowFrame / 1000);
+            this.sceneManager.update(nowFrame / 1000, this.car.getRenderPosition());
 
             const carPosition = this.car.getRenderPosition();
             const carQuaternion = this.car.getRenderRotation();
@@ -366,6 +382,8 @@ export class DrivingSimulator {
             );
         }
 
+        }
+
         // Calculate FPS
         this.fpsFrames++;
         const now = performance.now();
@@ -408,10 +426,22 @@ export class DrivingSimulator {
         this.lastPerformanceUpdate = performance.now();
     }
     setPaused(paused: boolean): void {
-        this.paused = paused; this.carControls?.setPaused(paused); this.physicsClock.reset();
+        this.paused = paused; this.carControls?.setPaused(paused || !!this.flight?.enabled); this.flight?.setPaused(paused); this.physicsClock.reset();
         this.car?.resetInterpolation();
     }
-    toggleIgnition(): void { this.carControls?.toggleIgnition(); }
+    setCreativeMode(enabled: boolean): void {
+        if (!this.car || !this.carControls || !this.flight || this.paused) return;
+        useStateStore().creativeMode = enabled;
+        if (enabled && this.car.getEngineState() !== 'off') this.car.toggleIgnition();
+        this.car.resetPhysics(); this.car.setVisible(!enabled);
+        this.carControls.setPaused(enabled); this.flight.setEnabled(enabled);
+        this.physicsClock.reset(); this.cameraReset = true;
+        this.camera.up.set(0, 1, 0); this.camera.near = enabled ? 0.1 : 0.5;
+        this.camera.fov = enabled ? 65 : 45; this.camera.updateProjectionMatrix();
+        if (!enabled) { this.car.resetInterpolation(); this.firstPersonView = false; this.visibilityRefresh(); }
+    }
+    private visibilityRefresh(): void { if (this.car) this.sceneManager.update(performance.now() / 1000, this.car.getPosition(), true); }
+    toggleIgnition(): void { if (!this.flight?.enabled) this.carControls?.toggleIgnition(); }
 
     onLoadComplete(callback: LoadCompleteCallback): void {
         this.loadCompleteCallbacks.push(callback);
@@ -470,6 +500,10 @@ export class DrivingSimulator {
     resetCarPosition(): void {
         if (!this.car || !this.sceneManager) return;
 
+        if (this.flight?.enabled) {
+            this.camera.position.copy(this.sceneManager.getCenterPosition()).add(new THREE.Vector3(0, 15, 0));
+            this.sceneManager.update(performance.now() / 1000, this.camera.position, true); return;
+        }
         // Use map center position (default spawn location when no saved position)
         const centerPosition = this.sceneManager.getCenterPosition();
         this.car.setPosition(
@@ -532,6 +566,7 @@ export class DrivingSimulator {
         if (this.carControls) {
             this.carControls.dispose();
         }
+        this.flight?.dispose();
         this.car?.dispose();
         this.sceneManager.dispose();
         this.scene.traverse((object) => {

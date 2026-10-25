@@ -9,6 +9,7 @@ export const useStateStore = defineStore("state", () => {
     const showCityMenu = ref<boolean>(false);
     const isLoading = ref<boolean>(true);
     const loadError = ref("");
+    const creativeMode = ref(false);
 
     /* Game State */
     const fps = ref(0);
@@ -38,5 +39,6 @@ export const useStateStore = defineStore("state", () => {
         showPerformance,
         performanceHistory,
         loadError,
+        creativeMode,
     };
 });

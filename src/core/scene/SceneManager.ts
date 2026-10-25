@@ -1,3 +1,4 @@
+import { SceneVisibility } from "./SceneVisibility";
 import { useLoadingStore } from "@/stores/loading";
 import * as THREE from "three";
 import { CollisionWorld } from "./CollisionWorld";
@@ -16,6 +17,8 @@ import { useCitiesStore } from "@/stores/cities";
 export class SceneManager {
     readonly collisions = new CollisionWorld();
     private disposed = false;
+    private visibility = new SceneVisibility();
+    private sceneryRoots: THREE.Object3D[] = [];
     private roadGenerator: RoadGenerator;
     private treeGenerator: TreeGenerator;
     private buildingGenerator: BuildingGenerator;
@@ -33,6 +36,7 @@ export class SceneManager {
     private decor: DecorGenerator;
 
     constructor(private scene: THREE.Scene) {
+        const existing = new Set(scene.children);
         this.roadGenerator = new RoadGenerator(scene, this.collisions);
         this.treeGenerator = new TreeGenerator(scene);
         this.buildingGenerator = new BuildingGenerator(scene, this.collisions);
@@ -40,6 +44,7 @@ export class SceneManager {
         this.water = new WaterGenerator(scene);
         this.natural = new NaturalGenerator(scene);
         this.decor = new DecorGenerator(scene, this.collisions);
+        this.sceneryRoots = scene.children.filter(object => !existing.has(object));
         this.startPosition = new THREE.Vector3(0, ROAD_HEIGHT + 0.4, 0);
     }
 
@@ -168,6 +173,28 @@ export class SceneManager {
                 minZ: bounds.minZ - 600, maxZ: bounds.maxZ + 600,
             };
         }
+        if (!this.terrain && this.flatBounds) this.terrain = new ElevationTerrain(null, this.centerLat, this.centerLon, this.flatBounds);
+        await report("Loading scenery data", "Nature, buildings and street furniture");
+        const [naturalData, buildingData, decorData] = await Promise.all([
+            this.optionalData(`/data/natural/${config.file}`),
+            this.optionalData(`/data/buildings/${config.file}`),
+            this.optionalData(`/data/decor/${config.file}`),
+        ]);
+        if (this.disposed) return;
+        const project = (lat: number, lon: number) => this.latLonToLocal(lat, lon);
+        const sample = (x: number, z: number) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
+        const heightAt = (x: number, z: number) => sample(x, z).height;
+        await report("Generating water and coastlines");
+        if (naturalData) this.water.generate(naturalData, project,
+            this.terrain?.bounds ?? this.flatBounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
+            sample, this.terrain?.referenceHeight ?? 0, minimumAt => {
+                let flatHeight = 0.15;
+                this.terrain?.raiseMinimum((x, z) => {
+                    const floor = minimumAt(x, z); flatHeight = Math.max(flatHeight, floor); return floor;
+                });
+                // Without elevation data, retain a level map above its highest mapped water.
+                if (!this.elevationTile) this.terrain?.raiseMinimum(() => flatHeight);
+            });
         await report("Loading road-level settings");
         let roadLevels: Partial<RoadLevelSettings> = {};
         const levelsResponse = await fetch("/data/roads/road-levels.json", {
@@ -195,23 +222,9 @@ export class SceneManager {
         );
         this.collisions.setTunnelQuery((x, z, y) => this.roadGenerator.isInTunnel(x, z, y));
         this.collisions.setRoadOpeningQuery((x, z, y, owner) => this.roadGenerator.isTunnelOpening(x, z, y, owner));
-        this.collisions.setBounds(this.terrain?.bounds ?? null);
+        this.collisions.setBounds(this.elevationTile ? this.terrain?.bounds ?? null : null);
         if (!this.roadGenerator.getRoads().length)
             throw new Error("This city has no drivable roads.");
-        await report("Loading scenery data", "Nature, buildings and street furniture");
-        const [naturalData, buildingData, decorData] = await Promise.all([
-            this.optionalData(`/data/natural/${config.file}`),
-            this.optionalData(`/data/buildings/${config.file}`),
-            this.optionalData(`/data/decor/${config.file}`),
-        ]);
-        if (this.disposed) return;
-        const project = (lat: number, lon: number) => this.latLonToLocal(lat, lon);
-        const sample = (x: number, z: number) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
-        const heightAt = (x: number, z: number) => sample(x, z).height;
-        await report("Generating water and coastlines");
-        if (naturalData) this.water.generate(naturalData, project,
-            this.terrain?.bounds ?? this.flatBounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
-            sample, this.terrain?.referenceHeight ?? 0);
         await report("Building terrain mesh");
         this.createGround();
         if (naturalData) {
@@ -273,7 +286,7 @@ export class SceneManager {
                 savedPosition.lat,
                 savedPosition.lon,
             );
-            if (!this.terrain || this.terrain.contains(local.x, local.z))
+            if (!this.elevationTile || !this.terrain || this.terrain.contains(local.x, local.z))
                 this.startPosition.set(
                     local.x,
                     Number.isFinite(savedPosition.y)
@@ -305,9 +318,13 @@ export class SceneManager {
             spawn.z,
         );
         if (this.isInWater(this.startPosition)) this.startPosition.copy(this.roadGenerator.getSpawnPosition());
+        await report("Preparing nearby scenery");
+        this.visibility.build([...this.sceneryRoots, ...(this.groundGroup ? [this.groundGroup] : [])]);
+        this.visibility.update(this.startPosition, 0, true);
     }
 
     private clearScene(): void {
+        this.visibility.clear();
         this.water.clear();
         this.natural.clear();
         this.decor.clear();
@@ -337,6 +354,15 @@ export class SceneManager {
         });
         this.groundGroup = new THREE.Group();
         this.scene.add(this.groundGroup);
+        if (this.terrain && !this.elevationTile) {
+            const b = this.terrain.bounds, edge = Math.max(25000, Math.abs(b.minX), Math.abs(b.maxX), Math.abs(b.minZ), Math.abs(b.maxZ)) + 1;
+            for (const [minX, minZ, maxX, maxZ] of [[-edge, -edge, edge, b.minZ], [-edge, b.maxZ, edge, edge],
+                [-edge, b.minZ, b.minX, b.maxZ], [b.maxX, b.minZ, edge, b.maxZ]]) {
+                const geometry = new THREE.PlaneGeometry(maxX - minX, maxZ - minZ);
+                geometry.rotateX(-Math.PI / 2); geometry.translate((minX + maxX) / 2, this.terrain.heights[0], (minZ + maxZ) / 2);
+                const mesh = new THREE.Mesh(geometry, this.groundMaterial); mesh.receiveShadow = true; this.groundGroup.add(mesh);
+            }
+        }
         if (!this.terrain) {
             const bounds = this.flatBounds ?? { minX: -600, minZ: -600, maxX: 600, maxZ: 600 };
             const addPatch = (minX: number, minZ: number, maxX: number, maxZ: number, cut: boolean) => {
@@ -488,7 +514,7 @@ export class SceneManager {
         return true;
     }
 
-    update(elapsed: number): void { this.water.update(elapsed); }
+    update(elapsed: number, position?: THREE.Vector3, force = false): void { this.water.update(elapsed); if (position) this.visibility.update(position, elapsed, force); }
 
     dispose(): void {
         this.disposed = true;

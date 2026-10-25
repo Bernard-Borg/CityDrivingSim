@@ -106,6 +106,7 @@ export class CarControls {
     }
 
     private handleWheel(e: WheelEvent): void {
+        if (this.paused) return;
         e.preventDefault();
         if (this.firstPerson) return;
         const zoomDelta = e.deltaY > 0 ? 1.5 : -1.5;
@@ -201,6 +202,7 @@ export class CarControls {
     }
 
     private handleMouseDown(e: MouseEvent): void {
+        if (this.paused) return;
         this.mouse.isDown = true;
         this.mouse.x = e.clientX;
         this.mouse.y = e.clientY;

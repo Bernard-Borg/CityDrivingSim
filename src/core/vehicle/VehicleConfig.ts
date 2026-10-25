@@ -13,6 +13,7 @@ export interface VehicleConfig {
         reverseSpeed: number;
         boostSpeed: number;
         acceleration: number;
+        hillClimbAssist: number;
         reverseAcceleration: number;
         boostAcceleration: number;
         brakeDeceleration: number;
@@ -71,6 +72,7 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
         reverseSpeed: 35,
         boostSpeed: 250,
         acceleration: 8.5,
+        hillClimbAssist: 0.65,
         reverseAcceleration: 4,
         boostAcceleration: 15,
         brakeDeceleration: 15,

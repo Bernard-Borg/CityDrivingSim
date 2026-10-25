@@ -54,8 +54,13 @@ export class VehiclePhysics {
         this.boosting = input.boost && !this.boostLocked && throttle > 0.1 && forward >= 0 && this.boost > 1;
         this.boost = clamp(this.boost + (this.boosting ? -cfg.boostDrain : cfg.boostRecharge) * dt, 0, 100);
         const limit = (throttle < 0 ? cfg.reverseSpeed : this.boosting ? cfg.boostSpeed : cfg.maxSpeed) / 3.6;
+        const plane = 1 + slopeX * slopeX + slopeZ * slopeZ;
+        const gravityX = -9.81 * slopeX / plane, gravityZ = -9.81 * slopeZ / plane;
+        const gradeScale = 1 / Math.sqrt(1 + (slopeX * sin + slopeZ * cos) ** 2);
+        const gravityForward = gravityX * sin + gravityZ * cos;
         const engine = throttle * (throttle < 0 ? cfg.reverseAcceleration : this.boosting ? cfg.boostAcceleration : cfg.acceleration)
-            * Math.max(0, 1 - Math.pow(Math.max(0, forward * Math.sign(throttle)) / limit, 4));
+            * Math.max(0, 1 - Math.pow(Math.max(0, forward * Math.sign(throttle)) / limit, 4))
+            + throttle * Math.max(0, -gravityForward * Math.sign(throttle)) * cfg.hillClimbAssist / gradeScale;
         const resistance = cfg.rollingResistance + cfg.drag * speed * speed + (Math.abs(throttle) < 0.05 ? cfg.engineResistance : 0);
         const brake = pedal * (input.handbrake ? cfg.handbrakeDeceleration : cfg.brakeDeceleration) * surfaceGrip;
         // Never let a braking force reverse the vehicle in a single tick.
@@ -68,10 +73,6 @@ export class VehiclePhysics {
         this.steeringAngle = clamp(input.steering / cfg.maxSteeringAngle, -1, 1) * lock;
         const steer = this.steeringAngle;
         const frontArm = cfg.wheelbase * (1 - cfg.frontWeight), rearArm = cfg.wheelbase * cfg.frontWeight;
-        const plane = 1 + slopeX * slopeX + slopeZ * slopeZ;
-        const gravityX = -9.81 * slopeX / plane, gravityZ = -9.81 * slopeZ / plane;
-        const gradeScale = 1 / Math.sqrt(1 + (slopeX * sin + slopeZ * cos) ** 2);
-        const gravityForward = gravityX * sin + gravityZ * cos;
         const previousX = this.vx, previousZ = this.vz;
 
         if (forward < 3) {
@@ -87,7 +88,7 @@ export class VehiclePhysics {
         } else {
             // A dynamic bicycle: each axle develops a bounded lateral force from its
             // slip angle. World momentum changes through forces, not a yaw teleport.
-            const loadTransfer = cfg.mass * clamp(this.longitudinalAcceleration, -brake, cfg.acceleration)
+            const loadTransfer = cfg.mass * clamp(this.longitudinalAcceleration - gravityForward, -cfg.brakeDeceleration, cfg.acceleration + Math.abs(gravityForward))
                 * cfg.centreOfMassHeight / cfg.wheelbase;
             const frontLoad = clamp(cfg.mass * 9.81 * cfg.frontWeight - loadTransfer, cfg.mass * 9.81 * 0.2, cfg.mass * 9.81 * 0.8);
             const rearLoad = cfg.mass * 9.81 - frontLoad;

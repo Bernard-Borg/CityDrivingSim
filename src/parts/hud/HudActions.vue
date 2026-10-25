@@ -10,16 +10,18 @@ const state = useStateStore();
 const settings = useSettingsStore();
 const cityStore = useCitiesStore();
 
+const helpButton = ref<HTMLButtonElement | null>(null);
+
 const emit = defineEmits<{
     (e: "help"): void;
     (e: "performance"): void;
     (e: "toggleIgnition"): void;
+    (e: "creativeChanged", enabled: boolean): void;
     (e: "resetLocation"): void;
     (e: "toggleStreetNames"): void;
     (e: "citySelected", city: string): void;
 }>();
 
-const helpButton = ref<HTMLButtonElement | null>(null);
 
 const openHelp = () => emit("help");
 const togglePerformance = () => emit("performance");
@@ -65,6 +67,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 </svg>
             </button>
             <button
+                v-if="!state.creativeMode"
                 class="hud-button ignition-button"
                 :class="{ selected: state.vehicle.engine !== 'off' }"
                 :aria-label="
@@ -86,8 +89,12 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
             </button>
         </div>
         <div class="settings-tools">
+            <button class="hud-button" :class="{ selected: state.creativeMode }" :aria-pressed="state.creativeMode"
+                title="Toggle creative mode (C)" @click="emit('creativeChanged', !state.creativeMode)">
+                {{ state.creativeMode ? 'Drive (C)' : 'Fly (C)' }}
+            </button>
             <button class="hud-button" @click="emit('resetLocation')">
-                Reset location
+                {{ state.creativeMode ? "Reset view" : "Reset location" }}
             </button>
             <button
                 class="hud-button"

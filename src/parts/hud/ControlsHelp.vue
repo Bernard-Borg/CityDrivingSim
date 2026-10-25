@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, nextTick, onUnmounted } from "vue";
+import { computed, ref, nextTick, onUnmounted } from "vue";
 
-const controls = [
+import { useStateStore } from "@/stores/state";
+
+const DRIVING_CONTROLS = [
     ["W / Up", "Accelerate"],
     ["S / Down", "Brake, then reverse"],
     ["A / D / Arrows", "Steer"],
@@ -9,13 +11,28 @@ const controls = [
     ["Shift", "Boost"],
     ["I", "Ignition / park"],
     ["V", "First / third person"],
+    ["C", "Creative mode / fly"],
     ["Mouse drag", "Look around (first person: ±80°)"],
     ["Scroll", "Third-person zoom"],
     ["F3", "Performance graphs"],
     ["?", "Open help"],
 ];
 
+const FLIGHT_CONTROLS = [
+    ["WASD / Arrows", "Fly forward, backward and sideways"],
+    ["Space / E", "Fly up"],
+    ["Q", "Fly down"],
+    ["Shift (hold)", "Fly faster"],
+    ["Mouse drag", "Look around freely"],
+    ["Scroll", "Adjust flight speed"],
+    ["C", "Return to parked car"],
+    ["F3", "Performance graphs"],
+    ["?", "Open help"],
+];
+const state = useStateStore();
 const helpDialog = ref<HTMLDialogElement | null>(null);
+
+const controls = computed(() => state.creativeMode ? FLIGHT_CONTROLS : DRIVING_CONTROLS);
 
 const emit = defineEmits<{
     (e: "pauseChanged", paused: boolean): void;
