@@ -199,6 +199,7 @@ export class SceneManager {
                 this.centerLat,
                 this.centerLon,
                 heightAt,
+                config.buildings,
             );
         if (savedPosition) {
             const local = this.latLonToLocal(

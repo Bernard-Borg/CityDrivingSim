@@ -1,6 +1,8 @@
 import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
 import { ref } from "vue";
+import { MALTA_BUILDINGS, MONACO_BUILDINGS } from "@/core/scene/BuildingAppearance";
+import type { BuildingTheme } from "@/core/scene/BuildingAppearance";
 
 export interface SavedPosition {
     lat: number;
@@ -14,12 +16,14 @@ export interface CityConfig {
     centerLat: number;
     centerLon: number;
     elevation?: { file: string; south: number; west: number };
+    buildings?: BuildingTheme;
 }
 
 // Available cities configuration
 export const CITY_CONFIGS: Record<string, CityConfig> = {
     monaco: {
         name: "Monaco",
+        buildings: MONACO_BUILDINGS,
         file: "monaco.json",
         elevation: { file: "Monaco.hgt", south: 43, west: 7 },
         centerLat: 43.7384,
@@ -27,6 +31,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     },
     rabat: {
         name: "Rabat",
+        buildings: MALTA_BUILDINGS,
         file: "rabat.json",
         elevation: { file: "Rabat.hgt", south: 35, west: 14 },
         centerLat: 35.8807,
@@ -35,12 +40,14 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     balzan: {
         name: "Ħal Balzan",
         file: "balzan.json",
+        buildings: MALTA_BUILDINGS,
         centerLat: 35.9005,
         centerLon: 14.4504,
     },
     qrendi: {
         name: "Il-Qrendi",
         file: "qrendi.json",
+        buildings: MALTA_BUILDINGS,
         centerLat: 35.8343,
         centerLon: 14.4579,
     },
