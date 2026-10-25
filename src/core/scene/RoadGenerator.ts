@@ -288,8 +288,8 @@ export class RoadGenerator {
 
         this.createProfileSides(profile, curve, roadWidth, numSegments);
         if (roadName) {
-            const point = curve.getPoint(0.5), tangent = curve.getTangent(0.5);
-            this.createStreetLabel(point, Math.atan2(tangent.x, tangent.z), roadName);
+            const point = curve.getPoint(0.5);
+            this.createStreetLabel(point, roadName);
         }
     }
 
@@ -898,59 +898,48 @@ export class RoadGenerator {
     /**
      * Create a street name label as a sprite
      */
-    private createStreetLabel(position: { x: number; z: number; }, rotation: number, name: string): void {
-        // Create canvas for text
+    private createStreetLabel(position: { x: number; z: number; }, name: string): void {
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         if (!context) return;
-
-        // Set canvas size
-        canvas.width = 192;
-        canvas.height = 14;
-
-        // Draw text with shadow for better visibility
-        const fontSize = 10;
-        context.font = `${fontSize}px Arial`;
-
-        // Measure text to center it
-        const metrics = context.measureText(name);
-        const textWidth = metrics.width;
-
-        // Draw shadow/background for better readability
-        context.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-
-        // Draw text
-        context.fillStyle = '#FFFFFF';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.fillText(name, canvas.width / 2, canvas.height / 2);
-
-        // Create texture from canvas
+        const font = '600 44px system-ui, sans-serif';
+        context.font = font;
+        const maxWidth = 720, padding = 24, lineHeight = 58;
+        const lines: string[] = [''];
+        // Wrap at word boundaries; very long unbroken names are split rather than squeezed.
+        for (const word of name.trim().split(/\s+/)) {
+            const parts: string[] = []; let part = '';
+            for (const character of Array.from(word)) {
+                if (part && context.measureText(part + character).width > maxWidth) { parts.push(part); part = ''; }
+                part += character;
+            }
+            if (part) parts.push(part);
+            for (const text of parts) {
+                const last = lines.length - 1, candidate = lines[last] ? `${lines[last]} ${text}` : text;
+                if (lines[last] && context.measureText(candidate).width > maxWidth) lines.push(text);
+                else lines[last] = candidate;
+            }
+        }
+        canvas.width = Math.ceil(Math.max(100, ...lines.map(line => context.measureText(line).width)) + padding * 2);
+        canvas.height = lines.length * lineHeight + padding;
+        // Resizing clears canvas state: restore typography at the final texture resolution.
+        context.font = font;
+        context.fillStyle = 'rgba(19, 30, 40, 0.92)';
+        context.beginPath(); context.roundRect(2, 2, canvas.width - 4, canvas.height - 4, 16); context.fill();
+        context.strokeStyle = 'rgba(220, 234, 243, 0.38)'; context.lineWidth = 2; context.stroke();
+        context.fillStyle = '#f4f7fa'; context.textAlign = 'center'; context.textBaseline = 'middle';
+        lines.forEach((line, i) => context.fillText(line, canvas.width / 2, padding / 2 + lineHeight * (i + 0.5)));
         const texture = new THREE.CanvasTexture(canvas);
-        texture.needsUpdate = true;
-        this.labelTextures.push(texture); // Track for disposal
-
-        // Create sprite material
-        const spriteMaterial = new THREE.SpriteMaterial({
-            map: texture,
-            transparent: true,
-            alphaTest: 0.1
-        });
-
-        // Create sprite
-        const sprite = new THREE.Sprite(spriteMaterial);
-
-        // Scale sprite (adjust size as needed)
-        const scale = 2; // Size of the label in world units
-        sprite.scale.set(scale * (textWidth / fontSize), scale, 1);
-
-        // Position sprite above the road
-        sprite.position.set(position.x, this.roadHeight(position.x, position.z) + 6, position.z); // 3 units above ground
-
-        // Rotate sprite to face the road direction (sprite already faces camera, so just rotate Y)
-        sprite.rotation.y = rotation;
-
+        texture.colorSpace = THREE.SRGBColorSpace;
+        this.labelTextures.push(texture);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+            map: texture, transparent: true, alphaTest: 0.03, depthWrite: false, toneMapped: false,
+        }));
+        // Match the actual canvas aspect ratio: every name has identical letter proportions.
+        const metresPerPixel = 1.35 / lineHeight;
+        sprite.scale.set(canvas.width * metresPerPixel, canvas.height * metresPerPixel, 1);
+        sprite.name = `Street: ${name}`;
+        sprite.position.set(position.x, this.roadHeight(position.x, position.z) + 6, position.z);
         this.labelsGroup.add(sprite);
     }
 

@@ -23,6 +23,9 @@ export class Car {
     private groundNormal = new THREE.Vector3(0, 1, 0);
     private impact = 0;
     private mesh: THREE.Group = new THREE.Group();
+    private visualBody = new THREE.Group();
+    private bodyLean = new THREE.Vector2();
+    private previousBodyLean = new THREE.Vector2();
     private scene: THREE.Scene;
     private cameraTargetOffset = new THREE.Vector3(0, 0.8, 0.3);
     private driverEyeOffset = new THREE.Vector3(0.2, 0.2, -0.2);
@@ -39,7 +42,7 @@ export class Car {
     private steeringAngle: number = 0;
     get maxSteeringAngle(): number { return this.config.physics.maxSteeringAngle; }
 
-    // Drift/handbrake properties
+    // Handbrake properties
     private handbrakeActive: boolean = false;
 
     // Boost properties
@@ -95,7 +98,8 @@ export class Car {
         // Use the scaled model bounds so this remains relative to the actual car.
         this.driverEyeOffset.set(centeredSize.x * this.config.model.eye[0], centeredSize.y * this.config.model.eye[1], centeredSize.z * this.config.model.eye[2]);
 
-        this.mesh.add(model);
+        this.visualBody.add(model);
+        this.mesh.add(this.visualBody);
         this.mesh.position.copy(this.position);
 
         // Base scale (model-specific scaling happens after GLTF loads)
@@ -167,6 +171,7 @@ export class Car {
     update(delta: number): void {
         this.previousPosition.copy(this.position);
         this.previousRotation.copy(this.rotation);
+        this.previousBodyLean.copy(this.bodyLean);
         if (this.engineState === 'starting') {
             this.ignitionRemaining = Math.max(0, this.ignitionRemaining - delta);
             if (this.ignitionRemaining === 0) this.engineState = 'running';
@@ -189,6 +194,10 @@ export class Car {
         const road = this.surface(this.physics.x, this.physics.z, this.position.y);
         this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
         this.position.set(this.physics.x, road.height + this.groundOffset / this.groundNormal.y, this.physics.z);
+        const motion = this.config.bodyMotion;
+        const leanResponse = 1 - Math.exp(-motion.response * delta);
+        this.bodyLean.x += (THREE.MathUtils.clamp(-this.physics.longitudinalAcceleration * motion.pitchGain, -0.025, 0.025) - this.bodyLean.x) * leanResponse;
+        this.bodyLean.y += (THREE.MathUtils.clamp(-this.physics.lateralAcceleration * motion.rollGain, -0.04, 0.04) - this.bodyLean.y) * leanResponse;
         this.speed = this.physics.forwardSpeed * 3.6;
         const targetRPM = this.engineState === 'running' ? targetEngineRPM(this.speed, this.throttleInput, this.config.audio) : this.engineState === 'starting' ? 240 : 0;
         this.rpm += (targetRPM - this.rpm) * (1 - Math.exp(-7 * delta));
@@ -207,7 +216,7 @@ export class Car {
             }
             // Rotate front wheel pivots for steering
             if (this.gltfFrontWheelPivots.length > 0) {
-                const frontWheelAngle = this.steeringAngle * 0.7;
+                const frontWheelAngle = this.physics.steeringAngle;
                 const steerQuat = new THREE.Quaternion().setFromAxisAngle(
                     new THREE.Vector3(0, 1, 0),
                     frontWheelAngle
@@ -318,6 +327,7 @@ export class Car {
      */
     resetPhysics(): void {
         this.physics.reset();
+        this.bodyLean.set(0, 0); this.previousBodyLean.set(0, 0); this.visualBody.rotation.set(0, 0, 0);
         this.impact = 0;
         this.speed = 0;
         this.throttleInput = 0;
@@ -354,11 +364,15 @@ export class Car {
         this.renderPosition.lerpVectors(this.previousPosition, this.position, alpha);
         this.renderRotation.copy(this.previousRotation).slerp(this.rotation, alpha);
         this.mesh.position.copy(this.renderPosition); this.mesh.quaternion.copy(this.renderRotation);
+        // Chassis feedback is visual only; camera mounts and contact orientation stay steady.
+        this.visualBody.rotation.set(THREE.MathUtils.lerp(this.previousBodyLean.x, this.bodyLean.x, alpha), 0,
+            THREE.MathUtils.lerp(this.previousBodyLean.y, this.bodyLean.y, alpha));
     }
     getRenderPosition(): THREE.Vector3 { return this.renderPosition.clone(); }
     getRenderRotation(): THREE.Quaternion { return this.renderRotation.clone(); }
     resetInterpolation(): void { this.snapRenderPose(); }
     private snapRenderPose(): void {
+        this.previousBodyLean.copy(this.bodyLean);
         this.previousPosition.copy(this.position); this.renderPosition.copy(this.position);
         this.previousRotation.copy(this.rotation); this.renderRotation.copy(this.rotation);
     }

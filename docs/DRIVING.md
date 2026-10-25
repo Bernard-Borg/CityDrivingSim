@@ -12,9 +12,12 @@ npm run build
 
 ## Handling
 
-- W/S or arrow up/down: forward/reverse throttle.
+- W / Up: accelerate forward; brake first when reversing.
+- S / Down: brake while moving forward, then reverse once stopped.
 - A/D or arrow left/right: steering, with reduced steering authority at speed.
-- Space: service brake; E: handbrake with full lateral grip.
+- Space or E (hold): the same assisted emergency handbrake, with full lateral grip
+  and 30 m/s? nominal deceleration (scaled by surface grip), including sideways motion. Holding both
+  keeps it active until both are released.
 - Shift: boost while accelerating forward. An empty boost tank must be released
   before activating it again. It recharges when boost is inactive.
 - V: toggle between third-person chase and first-person driver-seat cameras.
@@ -23,7 +26,7 @@ npm run build
 - Mouse wheel: zoom the third-person camera; ignored in first person.
 - I or the HUD power button: switch the engine off/on. Switching off stops the car
   and sets a parking lock that holds on slopes. Starting plays the ignition sound
-  and retains the lock until the configured start duration finishes. E remains
+  and retains the lock until the configured start duration finishes. Space/E remain
   the separate driving handbrake.
 - Help icon or ?: open the controls modal. Driving pauses, input clears, and
   focus stays in the modal until it is closed with Escape or its close button.
@@ -32,7 +35,21 @@ npm run build
 [VehiclePhysics](../src/core/vehicle/VehiclePhysics.ts) works in metres, seconds,
 and radians. The simulator advances it at 120 Hz regardless of rendering FPS.
 Long suspension gaps are discarded; catch-up work is capped after slow frames.
-Yaw follows a bicycle model with full steering lock at low speed and a lateral-acceleration limit at higher speed. Steering carries travel direction with the body; there is no drift mode, rear-wheel lock, slip-angle alignment force, or grip-recovery state. The handbrake keeps normal lateral grip, cuts throttle and brakes firmly. Both brakes take priority over throttle. Road surfaces affect braking and lateral grip. Forward power tapers toward
+Handling blends a kinematic parking/reverse model into a dynamic front/rear-axle
+model between 3 and 7 m/s. Tyre slip angles generate bounded forces; vehicle mass
+and yaw inertia determine how momentum and heading respond. Steering no longer
+rotates world velocity directly at driving speeds. The keyboard steering envelope
+uses available grip rather than stacking arbitrary speed attenuation on full lock.
+Steering reversals respond faster than initial steering input.
+
+Front/rear weight distribution and longitudinal load transfer affect tyre capacity.
+A combined-force budget reduces acceleration in hard corners; braking reserves
+some steering capacity and traction control avoids deliberately breaking rear grip.
+There is no drift mode or handbrake grip reduction. Both brakes cut throttle and
+act immediately. The default is an assisted sport-car tune for the game's scaled
+car, not surveyed NSX tyre/suspension measurements. Full-lock bends at highway
+speed still require slowing down; steering cannot bypass available tyre force.
+Forward power tapers toward
 200 km/h (250 with boost); reverse is limited to 35 km/h. The HUD converts speed
 to signed km/h: reversing or rolling backwards displays a minus. Opposite throttle
 slows the vehicle before reversing it. The listed figures describe the default
@@ -44,7 +61,10 @@ directly from it without relying on scene-matrix updates. The chase camera
 uses a yaw-only orbit anchored to the current rendered car, with vertical camera
 smoothing only. Horizontal tracking and aiming do not lag behind the car, so
 camera distance cannot increase with speed and orbiting keeps the car in view.
-Small terrain pitch/bank changes do not swing its whole offset. Teleports, pause and visibility
+Small terrain pitch/bank changes do not swing its whole offset.
+A separate visual body group adds restrained, smoothed acceleration/braking pitch
+and cornering roll. This is not added to either camera mount or road contact pose.
+Visible front wheels follow the physics steering angle rather than raw keyboard lock. Teleports, pause and visibility
 changes reset interpolation. Ground/tunnel camera clearance remains enforced.
 
 ## Collisions and road contact
@@ -73,7 +93,10 @@ may be absent. Map requests have timeouts. Input resets on focus loss or page
 visibility changes. Audio cannot block throttle, and mute has no physics effect.
 
 Procedural engine audio follows throttle and approximate automatic gearing.
-Road noise follows surface and speed. Tire-squeal audio is removed. Collisions use
+Continuous speed-dependent road/wind noise and the engine's filtered white-noise
+texture are removed, including their loop sources and noise-gain nodes. The engine
+keeps its tonal harmonics; ignition and crash effects remain one-shot buffers.
+Collisions use
 a broadband crush transient, a low filtered body thump and irregular debris/panel
 rattles, with short damped metallic detail. Higher impact speeds increase loudness
 and slightly lower pitch; a 0.4 second cooldown avoids repeated crash chatter
@@ -111,6 +134,35 @@ model/stats and pass that configuration as the second argument to
 overriding individual fields. There is currently one vehicle and no selection UI.
 Alternate GLTF models need compatible wheel node names for wheel animation;
 camera placement and collision dimensions are configured separately.
+
+### Handling parameters
+
+The default handling tune is in [VehicleConfig.ts](../src/core/vehicle/VehicleConfig.ts):
+
+- `mass` (kg), `yawInertia` (kg m?), `frontWeight` (static front load fraction),
+  `centreOfMassHeight` and `wheelbase` (metres) set mass and load-transfer response.
+- `frontCornerStiffness` / `rearCornerStiffness` (N/radian) balance turn-in and rear
+  stability; these are game tuning values matched to the scaled model.
+- `cornerGrip` is the nominal lateral acceleration budget (m/s?); road grip scales
+  that budget. `steeringAssist` scales the useful high-speed steering envelope,
+  `maxSteeringAngle` is low-speed lock, and `yawDamping` smooths heading response.
+- `brakeBias` allocates braking between axles. Service/handbrake deceleration,
+  engine power, resistance and boost remain separately configurable.
+- `controls.steerRise` and `steerReturn` set keyboard filtering. The return rate
+  also applies when reversing steering direction.
+- `bodyMotion` controls visual roll/pitch gains (radians per m/s?) and response.
+  Those values do not move the camera or change collisions.
+
+One-off numerical inspections of the current default tune gave approximately
+1.88 seconds / 26.2 metres for straight 100?0 km/h braking on full-grip flat road,
+for the service brake, including when throttle was held. The stronger assisted
+handbrake now stops from 100 km/h in about 0.93 seconds / 12.8 metres on full-grip
+flat ground; its whole-velocity deceleration is deliberately stronger than the
+ordinary axle-force budget. Fixed-step trajectories matched at 30, 60 and
+144 rendered frames per second. Repeated slalom/braking runs on asphalt,
+cobblestone and loose-ground grip remained finite, and collision resolution
+added no speed in repeated wall impacts. These checks do not replace a browser
+drive to judge steering feel or listening to the audio. No test files were added.
 
 ## HUD components
 

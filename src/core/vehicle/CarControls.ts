@@ -24,7 +24,6 @@ export class CarControls {
     private audioUnlocked = false;
     private initialIgnitionPlayed = false;
     private soundCooldown = 0;
-    private currentSurface: string = 'asphalt';
 
     private throttleInput: number = 0;
     private brakeInput: number = 0;
@@ -251,10 +250,6 @@ export class CarControls {
         return this.firstPersonYaw;
     }
 
-    setRoadSurface(surface: string): void {
-        this.currentSurface = surface || 'asphalt';
-    }
-
     update(delta: number): void {
         // Smooth camera angles to reduce jank
         this.cameraAngle = THREE.MathUtils.damp(this.cameraAngle, this.cameraAngleTarget, this.cameraSmoothRate, delta);
@@ -262,9 +257,11 @@ export class CarControls {
         this.firstPersonYaw = THREE.MathUtils.damp(this.firstPersonYaw, this.firstPersonYawTarget, this.cameraSmoothRate, delta);
         // Throttle with smoother input response
         const speed = this.car.getSpeed();
-        const changingDirection = (this.keys.backward && speed > 1) || (this.keys.forward && speed < -1);
+        const opposingPedals = this.keys.forward && this.keys.backward;
+        const changingDirection = (this.keys.backward && speed > 0.1) || (this.keys.forward && speed < -0.1);
+        const handbrake = this.keys.brake || this.keys.handbrake;
         let targetThrottle = 0;
-        if (this.focused && !changingDirection) {
+        if (this.focused && !changingDirection && !opposingPedals && !handbrake) {
             if (this.keys.forward) {
                 targetThrottle = 1;
             } else if (this.keys.backward) {
@@ -272,27 +269,30 @@ export class CarControls {
             }
         }
 
-        // Brake input (separate from throttle)
-        const targetBrake = this.keys.brake || changingDirection ? 1 : 0;
+        // S/Down brakes forward travel before engaging reverse; W/Up brakes reverse travel.
+        const targetBrake = changingDirection || opposingPedals ? 1 : 0;
 
         // Smooth throttle and brake
         const throttleRate = targetThrottle > this.throttleInput ? this.throttleRiseRate : this.throttleFallRate;
-        this.throttleInput = THREE.MathUtils.damp(this.throttleInput, targetThrottle, throttleRate, delta);
+        this.throttleInput = targetBrake || handbrake ? 0
+            : THREE.MathUtils.damp(this.throttleInput, targetThrottle, throttleRate, delta);
         this.brakeInput = targetBrake;
 
         // Steering input (speed-dependent)
         const rawSteer = (this.keys.left ? 1 : 0) + (this.keys.right ? -1 : 0);
 
         const targetSteer = rawSteer;
-        const steerRate = Math.abs(targetSteer) > Math.abs(this.steeringInput) ? this.steerRate : this.steerReturnRate;
+        const reversingSteer = targetSteer * this.steeringInput < 0;
+        const steerRate = reversingSteer ? this.steerReturnRate
+            : Math.abs(targetSteer) > Math.abs(this.steeringInput) ? this.steerRate : this.steerReturnRate;
         this.steeringInput = THREE.MathUtils.damp(this.steeringInput, targetSteer, steerRate, delta);
 
         this.car.setThrottle(this.throttleInput);
         this.car.setBrake(this.brakeInput);
         this.car.setSteering(this.steeringInput * this.car.maxSteeringAngle);
 
-        // Handbrake - straight braking with full lateral grip
-        this.car.setHandbrake(this.keys.handbrake);
+        // Space and E are independent held-key aliases for the same handbrake.
+        this.car.setHandbrake(handbrake);
 
         // Boost
         this.car.setBoost(this.keys.boost && this.car.getBoostAmount() > 0);
@@ -313,7 +313,6 @@ export class CarControls {
             this.engineSoundGenerator.start();
             this.engineSoundGenerator.update(speed, throttle, throttle > 0.1, delta);
         }
-        this.roadSoundGenerator.update(speed, this.currentSurface);
         if (impact > this.car.config.audio.impactThreshold && this.soundCooldown === 0) {
             this.roadSoundGenerator.playImpact(Math.min(1, impact / 15));
             this.soundCooldown = 0.4;

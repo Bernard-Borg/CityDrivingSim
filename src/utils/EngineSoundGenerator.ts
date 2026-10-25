@@ -12,8 +12,6 @@ export class EngineSoundGenerator {
     private engineGain: GainNode | null = null;
     private lowpassFilter: BiquadFilterNode | null = null;
     private distortion: WaveShaperNode | null = null;
-    private noiseSource: AudioBufferSourceNode | null = null;
-    private noiseGain: GainNode | null = null;
     private isPlaying: boolean = false;
     private currentRPM: number = 0;
 
@@ -122,18 +120,6 @@ export class EngineSoundGenerator {
         this.gainNodes.forEach(gain => gain.disconnect());
         this.oscillators = [];
         this.gainNodes = [];
-        if (this.noiseSource) {
-            try {
-                this.noiseSource.stop();
-            } catch (e) {
-                // Ignore if already stopped
-            }
-            this.noiseSource = null;
-        }
-        if (this.noiseGain) {
-            this.noiseGain.disconnect();
-            this.noiseGain = null;
-        }
         this.isPlaying = false;
         this.currentRPM = 0;
     }
@@ -159,8 +145,6 @@ export class EngineSoundGenerator {
         // Subtle harmonic (1.1x) - mild character without ringing
         this.createOscillator(this.BASE_FREQUENCY * 1.1, 0.12, 'triangle');
 
-        // Add subtle filtered noise for engine texture
-        this.createNoiseSource();
 
         // Start all oscillators
         this.oscillators.forEach(osc => {
@@ -191,37 +175,6 @@ export class EngineSoundGenerator {
 
         this.oscillators.push(oscillator);
         this.gainNodes.push(gainNode);
-    }
-
-    private createNoiseSource(): void {
-        if (!this.audioContext || !this.lowpassFilter) return;
-
-        if (this.noiseSource) {
-            try {
-                this.noiseSource.stop();
-            } catch (e) {
-                // Ignore if already stopped
-            }
-            this.noiseSource = null;
-        }
-
-        const bufferSize = this.audioContext.sampleRate;
-        const noiseBuffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
-        const output = noiseBuffer.getChannelData(0);
-        for (let i = 0; i < bufferSize; i++) {
-            output[i] = (Math.random() * 2 - 1) * 0.15;
-        }
-
-        this.noiseSource = this.audioContext.createBufferSource();
-        this.noiseSource.buffer = noiseBuffer;
-        this.noiseSource.loop = true;
-
-        this.noiseGain = this.audioContext.createGain();
-        this.noiseGain.gain.value = 0.04;
-
-        this.noiseSource.connect(this.noiseGain);
-        this.noiseGain.connect(this.lowpassFilter);
-        this.noiseSource.start();
     }
 
     /**
@@ -343,8 +296,6 @@ export class EngineSoundGenerator {
         this.engineGain = null;
         this.lowpassFilter = null;
         this.distortion = null;
-        this.noiseSource = null;
-        this.noiseGain = null;
     }
 
     private createWarmDistortionCurve(amount: number): Float32Array<ArrayBuffer> {

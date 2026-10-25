@@ -19,10 +19,17 @@ export interface VehicleConfig {
         handbrakeDeceleration: number;
         wheelbase: number;
         maxSteeringAngle: number;
-        steeringSpeedScale: number;
+        mass: number;
+        frontWeight: number;
+        centreOfMassHeight: number;
+        yawInertia: number;
+        frontCornerStiffness: number;
+        rearCornerStiffness: number;
+        brakeBias: number;
+        steeringAssist: number;
         maxYawRate: number;
         cornerGrip: number;
-        lateralDamping: number;
+        yawDamping: number;
         rollingResistance: number;
         engineResistance: number;
         drag: number;
@@ -36,6 +43,7 @@ export interface VehicleConfig {
         steerRise: number;
         steerReturn: number;
     };
+    bodyMotion: { rollGain: number; pitchGain: number; response: number };
     camera: { followRate: number; terrainTiltRate: number; distance: number };
     audio: {
         idleRPM: number;
@@ -62,17 +70,24 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
         maxSpeed: 200,
         reverseSpeed: 35,
         boostSpeed: 250,
-        acceleration: 9,
+        acceleration: 8.5,
         reverseAcceleration: 4,
         boostAcceleration: 15,
-        brakeDeceleration: 20,
-        handbrakeDeceleration: 20,
+        brakeDeceleration: 15,
+        handbrakeDeceleration: 30,
         wheelbase: 1.9,
         maxSteeringAngle: 0.65,
-        steeringSpeedScale: 28,
-        maxYawRate: 2.4,
-        cornerGrip: 14,
-        lateralDamping: 32,
+        mass: 1280,
+        frontWeight: 0.46,
+        centreOfMassHeight: 0.3,
+        yawInertia: 1450,
+        frontCornerStiffness: 150000,
+        rearCornerStiffness: 190000,
+        brakeBias: 0.64,
+        steeringAssist: 1,
+        maxYawRate: 2.8,
+        cornerGrip: 15.5,
+        yawDamping: 0.9,
         rollingResistance: 0.15,
         engineResistance: 0.18,
         drag: 0.00025,
@@ -83,9 +98,10 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
     controls: {
         throttleRise: 3.5,
         throttleFall: 5,
-        steerRise: 14,
-        steerReturn: 18,
+        steerRise: 16,
+        steerReturn: 20,
     },
+    bodyMotion: { rollGain: 0.0023, pitchGain: 0.0016, response: 8 },
     camera: { followRate: 7, terrainTiltRate: 9, distance: 9 },
     audio: {
         idleRPM: 800,

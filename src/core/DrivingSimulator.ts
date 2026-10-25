@@ -225,10 +225,6 @@ export class DrivingSimulator {
         const delta = Math.min(elapsed, 0.1);
 
         if (this.isLoaded && this.carControls && this.car) {
-            const preUpdatePosition = this.car.getPosition();
-            const surface =
-                this.sceneManager.getRoadSurfaceAtPosition(preUpdatePosition);
-            this.carControls.setRoadSurface(surface);
             if (!document.hidden && !this.paused) {
                 if (elapsed > 0.25) this.car.resetInterpolation();
                 let enteredWater = false;
