@@ -1,10 +1,10 @@
-import * as THREE from 'three';
-import { SceneManager } from './scene/SceneManager';
-import { Car } from './vehicle/Car';
-import { PhysicsClock } from './vehicle/VehiclePhysics';
-import { CarControls } from './vehicle/CarControls';
-import { CityManager } from '@/utils/cityManager';
-import type { SpeedUpdateCallback, LoadCompleteCallback } from '@/types';
+import * as THREE from "three";
+import { SceneManager } from "./scene/SceneManager";
+import { Car } from "./vehicle/Car";
+import { PhysicsClock } from "./vehicle/VehiclePhysics";
+import { CarControls } from "./vehicle/CarControls";
+import type { SpeedUpdateCallback, LoadCompleteCallback } from "@/types";
+import { useCitiesStore } from "@/stores/cities";
 
 export class DrivingSimulator {
     private scene: THREE.Scene;
@@ -29,7 +29,9 @@ export class DrivingSimulator {
     private fpsFrames: number = 0;
     private fps: number = 0;
     private positionSaveInterval: number | null = null;
-    private coordinateUpdateCallbacks: Array<(lat: number, lon: number) => void> = [];
+    private coordinateUpdateCallbacks: Array<
+        (lat: number, lon: number) => void
+    > = [];
 
     constructor(private container: HTMLElement) {
         // Initialize Three.js core
@@ -38,12 +40,15 @@ export class DrivingSimulator {
             45,
             window.innerWidth / window.innerHeight,
             0.5,
-            3000
+            3000,
         );
 
-        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            alpha: false,
+        });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setClearColor(0x87CEEB, 1); // Sky blue background
+        this.renderer.setClearColor(0x87ceeb, 1); // Sky blue background
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -51,12 +56,15 @@ export class DrivingSimulator {
 
         this.sceneManager = new SceneManager(this.scene);
 
-
         this.setupEventListeners();
     }
 
-    async init(city: string, savedPosition?: { lat: number; lon: number; y?: number; }): Promise<void> {
-        if (this.loading || this.disposed) throw new Error('Simulator is unavailable');
+    async init(
+        city: string,
+        savedPosition?: { lat: number; lon: number; y?: number },
+    ): Promise<void> {
+        if (this.loading || this.disposed)
+            throw new Error("Simulator is unavailable");
         this.loading = true;
         this.savePosition();
         this.isLoaded = false;
@@ -66,11 +74,18 @@ export class DrivingSimulator {
         this.car = null;
         try {
             // Add lighting (only if not already added)
-            if (this.scene.children.filter(child => child instanceof THREE.AmbientLight).length === 0) {
+            if (
+                this.scene.children.filter(
+                    (child) => child instanceof THREE.AmbientLight,
+                ).length === 0
+            ) {
                 const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
                 this.scene.add(ambientLight);
 
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                const directionalLight = new THREE.DirectionalLight(
+                    0xffffff,
+                    0.8,
+                );
                 directionalLight.position.set(200, 300, 100);
                 directionalLight.castShadow = true;
                 // Reduced shadow map size for performance
@@ -86,7 +101,7 @@ export class DrivingSimulator {
             }
 
             // Add fog for depth
-            this.scene.fog = new THREE.Fog(0x87CEEB, 500, 2000);
+            this.scene.fog = new THREE.Fog(0x87ceeb, 500, 2000);
 
             // Load city map with saved position
             await this.sceneManager.loadCityMap(city, savedPosition);
@@ -97,17 +112,23 @@ export class DrivingSimulator {
             this.car = new Car(this.scene);
             await this.car.ready;
             if (this.disposed) return;
-            this.car.setWorld(this.sceneManager.collisions, (x, z, y) => this.sceneManager.getRoadState(x, z, y));
-            this.car.setPosition(startPosition.x, startPosition.y, startPosition.z);
+            this.car.setWorld(this.sceneManager.collisions, (x, z, y) =>
+                this.sceneManager.getRoadState(x, z, y),
+            );
+            this.car.setPosition(
+                startPosition.x,
+                startPosition.y,
+                startPosition.z,
+            );
 
             if (!this.car) {
-                throw new Error('Car initialization failed');
+                throw new Error("Car initialization failed");
             }
 
             this.carControls = new CarControls(
                 this.car,
                 this.camera,
-                this.renderer.domElement
+                this.renderer.domElement,
             );
 
             // Position camera behind car (looking forward)
@@ -120,7 +141,7 @@ export class DrivingSimulator {
             this.lastFrame = performance.now();
             this.physicsClock.reset();
             this.isLoaded = true;
-            this.loadCompleteCallbacks.forEach(callback => callback());
+            this.loadCompleteCallbacks.forEach((callback) => callback());
 
             // Start saving position periodically
             this.startPositionSaving();
@@ -130,7 +151,7 @@ export class DrivingSimulator {
                 this.animate();
             }
         } catch (error) {
-            console.error('Error initializing simulator:', error);
+            console.error("Error initializing simulator:", error);
             this.carControls?.dispose();
             this.car?.dispose();
             this.carControls = null;
@@ -147,7 +168,10 @@ export class DrivingSimulator {
             clearInterval(this.positionSaveInterval);
         }
 
-        this.positionSaveInterval = window.setInterval(() => this.savePosition(), 5000);
+        this.positionSaveInterval = window.setInterval(
+            () => this.savePosition(),
+            5000,
+        );
     }
 
     private savePosition(): void {
@@ -155,15 +179,25 @@ export class DrivingSimulator {
         const pos = this.car.getPosition();
         const coords = this.sceneManager.localToLatLon(pos.x, pos.z);
         try {
-            CityManager.savePosition(this.sceneManager.getCurrentCity(), { ...coords, y: pos.y });
+            const cityStore = useCitiesStore();
+            cityStore.savePosition(this.sceneManager.getCurrentCity(), {
+                ...coords,
+                y: pos.y,
+            });
         } catch (error) {
-            console.warn('Could not save driving position:', error);
+            console.warn("Could not save driving position:", error);
         }
     }
 
     async reloadCity(city: string): Promise<void> {
-        const savedPos = CityManager.getSavedPosition(city);
-        await this.init(city, savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined);
+        const cityStore = useCitiesStore();
+        const savedPos = cityStore.getSavedPosition(city);
+        await this.init(
+            city,
+            savedPos
+                ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y }
+                : undefined,
+        );
     }
 
     private animate = (): void => {
@@ -176,10 +210,11 @@ export class DrivingSimulator {
 
         if (this.isLoaded && this.carControls && this.car) {
             const preUpdatePosition = this.car.getPosition();
-            const surface = this.sceneManager.getRoadSurfaceAtPosition(preUpdatePosition);
+            const surface =
+                this.sceneManager.getRoadSurfaceAtPosition(preUpdatePosition);
             this.carControls.setRoadSurface(surface);
             if (!document.hidden) {
-                this.physicsClock.advance(elapsed, dt => {
+                this.physicsClock.advance(elapsed, (dt) => {
                     this.carControls!.update(dt);
                     this.car!.update(dt);
                 });
@@ -203,47 +238,99 @@ export class DrivingSimulator {
                 // through the body during acceleration, braking and sharp turns.
                 this.camera.position.copy(this.car.getDriverEyePosition());
                 const yaw = this.carControls.getFirstPersonYaw();
-                const lookDirection = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw))
-                    .applyQuaternion(carQuaternion);
-                this.camera.up.copy(new THREE.Vector3(0, 1, 0).applyQuaternion(carQuaternion));
-                this.camera.lookAt(this.camera.position.clone().add(lookDirection));
+                const lookDirection = new THREE.Vector3(
+                    Math.sin(yaw),
+                    0,
+                    Math.cos(yaw),
+                ).applyQuaternion(carQuaternion);
+                this.camera.up.copy(
+                    new THREE.Vector3(0, 1, 0).applyQuaternion(carQuaternion),
+                );
+                this.camera.lookAt(
+                    this.camera.position.clone().add(lookDirection),
+                );
             } else {
                 this.camera.up.set(0, 1, 0);
                 const cameraTarget = this.car.getCameraTargetPosition();
                 const angle = this.carControls.getCameraAngle();
                 const pitch = this.carControls.getCameraPitch();
-                const distance = this.carControls.getCameraZoomDistance();
+                const contact = this.sceneManager.getRoadState(
+                    carPosition.x,
+                    carPosition.z,
+                    carPosition.y,
+                );
+                const inTunnel = contact.structure === "tunnel";
+                const distance = Math.min(
+                    this.carControls.getCameraZoomDistance(),
+                    inTunnel ? 3 : 20,
+                );
                 const horizontalDistance = Math.cos(pitch) * distance;
                 const offset = new THREE.Vector3(
                     Math.sin(angle) * horizontalDistance,
                     Math.sin(pitch) * distance,
-                    -Math.cos(angle) * horizontalDistance
+                    -Math.cos(angle) * horizontalDistance,
                 ).applyQuaternion(carQuaternion);
                 const targetPosition = carPosition.clone().add(offset);
-                targetPosition.y = Math.max(targetPosition.y, cameraTarget.y,
-                    this.sceneManager.getRoadState(targetPosition.x, targetPosition.z, targetPosition.y).height + 0.6);
-                if (viewChanged) this.camera.position.copy(targetPosition);
-                else this.camera.position.lerp(targetPosition, Math.min(delta * 5, 1));
-                this.camera.position.y = Math.max(this.camera.position.y,
-                    this.sceneManager.getRoadState(this.camera.position.x, this.camera.position.z, this.camera.position.y).height + 0.6);
+                if (inTunnel) {
+                    targetPosition.y = THREE.MathUtils.clamp(
+                        targetPosition.y,
+                        contact.height + 0.7,
+                        (contact.ceiling ?? contact.height + 3.5) - 0.4,
+                    );
+                } else {
+                    targetPosition.y = Math.max(
+                        targetPosition.y,
+                        cameraTarget.y,
+                        this.sceneManager.getRoadState(
+                            targetPosition.x,
+                            targetPosition.z,
+                            targetPosition.y,
+                        ).height + 0.6,
+                    );
+                }
+                if (viewChanged || inTunnel)
+                    this.camera.position.copy(targetPosition);
+                else
+                    this.camera.position.lerp(
+                        targetPosition,
+                        Math.min(delta * 5, 1),
+                    );
+                if (!inTunnel)
+                    this.camera.position.y = Math.max(
+                        this.camera.position.y,
+                        this.sceneManager.getRoadState(
+                            this.camera.position.x,
+                            this.camera.position.z,
+                            this.camera.position.y,
+                        ).height + 0.6,
+                    );
                 this.camera.lookAt(cameraTarget);
             }
 
             // Update speed callbacks
             const speedKmh = Math.abs(this.car.getSpeed());
-            this.speedUpdateCallbacks.forEach(callback => callback(speedKmh));
+            this.speedUpdateCallbacks.forEach((callback) => callback(speedKmh));
 
             // Update heading callbacks
             const carHeading = this.getCarHeading();
-            this.headingUpdateCallbacks.forEach(callback => callback(carHeading));
+            this.headingUpdateCallbacks.forEach((callback) =>
+                callback(carHeading),
+            );
 
             // Update boost callbacks
             const boostAmount = this.car.getBoostAmount();
-            this.boostUpdateCallbacks.forEach(callback => callback(boostAmount));
+            this.boostUpdateCallbacks.forEach((callback) =>
+                callback(boostAmount),
+            );
 
             // Update coordinate callbacks
-            const coords = this.sceneManager.localToLatLon(carPosition.x, carPosition.z);
-            this.coordinateUpdateCallbacks.forEach(callback => callback(coords.lat, coords.lon));
+            const coords = this.sceneManager.localToLatLon(
+                carPosition.x,
+                carPosition.z,
+            );
+            this.coordinateUpdateCallbacks.forEach((callback) =>
+                callback(coords.lat, coords.lon),
+            );
         }
 
         // Calculate FPS
@@ -253,7 +340,7 @@ export class DrivingSimulator {
             this.fps = this.fpsFrames;
             this.fpsFrames = 0;
             this.lastFpsUpdate = now;
-            this.fpsUpdateCallbacks.forEach(callback => callback(this.fps));
+            this.fpsUpdateCallbacks.forEach((callback) => callback(this.fps));
         }
 
         this.renderer.render(this.scene, this.camera);
@@ -322,7 +409,11 @@ export class DrivingSimulator {
 
         // Use map center position (default spawn location when no saved position)
         const centerPosition = this.sceneManager.getCenterPosition();
-        this.car.setPosition(centerPosition.x, centerPosition.y, centerPosition.z);
+        this.car.setPosition(
+            centerPosition.x,
+            centerPosition.y,
+            centerPosition.z,
+        );
 
         // Reset car rotation to default (facing forward/North)
         this.car.setRotation(0);
@@ -341,9 +432,11 @@ export class DrivingSimulator {
     }
 
     setupEventListeners(): void {
-        window.addEventListener('resize', this.handleResize);
-        document.addEventListener('visibilitychange', this.handleVisibility);
-        this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+        window.addEventListener("resize", this.handleResize);
+        document.addEventListener("visibilitychange", this.handleVisibility);
+        this.renderer.domElement.addEventListener("contextmenu", (e) =>
+            e.preventDefault(),
+        );
     }
 
     private handleVisibility = (): void => {
@@ -362,8 +455,8 @@ export class DrivingSimulator {
         this.savePosition();
         this.disposed = true;
         this.isLoaded = false;
-        document.removeEventListener('visibilitychange', this.handleVisibility);
-        window.removeEventListener('resize', this.handleResize);
+        document.removeEventListener("visibilitychange", this.handleVisibility);
+        window.removeEventListener("resize", this.handleResize);
         if (this.positionSaveInterval) {
             clearInterval(this.positionSaveInterval);
         }
@@ -376,8 +469,9 @@ export class DrivingSimulator {
         }
         this.car?.dispose();
         this.sceneManager.dispose();
-        this.scene.traverse(object => {
-            if (object instanceof THREE.DirectionalLight) object.shadow.dispose();
+        this.scene.traverse((object) => {
+            if (object instanceof THREE.DirectionalLight)
+                object.shadow.dispose();
         });
         this.renderer.dispose();
         this.renderer.domElement.remove();

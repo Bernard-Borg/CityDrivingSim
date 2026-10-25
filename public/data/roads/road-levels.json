@@ -1,0 +1,14 @@
+{
+  "defaults": {
+    "layerSeparation": 5,
+    "tunnelCover": 2,
+    "tunnelHeadroom": 3.5,
+    "rampLength": 35,
+    "maxGrade": 0.22,
+    "deckThickness": 0.5
+  },
+  "cities": {
+    "rabat": { "overrides": {} },
+    "monaco": { "overrides": {} }
+  }
+}

@@ -1,7 +1,7 @@
 import type { TerrainBounds } from './ElevationTerrain';
 
 export interface Point { x: number; z: number; }
-interface Obstacle { rings: Point[][]; minY: number; maxY: number; }
+interface Obstacle { rings: Point[][]; minY: number; maxY: number; category: 'scenery' | 'road'; }
 
 export function closestPoint(p: Point, a: Point, b: Point): Point {
     const dx = b.x - a.x, dz = b.z - a.z;
@@ -39,12 +39,14 @@ export class SpatialGrid<T> {
 export class CollisionWorld {
     private grid = new SpatialGrid<Obstacle>();
     private bounds: TerrainBounds | null = null;
+    private inTunnel: ((x: number, z: number, y: number) => boolean) | null = null;
+    setTunnelQuery(query: ((x: number, z: number, y: number) => boolean) | null): void { this.inTunnel = query; }
     setBounds(bounds: TerrainBounds | null): void { this.bounds = bounds; }
-    clear(): void { this.grid.clear(); this.bounds = null; }
-    addPolygon(rings: Point[][], minY = 0, maxY = 100): void {
+    clear(): void { this.grid.clear(); this.bounds = null; this.inTunnel = null; }
+    addPolygon(rings: Point[][], minY = 0, maxY = 100, category: 'scenery' | 'road' = 'scenery'): void {
         if (!rings[0] || rings[0].length < 3) return;
         const xs = rings[0].map(p => p.x), zs = rings[0].map(p => p.z);
-        this.grid.insert({ rings, minY, maxY }, Math.min(...xs) - 2, Math.min(...zs) - 2, Math.max(...xs) + 2, Math.max(...zs) + 2);
+        this.grid.insert({ rings, minY, maxY, category }, Math.min(...xs) - 2, Math.min(...zs) - 2, Math.max(...xs) + 2, Math.max(...zs) + 2);
     }
     addTrunk(p: Point, radius: number, baseHeight = 0): void {
         const ring = Array.from({ length: 12 }, (_, i) => ({ x: p.x + Math.cos(i * Math.PI / 6) * radius, z: p.z + Math.sin(i * Math.PI / 6) * radius }));
@@ -68,6 +70,7 @@ export class CollisionWorld {
                 const p = { x: body.x + Math.sin(body.yaw) * offset, z: body.z + Math.cos(body.yaw) * offset };
                 for (const obstacle of this.grid.at(p.x, p.z)) {
                     if (y + 0.4 < obstacle.minY || y - 0.4 > obstacle.maxY) continue;
+                    if (obstacle.category === 'scenery' && this.inTunnel?.(p.x, p.z, y)) continue;
                     const solid = inside(p, obstacle.rings[0]) && !obstacle.rings.slice(1).some(r => inside(p, r));
                     let nearest = { x: 0, z: 0 }, best = Infinity;
                     for (const ring of obstacle.rings) {

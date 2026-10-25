@@ -2,30 +2,28 @@ import * as THREE from 'three';
 import { ElevationTerrain } from './ElevationTerrain';
 import type { SurfaceSample } from './ElevationTerrain';
 import type { GeoJSON } from '@/types';
+import { RoadProfileNetwork, DEFAULT_ROAD_LEVELS } from './RoadProfiles';
+import type { RoadProfile, RoadInput, RoadLevelSettings, RoadContact } from './RoadProfiles';
+import { RoadCutouts } from './RoadCutouts';
 import { SpatialGrid, closestPoint, CollisionWorld } from './CollisionWorld';
 
 export const ROAD_HEIGHT = 0.06;
-interface RoadSegment { a: THREE.Vector3; b: THREE.Vector3; halfWidth: number; surface: string; }
-
-class TerrainRoadCurve extends THREE.Curve<THREE.Vector3> {
-    constructor(private path: THREE.CatmullRomCurve3, private height: (x: number, z: number) => number) { super(); }
-    getPoint(t: number, target = new THREE.Vector3()): THREE.Vector3 {
-        this.path.getPoint(t, target);
-        target.y = this.height(target.x, target.z);
-        return target;
-    }
-}
+interface RoadSegment { a: THREE.Vector3; b: THREE.Vector3; halfWidth: number; surface: string; profile: RoadProfile; }
 
 export class RoadGenerator {
     private terrain: ElevationTerrain | null = null;
+    private activeProfile: RoadProfile | null = null;
+    private profiles: RoadProfile[] = [];
+    private settings: RoadLevelSettings = DEFAULT_ROAD_LEVELS;
+    private cutouts = new RoadCutouts();
     setTerrain(terrain: ElevationTerrain | null): void { this.terrain = terrain; }
     private groundSample(x: number, z: number): SurfaceSample {
         return this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
     }
-    private roadHeight(x: number, z: number): number { return this.groundSample(x, z).height + ROAD_HEIGHT; }
+    private roadHeight(x: number, z: number): number { return this.activeProfile?.sample(x, z).height ?? this.groundSample(x, z).height + ROAD_HEIGHT; }
 
     private drapeSurface(geometry: THREE.BufferGeometry, clearance: number): void {
-        if (!this.terrain) return;
+        if (!this.terrain && !this.activeProfile) return;
         const position = geometry.getAttribute('position'), uv = geometry.getAttribute('uv');
         const index = geometry.getIndex();
         const positions: number[] = [], uvs: number[] = [];
@@ -36,9 +34,9 @@ export class RoadGenerator {
             const [a, b, c] = tri;
             const det = (b.x - a.x) * (c.z - a.z) - (b.z - a.z) * (c.x - a.x);
             if (Math.abs(det) < 1e-10) continue;
-            for (const poly of this.terrain.cutTriangle(tri)) {
+            for (const poly of this.terrain && this.activeProfile?.input.kind === 'ground' ? this.terrain.cutTriangle(tri) : [tri]) {
                 for (let j = 1; j < poly.length - 1; j++) for (const p of [poly[0], poly[j], poly[j + 1]]) {
-                    positions.push(p.x, this.terrain.sample(p.x, p.z).height + clearance, p.z);
+                    positions.push(p.x, this.roadHeight(p.x, p.z) + clearance - ROAD_HEIGHT, p.z);
                     if (uv) {
                         const v = ((p.x - a.x) * (c.z - a.z) - (p.z - a.z) * (c.x - a.x)) / det;
                         const w = ((b.x - a.x) * (p.z - a.z) - (b.z - a.z) * (p.x - a.x)) / det;
@@ -61,7 +59,7 @@ export class RoadGenerator {
     private labelsGroup: THREE.Group;
     private tunnelGroup: THREE.Group;
     private labelTextures: THREE.CanvasTexture[] = [];
-    private roadSurfaceSamples: Array<{ points: THREE.Vector3[]; halfWidth: number; surface: string; }> = [];
+    private roadSurfaceSamples: Array<{ points: THREE.Vector3[]; halfWidth: number; surface: string; profile: RoadProfile; }> = [];
     private surfaceGrid = new SpatialGrid<RoadSegment>();
     private readonly surfaceSampleSpacing = 2; // meters between surface samples
 
@@ -189,68 +187,44 @@ export class RoadGenerator {
         this.roads = [];
         this.roadSurfaceSamples = [];
         this.surfaceGrid.clear();
+        this.activeProfile = null;
+        this.profiles = [];
+        this.cutouts.clear();
     }
 
     /**
      * Generate roads from GeoJSON data
      */
-    generateRoadsFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number): void {
-        if (!geoJSON || !geoJSON.features) {
-            console.warn('No GeoJSON features provided');
-            return;
+    generateRoadsFromGeoJSON(geoJSON: GeoJSON, centerLat: number, centerLon: number, options: Partial<RoadLevelSettings> = {}): void {
+        const inputs: RoadInput[] = [];
+        const names = new Map<string, string>();
+        for (const [index, feature] of geoJSON.features.entries()) {
+            if (feature.geometry.type !== 'LineString' || !feature.properties.highway || feature.geometry.coordinates.length < 2) continue;
+            const highway = String(feature.properties.highway);
+            if (['service', 'footway', 'path', 'steps'].includes(highway)) continue;
+            const p = feature.properties;
+            const tunnel = p.tunnel === 'yes' || p.tunnel === 'building_passage';
+            const bridge = p.bridge !== undefined && p.bridge !== 'no' && p.bridge !== false;
+            const parsedLayer = Number(p.layer ?? (tunnel ? -1 : bridge ? 1 : 0));
+            const layer = Number.isFinite(parsedLayer) ? parsedLayer : 0;
+            const id = String(feature.id ?? p['@id'] ?? `road-${index}`);
+            const lanes = Math.max(1, parseInt(String(p.lanes ?? 1), 10) || 1);
+            const parsedHeadroom = parseFloat(String(p.maxheight ?? ''));
+            inputs.push({ id, points: feature.geometry.coordinates.map(([lon, lat]) => this.latLonToLocal(lat, lon, centerLat, centerLon)),
+                kind: tunnel || layer < 0 ? 'tunnel' : bridge || layer > 0 ? 'bridge' : 'ground', layer,
+                halfWidth: this.getRoadWidth(highway, lanes) / 2, lanes, surface: String(p.surface ?? 'asphalt').toLowerCase(),
+                headroom: Number.isFinite(parsedHeadroom) && parsedHeadroom >= 2 ? parsedHeadroom : undefined });
+            if (typeof p.name === 'string') names.set(id, p.name);
         }
-
-        console.log(`Processing ${geoJSON.features.length} features...`);
-
-        let roadsCreated = 0;
-        let roadsSkipped = 0;
-
-        geoJSON.features.forEach((feature) => {
-            if (feature.geometry.type === 'LineString' && feature.properties.highway) {
-                const highwayType = String(feature.properties.highway);
-
-                // Skip service roads and footpaths for performance
-                if (highwayType === 'service' ||
-                    highwayType === 'footway' ||
-                    highwayType === 'path' ||
-                    highwayType === 'steps') {
-                    roadsSkipped++;
-                    return;
-                }
-
-                const coordinates = feature.geometry.coordinates;
-
-                if (coordinates.length < 2) {
-                    roadsSkipped++;
-                    return;
-                }
-
-                // Convert coordinates from [lon, lat] to local [x, z]
-                const points = coordinates.map(([lon, lat]) => {
-                    return this.latLonToLocal(lat, lon, centerLat, centerLon);
-                });
-
-                // Check if this is a tunnel or bridge
-                const isTunnel = feature.properties.tunnel === 'yes' || feature.properties.tunnel === 'building_passage';
-                const layer = feature.properties.layer ? parseInt(String(feature.properties.layer), 10) : 0;
-
-                // Parse lanes count (default to 1 if not specified)
-                const lanesCount = feature.properties.lanes ? parseInt(String(feature.properties.lanes), 10) : 1;
-
-                // Determine surface type (default to asphalt)
-                const surface = typeof feature.properties.surface === 'string'
-                    ? feature.properties.surface.toLowerCase()
-                    : 'asphalt';
-
-                // Create road from points
-                this.createRoadFromPoints(points, highwayType, typeof feature.properties.name === 'string' ? feature.properties.name : undefined, isTunnel, layer, lanesCount, surface);
-                roadsCreated++;
-            } else {
-                roadsSkipped++;
-            }
-        });
-
-        console.log(`Created ${roadsCreated} roads, skipped ${roadsSkipped} features`);
+        const network = new RoadProfileNetwork(inputs, (x, z) => this.groundSample(x, z), options, this.terrain?.referenceHeight ?? 0);
+        this.settings = network.settings;
+        this.profiles = network.profiles;
+        for (const profile of this.profiles) {
+            this.activeProfile = profile;
+            this.createRoadFromProfile(profile, names.get(profile.input.id));
+        }
+        this.activeProfile = null;
+        console.log(`Created ${this.profiles.length} road profiles (${this.profiles.filter(p => p.input.kind === 'bridge').length} bridges, ${this.profiles.filter(p => p.input.kind === 'tunnel').length} tunnels)`);
     }
 
     /**
@@ -270,27 +244,12 @@ export class RoadGenerator {
     /**
      * Create road geometry from array of points using a single smooth curve mesh
      */
-    private createRoadFromPoints(
-        points: Array<{ x: number; z: number; }>,
-        highwayType: string,
-        roadName?: string,
-        isTunnel: boolean = false,
-        layer: number = 0,
-        lanesCount: number = 1,
-        surface: string = 'asphalt'
-    ): void {
-        const roadWidth = this.getRoadWidth(highwayType, lanesCount);
-        const roadY = ROAD_HEIGHT;
-
-        if (points.length < 2) return;
-
-        // Convert 2D points to 3D vectors
-        const curvePoints = points.map(p => new THREE.Vector3(p.x, roadY, p.z));
-
-        // Create a smooth curve through all points using CatmullRom spline
-        // This automatically handles smooth transitions between segments
-        const curve = new TerrainRoadCurve(new THREE.CatmullRomCurve3(curvePoints, false, 'centripetal'), (x, z) => this.roadHeight(x, z));
-
+    private createRoadFromProfile(profile: RoadProfile, roadName?: string): void {
+        const roadWidth = profile.input.halfWidth * 2;
+        const isTunnel = profile.input.kind === 'tunnel';
+        const curve = profile.curve;
+        const surface = profile.input.surface;
+        const lanesCount = profile.input.lanes ?? 1;
         // Get total curve length
         const curveLength = curve.getLength();
 
@@ -320,13 +279,68 @@ export class RoadGenerator {
             this.createLaneDividersAlongCurve(curve, roadWidth, lanesCount, numSegments, curveLength);
         }
 
-        // Add street name label on the middle segment of the road
-        if (roadName && points.length >= 2) {
-            const middleIndex = Math.floor(points.length / 2);
-            const midPoint = points[middleIndex];
-            const nextPoint = points[Math.min(middleIndex + 1, points.length - 1)];
-            const labelDirection = Math.atan2(nextPoint.x - midPoint.x, nextPoint.z - midPoint.z);
-            this.createStreetLabel(midPoint, labelDirection, roadName);
+        this.createProfileSides(profile, curve, roadWidth, numSegments);
+        if (roadName) {
+            const point = curve.getPoint(0.5), tangent = curve.getTangent(0.5);
+            this.createStreetLabel(point, Math.atan2(tangent.x, tangent.z), roadName);
+        }
+    }
+
+    private createProfileSides(profile: RoadProfile, curve: THREE.Curve<THREE.Vector3>, width: number, segments: number): void {
+        const vertices: number[] = [];
+        const face = (a: THREE.Vector3, b: THREE.Vector3, lowA: number, lowB: number, highA: number, highB: number) => {
+            vertices.push(a.x, lowA, a.z, b.x, lowB, b.z, a.x, highA, a.z,
+                a.x, highA, a.z, b.x, lowB, b.z, b.x, highB, b.z);
+        };
+        for (let i = 0; i < segments; i++) {
+            const a = curve.getPoint(i / segments), b = curve.getPoint((i + 1) / segments);
+            const pa = new THREE.Vector3(-curve.getTangent(i / segments).z, 0, curve.getTangent(i / segments).x).normalize();
+            const pb = new THREE.Vector3(-curve.getTangent((i + 1) / segments).z, 0, curve.getTangent((i + 1) / segments).x).normalize();
+            const ga = this.groundSample(a.x, a.z).height, gb = this.groundSample(b.x, b.z).height;
+            const lowered = Math.min(a.y - ga, b.y - gb) < -0.02;
+            const portal = profile.input.kind === 'tunnel' && Math.min(ga - a.y, gb - b.y) < profile.headroom + this.settings.tunnelCover;
+            if (portal || profile.input.kind !== 'tunnel' && lowered) {
+                const half = width / 2 + 0.2;
+                this.cutouts.add([a.clone().addScaledVector(pa, half), b.clone().addScaledVector(pb, half),
+                    b.clone().addScaledVector(pb, -half), a.clone().addScaledVector(pa, -half)]);
+            }
+            const raised = Math.max(a.y - ga, b.y - gb) > 0.2;
+            if (profile.input.kind === 'ground' && !lowered && !raised) continue;
+            for (const side of [-1, 1]) {
+                const ea = a.clone().addScaledVector(pa, side * width / 2);
+                const eb = b.clone().addScaledVector(pb, side * width / 2);
+                ea.y = profile.sample(ea.x, ea.z).height; eb.y = profile.sample(eb.x, eb.z).height;
+                if (profile.input.kind === 'bridge' || profile.input.kind === 'ground' && raised) {
+                    const lowA = profile.input.kind === 'bridge' ? ea.y - this.settings.deckThickness : Math.min(ga, ea.y - this.settings.deckThickness);
+                    const lowB = profile.input.kind === 'bridge' ? eb.y - this.settings.deckThickness : Math.min(gb, eb.y - this.settings.deckThickness);
+                    face(ea, eb, lowA, lowB, ea.y + 0.45, eb.y + 0.45);
+                    if (profile.input.kind === 'bridge' && lowered) {
+                        face(ea, eb, ea.y + 0.45, eb.y + 0.45,
+                            Math.max(ea.y + 0.45, this.groundSample(ea.x, ea.z).height),
+                            Math.max(eb.y + 0.45, this.groundSample(eb.x, eb.z).height));
+                    }
+                    const oa = ea.clone().addScaledVector(pa, side * 0.15), ob = eb.clone().addScaledVector(pb, side * 0.15);
+                    this.collisions?.addPolygon([[ea, eb, ob, oa]], Math.min(ea.y, eb.y) - this.settings.deckThickness,
+                        Math.max(ea.y, eb.y) + 0.45, 'road');
+                } else if (lowered || portal) {
+                    const topA = Math.max(ea.y, this.groundSample(ea.x, ea.z).height), topB = Math.max(eb.y, this.groundSample(eb.x, eb.z).height);
+                    face(ea, eb, ea.y - 0.1, eb.y - 0.1, topA, topB);
+                    if (profile.input.kind === 'ground') {
+                        const oa = ea.clone().addScaledVector(pa, side * 0.2), ob = eb.clone().addScaledVector(pb, side * 0.2);
+                        this.collisions?.addPolygon([[ea, eb, ob, oa]], Math.min(ea.y, eb.y) - 0.1, Math.max(topA, topB), 'road');
+                    }
+                }
+            }
+            if (profile.input.kind === 'bridge') {
+                const la = a.clone().addScaledVector(pa, width / 2), ra = a.clone().addScaledVector(pa, -width / 2);
+                const lb = b.clone().addScaledVector(pb, width / 2), rb = b.clone().addScaledVector(pb, -width / 2);
+                for (const p of [la, ra, lb, ra, rb, lb]) vertices.push(p.x, profile.sample(p.x, p.z).height - this.settings.deckThickness, p.z);
+            }
+        }
+        if (vertices.length) {
+            const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3)); geometry.computeVertexNormals();
+            const mesh = new THREE.Mesh(geometry, this.sharedMaterials.ceilingMaterial); mesh.castShadow = mesh.receiveShadow = true;
+            this.roadGroup.add(mesh);
         }
     }
 
@@ -341,9 +355,9 @@ export class RoadGenerator {
     ): void {
         const sampleCount = Math.max(2, Math.ceil(curveLength / this.surfaceSampleSpacing));
         const points = curve.getPoints(sampleCount);
-        this.roadSurfaceSamples.push({ points, halfWidth: roadWidth * 0.5, surface });
+        this.roadSurfaceSamples.push({ points, halfWidth: roadWidth * 0.5, surface, profile: this.activeProfile! });
         for (let i = 1; i < points.length; i++) {
-            const segment = { a: points[i - 1], b: points[i], halfWidth: roadWidth * 0.5, surface };
+            const segment = { a: points[i - 1], b: points[i], halfWidth: roadWidth * 0.5, surface, profile: this.activeProfile! };
             this.surfaceGrid.insert(segment,
                 Math.min(segment.a.x, segment.b.x) - segment.halfWidth,
                 Math.min(segment.a.z, segment.b.z) - segment.halfWidth,
@@ -359,28 +373,36 @@ export class RoadGenerator {
         return this.getRoadState(position.x, position.z, position.y).surface;
     }
 
-    getRoadState(x: number, z: number, y: number): SurfaceSample & { surface: string; grip: number } {
-        let best = Infinity;
+    getRoadState(x: number, z: number, y: number, snap = false): RoadContact {
         const ground = this.groundSample(x, z);
-        let result = { ...ground, surface: 'ground', grip: 0.55 };
+        let result: RoadContact = { ...ground, surface: 'ground', grip: 0.55, structure: 'ground' };
+        let best = Infinity;
+        const checked = new Set<RoadProfile>();
         for (const road of this.surfaceGrid.at(x, z)) {
             const q = closestPoint({ x, z }, road.a, road.b);
             const distance = Math.hypot(x - q.x, z - q.z);
-            if (distance > road.halfWidth) continue;
-            const height = ground.height + ROAD_HEIGHT;
-            const score = distance + Math.abs(y - 0.4 - height) * 2;
-            if (score >= best) continue;
-            best = score;
-            const grip = ['gravel', 'dirt', 'ground', 'sand'].includes(road.surface) ? 0.6 : road.surface === 'cobblestone' ? 0.8 : 1;
-            result = { ...ground, height, surface: road.surface, grip };
+            if (distance > road.halfWidth || checked.has(road.profile)) continue;
+            checked.add(road.profile);
+            const contact = road.profile.sample(x, z);
+            const verticalDistance = Math.abs(y - 0.4 - contact.height);
+            // Reachable contact only: an overhead bridge or buried road cannot attract a car on another level.
+            if (!snap && verticalDistance > 1.5) continue;
+            const score = verticalDistance * 4 + distance * 0.05;
+            if (score < best) { best = score; result = contact; }
         }
         return result;
     }
 
+    cutTerrainGeometry(geometry: THREE.BufferGeometry): void {
+        this.cutouts.apply(geometry, this.terrain ?? { sample: () => ({ height: 0, slopeX: 0, slopeZ: 0 }) });
+    }
+
+
     getSpawnPosition(): THREE.Vector3 {
         let closest: THREE.Vector3 | null = null;
         let distance = Infinity;
-        for (const road of this.roadSurfaceSamples) for (const point of road.points) {
+        const groundRoads = this.roadSurfaceSamples.filter(road => road.profile.input.kind === 'ground');
+        for (const road of groundRoads.length ? groundRoads : this.roadSurfaceSamples) for (const point of road.points) {
             const d = point.x * point.x + point.z * point.z;
             if (d < distance) { distance = d; closest = point; }
         }
@@ -491,7 +513,7 @@ export class RoadGenerator {
         numSegments: number,
         curveLength: number
     ): void {
-        const tunnelHeight = 3; // Height of tunnel interior
+        const tunnelHeight = this.activeProfile?.headroom ?? this.settings.tunnelHeadroom; // Height of tunnel interior
         const wallThickness = 1; // Thickness of tunnel walls
         const roadY = ROAD_HEIGHT;
         const halfWidth = roadWidth / 2;
@@ -527,7 +549,7 @@ export class RoadGenerator {
                 this.collisions?.addPolygon([[
                     edge(point1, n1, halfWidth), edge(point2, n2, halfWidth),
                     edge(point2, n2, halfWidth + wallThickness), edge(point1, n1, halfWidth + wallThickness)
-                ]], Math.min(point1.y, point2.y), Math.max(point1.y, point2.y) + tunnelHeight);
+                ]], Math.min(point1.y, point2.y), Math.max(point1.y, point2.y) + tunnelHeight, 'road');
             }
 
             const midpoint = point1.clone().add(point2).multiplyScalar(0.5);

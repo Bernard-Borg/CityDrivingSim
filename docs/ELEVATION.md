@@ -25,7 +25,7 @@ Monaco is configured as **N43E007** (southwest corner 43 N, 7 E).
 That interpretation gives approximately 61 m at its configured centre. The same
 terrain, scenery, collision, camera and slope-physics pipeline applies to Monaco.
 Out-of-area road features in its source GeoJSON are omitted by the coverage filter.
-Its stacked roads, bridges and tunnels remain subject to the SRTM limitations below.
+Its stacked roads use the estimated road profiles described below.
 
 ## Terrain, scenery and contact
 
@@ -44,9 +44,59 @@ Buildings retain level roofs. Their foundations extend below the lowest sampled
 footprint height, while roofs sit above the highest, preventing floating walls on
 slopes. Building collision volumes use those same foundation/roof heights. Trees
 and trunk collisions use the shared terrain sampler. Spawns, resets and saved
-positions are re-seated on current terrain; an out-of-coverage saved location
+positions are re-seated on the closest road level using the saved height; an out-of-coverage saved location
 falls back to a road near the selected city centre. The chase camera stays above
-terrain, and the driver's camera follows the car's pitch and bank.
+terrain outdoors and moves closer inside tunnels, while the driver's camera follows the car's pitch and bank.
+
+## Separate road levels
+
+[RoadProfiles](../src/core/scene/RoadProfiles.ts) uses OSM `bridge`, `tunnel`
+(including `building_passage`) and numeric `layer` tags to classify roads.
+Layer numbers express relative ordering, not surveyed metre heights. Shared
+coordinates connect consecutive OSM ways into bridge/tunnel networks, so an
+internal way boundary is not treated as another tunnel entrance.
+
+Bridge decks are raised above terrain; tunnel floors interpolate between
+connected entrances and descend below them. Crossings between different layers
+receive estimated clearance, and shared bridge/tunnel exits are reconciled with
+the grade limit. Ground approaches blend into those endpoints. The solver trades
+local clearance against grade and connectivity, so these are plausible profiles,
+not an engineering reconstruction of the real roads.
+
+Road meshes, markings, slope gravity, car pitch, surface audio and spawns all use
+the same profiles. Contact selects reachable surfaces by height, preventing an
+overhead bridge from pulling the car off the road underneath. Bridge side barriers
+and tunnel walls collide with the car. Scenery collisions are suppressed within
+the selected tunnel corridor so building foundations cannot block a tunnel.
+[RoadCutouts](../src/core/scene/RoadCutouts.ts) cuts narrow openings in terrain at
+portals and lowered approaches; retaining walls fill their sides. Terrain remains
+over fully buried tunnel sections. Buildings themselves retain terrain-based
+foundations rather than being lifted onto decks.
+
+### Tuning estimates and correcting individual ways
+
+Edit [road-levels.json](../public/data/roads/road-levels.json); reload the city to
+apply changes. Global `defaults` can be overridden under `cities.rabat` or
+`cities.monaco`. Distances/heights are metres:
+
+- `layerSeparation`: baseline deck/crossing separation, initially 5.
+- `tunnelCover`: desired ground cover above the tunnel roof, initially 2.
+- `tunnelHeadroom`: default road-to-roof height, initially 3.5; numeric OSM
+  `maxheight` values of at least 2 m take precedence.
+- `rampLength`: minimum transition distance, initially 35.
+- `maxGrade`: estimated structure slope limit as rise/run, initially 0.22 (22%).
+- `deckThickness`: bridge underside thickness, initially 0.5.
+
+Each city's `overrides` maps an OSM way ID (for example `way/120113156`) to
+optional fields: `kind` (`ground`, `bridge`, `tunnel`), `heightOffset`,
+`startHeight`, `endHeight`, `clearance`, and `headroom`.
+`startHeight`/`endHeight` are absolute metres above sea level in GeoJSON coordinate
+order; their corrections blend along the way. `heightOffset` is a relative shift.
+Conflicting adjustments at a shared node are averaged to preserve continuity.
+`clearance` increases the baseline separation for its connected structure;
+`headroom` changes that way's roof height. Explicit height corrections run after
+automatic grade constraints, so conflicting measurements can exceed that limit.
+Use consistent values on adjoining ways.
 
 ## Slope physics
 
@@ -62,19 +112,21 @@ aligns with the terrain normal, smoothing pitch/bank changes across grid cells.
 
 The bundled Rabat GeoJSON also includes northern Malta/Gozo geometry above 36 N,
 outside this tile. That geometry is omitted rather than assigned invented heights.
-With the current data, 302 road features, 80 trees and 3685 building features are
-outside the available coverage. The resulting scene contains 587 road features,
-35 trees and 1894 buildings, plus a 445 x 377 terrain grid. Driving is constrained
+The loader reports omitted feature counts when loading each city; these change
+with the source GeoJSON. Driving is constrained
 to the loaded terrain extent so the car cannot continue into an unrendered area.
 
 An **N36E014** neighbouring tile and a multi-tile source configuration would be
 needed to complete that northern area. The original HGT remains unchanged.
 
 SRTM is coarse radar-derived surface data. It cannot resolve curbs, individual
-ramps, bridge decks or tunnel floors reliably. Current bridge/tunnel roads use a
-terrain-conforming approximation; OSM layer tags are not converted into guessed
-metres. Accurately stacked road levels require separate road profiles, terrain
-cuts at tunnel portals and bridge endpoint constraints.
+ramps, bridge decks or tunnel floors reliably. The road profiles therefore use
+configurable estimates rather than interpreting SRTM as deck/floor measurements.
+Accurate reconstruction still needs surveyed heights or manual way overrides.
+Connectivity is inferred from shared coordinates because the exported GeoJSON
+does not preserve OSM node IDs; missing tags or disconnected endpoints can need
+correction. Building passages receive generic tunnel geometry, not detailed
+architectural openings in building meshes.
 
 ## Higher-resolution options
 
