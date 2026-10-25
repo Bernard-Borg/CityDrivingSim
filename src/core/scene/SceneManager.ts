@@ -4,6 +4,7 @@ import { CollisionWorld } from "./CollisionWorld";
 import { RoadGenerator, ROAD_HEIGHT } from "./RoadGenerator";
 import { TreeGenerator } from "./TreeGenerator";
 import { BuildingGenerator } from "./BuildingGenerator";
+import type { TerrainBounds } from "./ElevationTerrain";
 import { ElevationTerrain, HgtTile } from "./ElevationTerrain";
 import { WaterGenerator } from "./WaterGenerator";
 import { NaturalGenerator } from "./NaturalGenerator";
@@ -25,6 +26,7 @@ export class SceneManager {
     private groundGroup: THREE.Group | null = null;
     private groundMaterial: THREE.MeshStandardMaterial | null = null;
     private terrain: ElevationTerrain | null = null;
+    private flatBounds: TerrainBounds | null = null;
     private elevationTile: HgtTile | null = null;
     private water: WaterGenerator;
     private natural: NaturalGenerator;
@@ -107,6 +109,7 @@ export class SceneManager {
         if (this.disposed) return;
         this.clearScene();
         this.terrain = null;
+        this.flatBounds = null;
         this.elevationTile = null;
         if (config.elevation) {
             await report("Loading elevation data", config.elevation.file);
@@ -153,6 +156,18 @@ export class SceneManager {
                 `Elevation enabled: ${this.terrain.columns} x ${this.terrain.rows} terrain grid; reference ${this.terrain.referenceHeight.toFixed(1)} m AMSL`,
             );
         }
+        if (!this.terrain) {
+            const bounds = { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity };
+            for (const feature of data.features) for (const [lon, lat] of this.coordinates(feature)) {
+                const p = this.latLonToLocal(lat, lon);
+                bounds.minX = Math.min(bounds.minX, p.x); bounds.maxX = Math.max(bounds.maxX, p.x);
+                bounds.minZ = Math.min(bounds.minZ, p.z); bounds.maxZ = Math.max(bounds.maxZ, p.z);
+            }
+            if (Number.isFinite(bounds.minX)) this.flatBounds = {
+                minX: bounds.minX - 600, maxX: bounds.maxX + 600,
+                minZ: bounds.minZ - 600, maxZ: bounds.maxZ + 600,
+            };
+        }
         await report("Loading road-level settings");
         let roadLevels: Partial<RoadLevelSettings> = {};
         const levelsResponse = await fetch("/data/roads/road-levels.json", {
@@ -195,7 +210,7 @@ export class SceneManager {
         const heightAt = (x: number, z: number) => sample(x, z).height;
         await report("Generating water and coastlines");
         if (naturalData) this.water.generate(naturalData, project,
-            this.terrain?.bounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
+            this.terrain?.bounds ?? this.flatBounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
             sample, this.terrain?.referenceHeight ?? 0);
         await report("Building terrain mesh");
         this.createGround();
@@ -323,13 +338,31 @@ export class SceneManager {
         this.groundGroup = new THREE.Group();
         this.scene.add(this.groundGroup);
         if (!this.terrain) {
-            const geometry = new THREE.PlaneGeometry(50000, 50000);
-            geometry.rotateX(-Math.PI / 2);
-            this.roadGenerator.cutTerrainGeometry(geometry);
-            this.water.cutTerrain(geometry, () => ({ height: 0, slopeX: 0, slopeZ: 0 }));
-            const mesh = new THREE.Mesh(geometry, this.groundMaterial);
-            mesh.receiveShadow = true;
-            this.groundGroup.add(mesh);
+            const bounds = this.flatBounds ?? { minX: -600, minZ: -600, maxX: 600, maxZ: 600 };
+            const addPatch = (minX: number, minZ: number, maxX: number, maxZ: number, cut: boolean) => {
+                const width = maxX - minX, depth = maxZ - minZ;
+                if (width <= 0 || depth <= 0) return;
+                const geometry = new THREE.PlaneGeometry(width, depth, cut ? Math.ceil(width / 40) : 1, cut ? Math.ceil(depth / 40) : 1);
+                geometry.rotateX(-Math.PI / 2); geometry.translate((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+                if (cut) {
+                    this.roadGenerator.cutTerrainGeometry(geometry);
+                    this.water.cutTerrain(geometry, () => ({ height: 0, slopeX: 0, slopeZ: 0 }));
+                }
+                geometry.computeBoundingSphere();
+                const mesh = new THREE.Mesh(geometry, this.groundMaterial!);
+                mesh.receiveShadow = true; this.groundGroup!.add(mesh);
+            };
+            // Bound clipping work to small triangles near the actual map. Cutting a
+            // 50 km plane at once gathers every opening and fragments giant polygons.
+            for (let z = bounds.minZ; z < bounds.maxZ; z += 400)
+                for (let x = bounds.minX; x < bounds.maxX; x += 400)
+                    addPatch(x, z, Math.min(x + 400, bounds.maxX), Math.min(z + 400, bounds.maxZ), true);
+            // Keep the surrounding flat backdrop without running cutouts outside map coverage.
+            const edge = Math.max(25000, Math.abs(bounds.minX), Math.abs(bounds.maxX), Math.abs(bounds.minZ), Math.abs(bounds.maxZ)) + 1;
+            addPatch(-edge, -edge, edge, bounds.minZ, false);
+            addPatch(-edge, bounds.maxZ, edge, edge, false);
+            addPatch(-edge, bounds.minZ, bounds.minX, bounds.maxZ, false);
+            addPatch(bounds.maxX, bounds.minZ, edge, bounds.maxZ, false);
             return;
         }
         const terrain = this.terrain;

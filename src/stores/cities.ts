@@ -1,7 +1,11 @@
 import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import { MALTA_BUILDINGS, MONACO_BUILDINGS } from "@/core/scene/BuildingAppearance";
+import {
+    MALTA_BUILDINGS,
+    MONACO_BUILDINGS,
+    STOCKHOLM_BUILDINGS,
+} from "@/core/scene/BuildingAppearance";
 import type { BuildingTheme } from "@/core/scene/BuildingAppearance";
 
 export interface SavedPosition {
@@ -50,6 +54,13 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         buildings: MALTA_BUILDINGS,
         centerLat: 35.8343,
         centerLon: 14.4579,
+    },
+    stockholm: {
+        name: "Stockholm",
+        buildings: STOCKHOLM_BUILDINGS,
+        file: "stockholm.json",
+        centerLat: 59.3253,
+        centerLon: 18.0654,
     },
 };
 

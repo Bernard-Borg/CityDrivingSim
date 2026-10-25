@@ -113,3 +113,23 @@ or test infrastructure. Browser drives must preserve roads/paint at different
 levels, joined tunnel clearance, building openings, water, terrain contact, camera
 behaviour and readable bus-stop signs. Compare allocation counts over repeated city
 switches and report observed results rather than estimated FPS gains.
+
+## Resolved Stockholm terrain-loading stall
+
+Stockholm currently has no elevation source configured. Its flat ground previously
+used two triangles covering 50 by 50 kilometres. Subtracting all tunnel/water
+openings from those triangles gathered millions of spatial cells and repeatedly
+fragmented city-wide polygons. This was a loading scalability defect.
+
+Flat maps now use 400 metre patches subdivided into triangles spanning at most
+40 metres per axis around the exported road bounds plus 600 metres. Water clipping
+uses that same mapped extent. Four uncut outer rectangles preserve the distant
+backdrop without processing openings beyond map coverage. Elevation-backed ground
+continues to use its existing height grid and chunking.
+
+A Node scene inspection with the complete Stockholm exports completed the terrain
+stage in 0.42 seconds (327 ground patches), with finite terrain positions and clean
+disposal. Road/marking generation took 6.12 seconds and building generation 1.87
+seconds in that run. These local wall-clock figures exclude browser GPU uploads,
+shader compilation and actual rendering; they are not browser load-time guarantees.
+The broader optimization candidates above remain proposals.
