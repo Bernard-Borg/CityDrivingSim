@@ -214,12 +214,17 @@ export class DrivingSimulator {
                 this.sceneManager.getRoadSurfaceAtPosition(preUpdatePosition);
             this.carControls.setRoadSurface(surface);
             if (!document.hidden) {
+                let enteredWater = false;
                 this.physicsClock.advance(elapsed, (dt) => {
+                    if (enteredWater) return;
                     this.carControls!.update(dt);
                     this.car!.update(dt);
+                    enteredWater = this.sceneManager.isInWater(this.car!.getPosition());
                 });
+                if (enteredWater) this.resetCarPosition();
                 this.carControls.updateAudio(delta);
             } else this.physicsClock.reset();
+            this.sceneManager.update(nowFrame / 1000);
 
             const carPosition = this.car.getPosition();
             const carQuaternion = this.car.getRotation();

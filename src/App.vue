@@ -117,7 +117,7 @@ onMounted(async () => {
     const soundManager = SoundManager.getInstance();
     soundManager.setEnabled(!settings.isSoundMuted);
 
-    if (unmounted) return;
+    await cityStore.loadCities();
 
     if (
         cityStore.selectedCity &&

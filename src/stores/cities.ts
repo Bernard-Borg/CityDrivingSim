@@ -108,8 +108,6 @@ export const useCitiesStore = defineStore("cities", () => {
         return config?.name || city;
     };
 
-    loadCities();
-
     return {
         selectedCity,
         getCityName,

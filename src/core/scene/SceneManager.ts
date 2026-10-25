@@ -4,6 +4,7 @@ import { RoadGenerator, ROAD_HEIGHT } from "./RoadGenerator";
 import { TreeGenerator } from "./TreeGenerator";
 import { BuildingGenerator } from "./BuildingGenerator";
 import { ElevationTerrain, HgtTile } from "./ElevationTerrain";
+import { WaterGenerator } from "./WaterGenerator";
 import type { GeoJSON, GeoJSONFeature } from "@/types";
 import type { RoadLevelSettings } from "./RoadProfiles";
 import { useCitiesStore } from "@/stores/cities";
@@ -22,11 +23,13 @@ export class SceneManager {
     private groundMaterial: THREE.MeshStandardMaterial | null = null;
     private terrain: ElevationTerrain | null = null;
     private elevationTile: HgtTile | null = null;
+    private water: WaterGenerator;
 
     constructor(private scene: THREE.Scene) {
         this.roadGenerator = new RoadGenerator(scene, this.collisions);
         this.treeGenerator = new TreeGenerator(scene);
         this.buildingGenerator = new BuildingGenerator(scene, this.collisions);
+        this.water = new WaterGenerator(scene);
         this.startPosition = new THREE.Vector3(0, ROAD_HEIGHT + 0.4, 0);
     }
 
@@ -162,6 +165,11 @@ export class SceneManager {
         this.collisions.setBounds(this.terrain?.bounds ?? null);
         if (!this.roadGenerator.getRoads().length)
             throw new Error("This city has no drivable roads.");
+        const waterData = await this.optionalData(`/data/water/${config.file}`);
+        if (this.disposed) return;
+        if (waterData) this.water.generate(waterData, (lat, lon) => this.latLonToLocal(lat, lon),
+            this.terrain?.bounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
+            (x, z) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 }, this.terrain?.referenceHeight ?? 0);
         this.createGround();
         const [treeData, buildingData] = await Promise.all([
             this.optionalData(`/data/trees/${config.file}`),
@@ -228,9 +236,11 @@ export class SceneManager {
                 0.4,
             spawn.z,
         );
+        if (this.isInWater(this.startPosition)) this.startPosition.copy(this.roadGenerator.getSpawnPosition());
     }
 
     private clearScene(): void {
+        this.water.clear();
         this.collisions.clear();
         if (this.groundGroup) {
             this.groundGroup.traverse((object) => {
@@ -261,6 +271,7 @@ export class SceneManager {
             const geometry = new THREE.PlaneGeometry(50000, 50000);
             geometry.rotateX(-Math.PI / 2);
             this.roadGenerator.cutTerrainGeometry(geometry);
+            this.water.cutTerrain(geometry, () => ({ height: 0, slopeX: 0, slopeZ: 0 }));
             const mesh = new THREE.Mesh(geometry, this.groundMaterial);
             mesh.receiveShadow = true;
             this.groundGroup.add(mesh);
@@ -317,6 +328,7 @@ export class SceneManager {
                 );
                 geometry.setIndex(indices);
                 this.roadGenerator.cutTerrainGeometry(geometry);
+                this.water.cutTerrain(geometry, (x, z) => terrain.sample(x, z));
                 geometry.computeBoundingSphere();
                 const mesh = new THREE.Mesh(geometry, this.groundMaterial);
                 mesh.receiveShadow = true;
@@ -379,12 +391,24 @@ export class SceneManager {
         return this.roadGenerator.getRoadState(x, z, y);
     }
 
+    isInWater(position: THREE.Vector3): boolean {
+        const waterHeight = this.water.heightAt(position.x, position.z);
+        if (waterHeight === null) return false;
+        const road = this.getRoadState(position.x, position.z, position.y);
+        // Bridges and enclosed tunnels retain their own contact even over/under water.
+        if (road.roadId && (road.structure === "tunnel" || road.height > waterHeight + 0.15)) return false;
+        return true;
+    }
+
+    update(elapsed: number): void { this.water.update(elapsed); }
+
     dispose(): void {
         this.disposed = true;
         this.clearScene();
         this.roadGenerator.dispose();
         this.treeGenerator.dispose();
         this.buildingGenerator.dispose();
+        this.water.dispose();
         this.terrain = null;
         this.elevationTile = null;
         this.roadGenerator.setTerrain(null);

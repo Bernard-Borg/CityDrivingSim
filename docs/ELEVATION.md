@@ -100,6 +100,9 @@ Use consistent values on adjoining ways.
 
 ## Slope physics
 
+Mapped sea and inland water now mask the terrain within their boundaries;
+see [WATER.md](./WATER.md) for data formats, surface heights and vehicle recovery.
+
 The vehicle's fixed-step simulation projects gravity onto the contact plane.
 Climbing consumes momentum; descending adds it even with no throttle. Acceleration
 can overcome a climb, and releasing the brake on a sufficiently steep climb can
