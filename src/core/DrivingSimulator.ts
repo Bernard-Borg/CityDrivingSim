@@ -1,4 +1,5 @@
 import { FreeFlightControls } from "./FreeFlightControls";
+import { ProceduralSky } from "./scene/ProceduralSky";
 import { useStateStore } from "@/stores/state";
 import { useLoadingStore } from "@/stores/loading";
 import * as THREE from "three";
@@ -20,6 +21,7 @@ export class DrivingSimulator {
     private camera: THREE.PerspectiveCamera;
     private renderer: THREE.WebGLRenderer;
     private sceneManager: SceneManager;
+    private sky: ProceduralSky;
     private car: Car | null = null;
     private carControls: CarControls | null = null;
     private flight: FreeFlightControls | null = null;
@@ -74,6 +76,7 @@ export class DrivingSimulator {
         this.container.appendChild(this.renderer.domElement);
 
         this.sceneManager = new SceneManager(this.scene);
+        this.sky = new ProceduralSky(this.scene);
 
         this.setupEventListeners();
     }
@@ -106,7 +109,7 @@ export class DrivingSimulator {
                     0xffffff,
                     0.8,
                 );
-                directionalLight.position.set(200, 300, 100);
+                directionalLight.position.copy(ProceduralSky.sunDirection).multiplyScalar(375);
                 directionalLight.castShadow = true;
                 // Reduced shadow map size for performance
                 directionalLight.shadow.mapSize.width = 1024;
@@ -121,7 +124,7 @@ export class DrivingSimulator {
             }
 
             // Add fog for depth
-            this.scene.fog = new THREE.Fog(0x87ceeb, 450, 1200);
+            this.scene.fog = new THREE.Fog(ProceduralSky.horizonColor, 450, 1200);
 
             // Load city map with saved position
             await this.sceneManager.loadCityMap(city, savedPosition);
@@ -164,6 +167,7 @@ export class DrivingSimulator {
 
             await useLoadingStore().stage("Rendering first frame");
             if (this.disposed) return;
+            this.sky.update(this.camera, performance.now() / 1000);
             this.renderer.render(this.scene, this.camera);
             this.lastFrame = performance.now();
             this.physicsClock.reset();
@@ -394,6 +398,7 @@ export class DrivingSimulator {
             this.fpsUpdateCallbacks.forEach((callback) => callback(this.fps));
         }
 
+        this.sky.update(this.camera, nowFrame / 1000);
         this.renderer.render(this.scene, this.camera);
         if (this.performanceEnabled) {
             this.peakFrameMs = Math.max(this.peakFrameMs, elapsed * 1000);
@@ -572,6 +577,7 @@ export class DrivingSimulator {
         this.flight?.dispose();
         this.car?.dispose();
         this.sceneManager.dispose();
+        this.sky.dispose();
         this.scene.traverse((object) => {
             if (object instanceof THREE.DirectionalLight)
                 object.shadow.dispose();

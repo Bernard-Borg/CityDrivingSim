@@ -233,3 +233,13 @@ labels omit these explanatory details; the timing and count definitions live her
 ## Elevation
 
 See [Elevation](ELEVATION.md) for the Rabat/Monaco implementation, tile coverage and source limitations.
+
+## Sky
+
+[ProceduralSky](../src/core/scene/ProceduralSky.ts) renders a camera-centred daytime
+sky with a blue zenith, pale horizon haze, a sun disc and slowly moving clouds.
+The sun direction also positions the scene's directional light; fog uses the
+same horizon colour. The sky follows driving and creative cameras, uses one draw
+call and four noise octaves, and requires no image downloads. Clouds are a distant
+visual layer without volumetric shadows or weather simulation. Sky geometry and
+material are released when the simulator is disposed.
