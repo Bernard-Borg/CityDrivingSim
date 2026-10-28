@@ -359,6 +359,37 @@ export class DecorGenerator {
                 else
                     for (const up of [h * 0.65, h * 0.9])
                         add("box", metal, 0, up, 0, 2.4, 0.13, 0.13);
+            } else if (p.artwork_type === "statue" || p.artwork_type === "sculpture"
+                || p.memorial === "statue" || p.historic === "statue") {
+                const scale = this.dimension(p.height, 2.8, 1, 8) / 2.8;
+                const rock = 0x827d70, shadow = 0x49483f;
+                /** Adds one stone feature in normalized moai coordinates.
+                 * @param color - Stone colour for this feature.
+                 * @param x - Horizontal offset relative to the statue centre.
+                 * @param up - Height above the statue base.
+                 * @param z - Depth offset; the face points toward positive local Z.
+                 * @param sx - Feature width before height scaling.
+                 * @param sy - Feature height before height scaling.
+                 * @param sz - Feature depth before height scaling.
+                 */
+                const stonePart = (color: number, x: number, up: number, z: number, sx: number, sy: number, sz: number): void => {
+                    add("box", color, x * scale, up * scale, z * scale, sx * scale, sy * scale, sz * scale);
+                };
+                stonePart(stone, 0, 0.12, 0, 1.15, 0.24, 0.95); // Plinth.
+                stonePart(rock, 0, 0.57, -0.06, 0.92, 0.7, 0.65); // Shoulders.
+                stonePart(rock, 0, 1.65, 0, 0.82, 2.05, 0.82); // Long head.
+                stonePart(rock, 0, 2.66, -0.06, 0.74, 0.28, 0.72); // Flat crown.
+                stonePart(rock, 0, 1.03, 0.15, 0.84, 0.46, 0.78); // Heavy chin.
+                for (const side of [-1, 1]) {
+                    stonePart(shadow, side * 0.21, 2.05, 0.419, 0.29, 0.14, 0.025); // Recessed eyes.
+                    stonePart(rock, side * 0.21, 2.2, 0.46, 0.44, 0.18, 0.22); // Brow ridge.
+                    stonePart(rock, side * 0.46, 1.92, -0.01, 0.15, 0.65, 0.31); // Ears.
+                }
+                stonePart(rock, 0, 1.9, 0.52, 0.18, 0.64, 0.32); // Long nose.
+                stonePart(rock, 0, 1.61, 0.59, 0.3, 0.16, 0.36);
+                stonePart(shadow, 0, 1.36, 0.548, 0.42, 0.055, 0.025); // Mouth slit.
+                stonePart(rock, 0, 1.29, 0.52, 0.46, 0.1, 0.13);
+                radius = 0.58 * scale;
             } else if (p.historic || p.tourism === "artwork") {
                 add("box", stone, 0, 0.3, 0, 1, 0.6, 1);
                 add(

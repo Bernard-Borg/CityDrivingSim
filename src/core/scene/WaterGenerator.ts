@@ -49,6 +49,7 @@ export class WaterGenerator {
     private group = new THREE.Group();
     private cuts = new RoadCutouts();
     private areas = new SpatialGrid<WaterArea>(100);
+    private coverage = new SpatialGrid<WaterArea>(100);
     private time = { value: 0 };
     private bankMaterial = new THREE.MeshStandardMaterial({
         color: 0x8b826e,
@@ -267,6 +268,11 @@ export class WaterGenerator {
                     "Water: coastline boundary did not form a closed sea polygon; skipped.",
                 );
         }
+        // Index every polygon before processing shores, so neighbouring water is
+        // recognized independently of feature order or different boundary vertices.
+        for (const area of [...seas, ...inland]) this.coverage.insert(area,
+            Math.min(...area.outer.map(p => p.x)), Math.min(...area.outer.map(p => p.z)),
+            Math.max(...area.outer.map(p => p.x)), Math.max(...area.outer.map(p => p.z)));
         if (prepareTerrain) {
             // Buffer both sides of every shore (including island holes). Raising the
             // shared height field before roads/scenery keeps land and contact aligned.
@@ -283,6 +289,7 @@ export class WaterGenerator {
                             const a = line[i - 1],
                                 b = line[i],
                                 height = area.height + 0.15;
+                            if (this.isInternalBoundary(a, b)) continue;
                             shores.insert(
                                 { a, b, height },
                                 Math.min(a.x, b.x) - radius,
@@ -451,6 +458,7 @@ export class WaterGenerator {
                             x: a.x + ((b.x - a.x) * (j + 1)) / steps,
                             z: a.z + ((b.z - a.z) * (j + 1)) / steps,
                         };
+                        if (this.isInternalBoundary(p, q)) continue;
                         const hp = sample(p.x, p.z).height,
                             hq = sample(q.x, q.z).height,
                             water = area.height + 0.025;
@@ -492,6 +500,26 @@ export class WaterGenerator {
             Math.min(bounds.maxX, Math.max(...area.outer.map((p) => p.x))),
             Math.min(bounds.maxZ, Math.max(...area.outer.map((p) => p.z))),
         );
+        return true;
+    }
+
+    /** Identifies a polygon seam covered by water on both sides, irrespective of water level.
+     * Samples away from endpoints to avoid confusing shared shore corners with seams.
+     * @param a - First boundary endpoint in local metres.
+     * @param b - Second boundary endpoint in local metres.
+     * @returns True for internal water boundaries, excluding island shores. A level change is not a land bank.
+     */
+    private isInternalBoundary(a: Point, b: Point): boolean {
+        const dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz);
+        if (length < 1e-6) return true;
+        const nx = -dz / length * 0.05, nz = dx / length * 0.05;
+        for (const t of [0.2, 0.5, 0.8]) for (const side of [-1, 1]) {
+            const p = { x: a.x + dx * t + nx * side, z: a.z + dz * t + nz * side };
+            const covered = [...this.coverage.at(p.x, p.z)].some(area =>
+                contains(p, area.outer)
+                && !area.holes.some(hole => contains(p, hole)));
+            if (!covered) return false;
+        }
         return true;
     }
 
@@ -541,6 +569,7 @@ export class WaterGenerator {
         }
         this.cuts.clear();
         this.areas.clear();
+        this.coverage.clear();
     }
     /**
      * Releases owned resources and unregisters scene objects, browser listeners or audio nodes as applicable.
