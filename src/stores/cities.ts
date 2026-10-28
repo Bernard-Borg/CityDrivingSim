@@ -122,28 +122,25 @@ export const useCitiesStore = defineStore("cities", () => {
     };
 
     /**
-     * Checks configured road files with HEAD requests and populates selectable cities, falling back to the config list.
+     * Checks configured road files concurrently with body-free HEAD requests and populates selectable cities, falling back to the config list.
      */
     const loadCities = async () => {
-        // Try to fetch each city config to see which files exist
-        const available: string[] = [];
         const cities = Object.keys(CITY_CONFIGS);
-
-        for (const city of cities) {
-            const config = CITY_CONFIGS[city];
-            try {
-                const response = await fetch(`/data/roads/${config.file}`, {
+        const checks = await Promise.allSettled(
+            cities.map(async (city) => {
+                // HEAD checks existence without transferring the large GeoJSON response body.
+                const response = await fetch(`/data/roads/${CITY_CONFIGS[city].file}`, {
                     method: "HEAD",
                 });
-                if (response.ok) {
-                    available.push(city);
-                }
-            } catch {
-                // File doesn't exist, skip
-            }
-        }
+                return response.ok;
+            }),
+        );
 
-        availableCities.value = available.length > 0 ? available : cities; // Fallback to config list;
+        const available = cities.filter((_, index) => {
+            const result = checks[index];
+            return result?.status === "fulfilled" && result.value;
+        });
+        availableCities.value = available.length > 0 ? available : cities;
     };
 
     /**
