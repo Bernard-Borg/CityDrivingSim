@@ -22,7 +22,7 @@ export class ShipGenerator {
      * @returns A group whose geometry is owned by the caller; materials remain shared here.
      */
     generate(outer: Point[], tags: GeoJSONFeature['properties'], water: number, collisions?: CollisionWorld): THREE.Group {
-        const group = new THREE.Group(); group.name = String(tags.name ?? 'Moored ship');
+        const group = new THREE.Group(); group.name = String(tags.name ?? (tags.building === 'houseboat' ? 'Houseboat' : 'Moored ship'));
         const cx = outer.reduce((n, p) => n + p.x, 0) / outer.length;
         const cz = outer.reduce((n, p) => n + p.z, 0) / outer.length;
         let xx = 0, zz = 0, xz = 0;
@@ -32,7 +32,8 @@ export class ShipGenerator {
         const minX = Math.min(...ring.map(p => p.x)), maxX = Math.max(...ring.map(p => p.x));
         const minZ = Math.min(...ring.map(p => p.y)), maxZ = Math.max(...ring.map(p => p.y));
         const length = maxX - minX, width = maxZ - minZ, midX = (minX + maxX) / 2, midZ = (minZ + maxZ) / 2;
-        const freeboard = THREE.MathUtils.clamp(width * 0.16, 0.7, 2.5), draft = Math.min(2, width * 0.2);
+        const houseboat = tags.building === 'houseboat';
+        const freeboard = houseboat ? 0.55 : THREE.MathUtils.clamp(width * 0.16, 0.7, 2.5), draft = houseboat ? 0.6 : Math.min(2, width * 0.2);
         const batches = new Map<keyof ShipGenerator['materials'], THREE.BufferGeometry[]>();
         /** Queues owned geometry for merging by material. */
         const add = (kind: keyof ShipGenerator['materials'], geometry: THREE.BufferGeometry): void => {
@@ -56,23 +57,27 @@ export class ShipGenerator {
         band('keel', -draft, 0.05, 0.55); band('hull', 0.05, freeboard, 1);
         const shape = new THREE.Shape(ring);
         const deck = new THREE.ShapeGeometry(shape); deck.rotateX(Math.PI / 2); deck.translate(0, freeboard, 0); add('deck', deck);
-        const sailing = /sail|rigged/i.test(String(tags['ship:type'] ?? '') + ' ' + String(tags['description:en'] ?? ''));
+        const sailing = !houseboat && /sail|rigged/i.test(String(tags['ship:type'] ?? '') + ' ' + String(tags['description:en'] ?? ''));
         const taggedHeight = parseFloat(String(tags.height ?? ''));
         const cabinHeight = sailing ? 1.3 : THREE.MathUtils.clamp(Number.isFinite(taggedHeight) ? taggedHeight - freeboard : width * 0.35, 1.5, 6);
-        box('cabin', midX - length * 0.1, freeboard + cabinHeight / 2, midZ, length * 0.42, cabinHeight, width * 0.58);
-        box('deck', midX - length * 0.1, freeboard + cabinHeight + 0.12, midZ, length * 0.46, 0.24, width * 0.64);
+        const cabinLength = length * (houseboat ? 0.72 : 0.42), cabinWidth = width * (houseboat ? 0.76 : 0.58);
+        const cabinX = midX - length * (houseboat ? 0 : 0.1);
+        box('cabin', cabinX, freeboard + cabinHeight / 2, midZ, cabinLength, cabinHeight, cabinWidth);
+        box('deck', cabinX, freeboard + cabinHeight + 0.12, midZ, cabinLength + 0.3, 0.24, cabinWidth + 0.3);
         const windows = Math.min(24, Math.max(2, Math.floor(length * 0.4 / 2.4)));
         for (const side of [-1, 1]) for (let i = 0; i < windows; i++) {
-            box('glass', midX - length * 0.3 + length * 0.4 * (i + 0.5) / windows, freeboard + cabinHeight * 0.6,
-                midZ + side * width * 0.292, Math.min(1.2, length * 0.22 / windows), cabinHeight * 0.38, 0.08);
+            box('glass', cabinX - cabinLength / 2 + cabinLength * (i + 0.5) / windows, freeboard + cabinHeight * 0.6,
+                midZ + side * (cabinWidth / 2 + 0.02), Math.min(1.2, length * 0.22 / windows), cabinHeight * 0.38, 0.08);
         }
-        if (!sailing) {
+        if (houseboat) {
+            box('glass', cabinX + cabinLength / 2 + 0.02, freeboard + cabinHeight * 0.5, midZ, 0.06, cabinHeight * 0.75, cabinWidth * 0.25);
+        } else if (!sailing) {
             box('cabin', midX + length * 0.1, freeboard + cabinHeight + 0.8, midZ, length * 0.12, 1.6, width * 0.5);
             box('glass', midX + length * 0.162, freeboard + cabinHeight + 0.9, midZ, 0.08, 0.65, width * 0.42);
             box('hull', midX - length * 0.22, freeboard + cabinHeight + 1.1, midZ, Math.max(0.6, width * 0.13), 2.2, width * 0.16);
         }
         const mastHeight = sailing ? Math.min(28, length * 0.42) : cabinHeight + 3;
-        for (const fraction of sailing ? [-0.27, 0, 0.27] : [0.3]) {
+        for (const fraction of houseboat ? [] : sailing ? [-0.27, 0, 0.27] : [0.3]) {
             const x = midX + length * fraction;
             add('deck', new THREE.CylinderGeometry(0.09, 0.16, mastHeight, 6).translate(x, freeboard + mastHeight / 2, midZ));
             if (sailing) for (const tier of [0.45, 0.65, 0.83]) box('hull', x, freeboard + mastHeight * tier, midZ, 0.12, 0.12, width * (1.4 - tier));

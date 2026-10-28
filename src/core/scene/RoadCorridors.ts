@@ -50,10 +50,10 @@ export class RoadCorridors {
                         profile.halfWidthAt((i + 1) / count),
                     );
                 const polygon = [
-                    { x: a.x + nx * half, z: a.z + nz * half },
-                    { x: b.x + nx * half, z: b.z + nz * half },
-                    { x: b.x - nx * half, z: b.z - nz * half },
-                    { x: a.x - nx * half, z: a.z - nz * half },
+                    { x: a.x + nx * (half + (profile.input.sidewalks?.right ?? 0)), z: a.z + nz * (half + (profile.input.sidewalks?.right ?? 0)) },
+                    { x: b.x + nx * (half + (profile.input.sidewalks?.right ?? 0)), z: b.z + nz * (half + (profile.input.sidewalks?.right ?? 0)) },
+                    { x: b.x - nx * (half + (profile.input.sidewalks?.left ?? 0)), z: b.z - nz * (half + (profile.input.sidewalks?.left ?? 0)) },
+                    { x: a.x - nx * (half + (profile.input.sidewalks?.left ?? 0)), z: a.z - nz * (half + (profile.input.sidewalks?.left ?? 0)) },
                 ];
                 let area = 0;
                 for (let j = 0; j < 4; j++)

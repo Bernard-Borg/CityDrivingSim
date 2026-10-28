@@ -135,7 +135,7 @@ export class BuildingGenerator {
             if (!rings[0]) continue;
             const outer = rings[0],
                 p = feature.properties;
-            if (p.building === 'ship') {
+            if (p.building === 'ship' || p.building === 'houseboat') {
                 const centre = outer.reduce((sum, pt) => ({ x: sum.x + pt.x / outer.length, z: sum.z + pt.z / outer.length }), { x: 0, z: 0 });
                 let water = waterAt(centre.x, centre.z);
                 if (water === null) for (const pt of outer) { water = waterAt(pt.x, pt.z); if (water !== null) break; }

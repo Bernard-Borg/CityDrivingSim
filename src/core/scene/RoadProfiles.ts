@@ -41,6 +41,7 @@ export interface RoadInput {
     kind: RoadKind;
     layer: number;
     halfWidth: number;
+    sidewalks?: { left: number; right: number };
     name?: string;
     surface: string;
     lanes?: number;
