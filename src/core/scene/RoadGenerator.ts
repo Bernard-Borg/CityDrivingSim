@@ -364,7 +364,7 @@ export class RoadGenerator {
                 kind: tunnel || layer < 0 ? "tunnel" : bridge || layer > 0 ? "bridge" : "ground",
                 layer,
                 halfWidth: this.getRoadWidth(highway, lanes) / 2,
-                sidewalks: sidewalkWidths(p),
+                sidewalks: sidewalkWidths(p, bridge || layer > 0),
                 lanes,
                 surface: String(p.surface ?? "asphalt").toLowerCase(),
                 headroom:
