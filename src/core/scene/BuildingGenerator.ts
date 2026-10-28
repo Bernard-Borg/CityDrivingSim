@@ -4,6 +4,7 @@
  */
 
 import { ShipGenerator } from "./ShipGenerator";
+import { selectBuildingParts } from "./BuildingParts";
 import { BuildingSurfaceIndex } from "./BuildingSurfaceIndex";
 import * as THREE from "three";
 import type { GeoJSON } from "@/types";
@@ -113,9 +114,11 @@ export class BuildingGenerator {
             finish: [],
             roofFinish: [],
         });
+        const selection = selectBuildingParts(data.features, local);
+        const parentHeights = new Map<GeoJSON['features'][number], { low: number; high: number }>();
         const counts: Record<string, number> = {};
         let count = 0;
-        for (const feature of data.features) {
+        for (const feature of selection.features) {
             if (
                 feature.geometry.type !== "Polygon" ||
                 ["pier", "bridge", "no"].includes(String(feature.properties.building))
@@ -204,6 +207,23 @@ export class BuildingGenerator {
                         high = Math.max(high, h);
                     }
                 }
+            const parent = selection.parents.get(feature);
+            if (parent && parent.geometry.type === 'Polygon') {
+                let range = parentHeights.get(parent);
+                if (!range) {
+                    range = { low: Infinity, high: -Infinity };
+                    for (const ring of parent.geometry.coordinates) for (let i = 0; i < ring.length; i++) {
+                        const a = local(ring[i]), b = local(ring[(i + 1) % ring.length]);
+                        const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 5));
+                        for (let j = 0; j < steps; j++) {
+                            const h = heightAt(a.x + (b.x - a.x) * j / steps, a.z + (b.z - a.z) * j / steps);
+                            range.low = Math.min(range.low, h); range.high = Math.max(range.high, h);
+                        }
+                    }
+                    parentHeights.set(parent, range);
+                }
+                low = range.low; high = range.high;
+            }
             const minLevel = Math.max(0, Number(p["building:min_level"]) || 0);
             const minHeight = Math.max(
                 0,
