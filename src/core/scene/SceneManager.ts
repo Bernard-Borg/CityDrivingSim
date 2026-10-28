@@ -411,6 +411,8 @@ export class SceneManager {
                 this.centerLon,
                 heightAt,
                 config.buildings,
+                (x, z) => this.water.heightAt(x, z),
+                -(this.terrain?.referenceHeight ?? 0),
             );
         await report("Finding starting position");
         if (savedPosition) {

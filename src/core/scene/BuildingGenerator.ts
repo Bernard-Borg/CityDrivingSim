@@ -3,6 +3,7 @@
  * @packageDocumentation
  */
 
+import { ShipGenerator } from "./ShipGenerator";
 import { BuildingSurfaceIndex } from "./BuildingSurfaceIndex";
 import * as THREE from "three";
 import type { GeoJSON } from "@/types";
@@ -53,6 +54,7 @@ export class BuildingGenerator {
     }
     private buildingGroup = new THREE.Group();
     private materials = createBuildingMaterials();
+    private ships = new ShipGenerator();
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
      *
@@ -74,6 +76,8 @@ export class BuildingGenerator {
      * @param centerLon - City origin longitude in decimal degrees.
      * @param heightAt - Base-elevation sampler in local metres.
      * @param theme - City building palette and generation defaults.
+     * @param waterAt - Mapped water elevation sampler used for ship footprints.
+     * @param seaHeight - Local sea elevation fallback when a ship lies outside mapped water polygons.
      */
     generateBuildingsFromGeoJSON(
         data: GeoJSON,
@@ -81,6 +85,8 @@ export class BuildingGenerator {
         centerLon: number,
         heightAt: (x: number, z: number) => number = () => 0,
         theme: BuildingTheme = MALTA_BUILDINGS,
+        waterAt: (x: number, z: number) => number | null = () => null,
+        seaHeight = 0,
     ): void {
         this.clear();
         const scale = (Math.PI / 180) * 6371000;
@@ -129,6 +135,14 @@ export class BuildingGenerator {
             if (!rings[0]) continue;
             const outer = rings[0],
                 p = feature.properties;
+            if (p.building === 'ship') {
+                const centre = outer.reduce((sum, pt) => ({ x: sum.x + pt.x / outer.length, z: sum.z + pt.z / outer.length }), { x: 0, z: 0 });
+                let water = waterAt(centre.x, centre.z);
+                if (water === null) for (const pt of outer) { water = waterAt(pt.x, pt.z); if (water !== null) break; }
+                this.buildingGroup.add(this.ships.generate(outer, p, water ?? seaHeight, this.collisions));
+                counts.ship = (counts.ship ?? 0) + 1; count++;
+                continue;
+            }
             const seed = buildingSeed(
                 String(
                     feature.id ?? p["@id"] ?? `${outer[0].x.toFixed(2)},${outer[0].z.toFixed(2)}`,
@@ -465,7 +479,7 @@ export class BuildingGenerator {
      * Clears generated content and cached lookup data so the instance can be reused.
      */
     clear(): void {
-        for (const mesh of this.buildingGroup.children) (mesh as THREE.Mesh).geometry.dispose();
+        this.buildingGroup.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
         this.buildingGroup.clear();
     }
     /**
@@ -473,6 +487,7 @@ export class BuildingGenerator {
      */
     dispose(): void {
         this.clear();
+        this.ships.dispose();
         this.materials.wall.dispose();
         this.materials.roof.dispose();
         this.materials.map.dispose();
