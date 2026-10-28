@@ -1,5 +1,5 @@
 {
-    "name": "city-driving-sim",
+    "name": "wander",
     "version": "1.0.0",
     "description": "A virtual city driving simulator built with Vue, TypeScript, and Three.js",
     "type": "module",

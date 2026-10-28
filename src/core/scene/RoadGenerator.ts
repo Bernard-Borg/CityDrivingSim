@@ -653,14 +653,8 @@ export class RoadGenerator {
                     profile.input.kind === "bridge" ||
                     (profile.input.kind === "ground" && raised)
                 ) {
-                    const lowA =
-                        profile.input.kind === "bridge"
-                            ? ea.y - this.settings.deckThickness
-                            : Math.min(ga, ea.y - this.settings.deckThickness);
-                    const lowB =
-                        profile.input.kind === "bridge"
-                            ? eb.y - this.settings.deckThickness
-                            : Math.min(gb, eb.y - this.settings.deckThickness);
+                    const lowA = ea.y - this.settings.deckThickness;
+                    const lowB = eb.y - this.settings.deckThickness;
                     face(ea, eb, lowA, lowB, ea.y + 0.45, eb.y + 0.45);
                     if (profile.input.kind === "bridge" && lowered) {
                         face(
@@ -698,7 +692,7 @@ export class RoadGenerator {
                     }
                 }
             }
-            if (profile.input.kind === "bridge") {
+            if (profile.input.kind === "bridge" || (profile.input.kind === "ground" && raised)) {
                 const la = a.clone().addScaledVector(pa, (profile.halfWidthAt(i / segments) + (profile.input.sidewalks?.right ?? 0))),
                     ra = a.clone().addScaledVector(pa, -(profile.halfWidthAt(i / segments) + (profile.input.sidewalks?.left ?? 0)));
                 const lb = b.clone().addScaledVector(pb, (profile.halfWidthAt((i + 1) / segments) + (profile.input.sidewalks?.right ?? 0))),
@@ -711,6 +705,8 @@ export class RoadGenerator {
                     );
             }
         }
+        // Bridge approaches use open supports rather than non-colliding retaining skirts.
+        if (profile.input.kind !== "tunnel") this.createDeckStilts(profile);
         if (vertices.length) {
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
@@ -719,6 +715,39 @@ export class RoadGenerator {
             const mesh = new THREE.Mesh(geometry, this.sharedMaterials.ceilingMaterial);
             mesh.castShadow = mesh.receiveShadow = true;
             this.roadGroup.add(mesh);
+        }
+    }
+
+    /** Adds spaced collision-bearing stilts wherever a deck is raised above terrain.
+     * @param profile - Solved bridge or approach profile supplying deck elevations and widths.
+     */
+    private createDeckStilts(profile: RoadProfile): void {
+        const count = Math.max(1, Math.ceil(profile.curve.getLength() / 18));
+        for (let i = 0; i < count; i++) {
+            const t = (i + 0.5) / count;
+            const centre = profile.curve.getPoint(t);
+            const perpendicular = profile.perpendicularAt(t);
+            const halfWidth = profile.halfWidthAt(t);
+            for (const side of [-1, 1]) {
+                const point = centre.clone().addScaledVector(perpendicular, side * Math.max(0.5, halfWidth - 0.8));
+                const base = this.groundSample(point.x, point.z).height;
+                const top = profile.sample(point.x, point.z).height - this.settings.deckThickness;
+                const height = top - base;
+                if (height < 0.4) continue;
+                const radius = 0.3;
+                const geometry = new THREE.BoxGeometry(radius * 2, height, radius * 2);
+                const mesh = new THREE.Mesh(geometry, this.sharedMaterials.ceilingMaterial);
+                mesh.name = "Deck stilt";
+                mesh.position.set(point.x, base + height / 2, point.z);
+                mesh.castShadow = mesh.receiveShadow = true;
+                this.roadGroup.add(mesh);
+                this.collisions?.addPolygon([[
+                    { x: point.x - radius, z: point.z - radius },
+                    { x: point.x + radius, z: point.z - radius },
+                    { x: point.x + radius, z: point.z + radius },
+                    { x: point.x - radius, z: point.z + radius },
+                ]], base, top, "road", profile.input.id);
+            }
         }
     }
 

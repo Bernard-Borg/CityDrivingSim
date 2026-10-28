@@ -8,9 +8,6 @@
   // BUILDING PARTS (for detailed 3D geometry)
   way["building:part"]({{bbox}});
   relation["building:part"]({{bbox}});
-
-  // BUILDING ENTRANCES
-  node["entrance"]({{bbox}});
 );
 
 out body;

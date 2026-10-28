@@ -1,4 +1,4 @@
-# City Driving Simulator 🚗
+# Wander 🚗
 
 A virtual city driving simulator built with **Vue 3**, **TypeScript**, **Three.js**, and **Tailwind CSS**. Practice driving in virtual cities to get comfortable with new locations before your actual visit!
 
@@ -31,14 +31,16 @@ A virtual city driving simulator built with **Vue 3**, **TypeScript**, **Three.j
 
 1. Clone or download this repository
 2. Install dependencies:
-   ```bash
-   npm install
-   ```
+
+    ```bash
+    npm install
+    ```
 
 3. Start the development server:
-   ```bash
-   npm run dev
-   ```
+
+    ```bash
+    npm run dev
+    ```
 
 4. Open your browser to the URL shown (typically `http://localhost:5173`)
 
@@ -106,6 +108,7 @@ To use real city data from OpenStreetMap:
 4. **Load in SceneManager**: Update `SceneManager.ts` to load your city data
 
 Example Overpass Query:
+
 ```
 [out:json];
 (
@@ -127,6 +130,7 @@ out skel qt;
 ### Adjusting Vehicle Physics
 
 Edit `src/core/vehicle/Car.ts`:
+
 - `maxSpeed`: Maximum vehicle speed
 - `maxAcceleration`: How quickly the car accelerates
 - `friction`: How quickly the car slows down
@@ -141,6 +145,7 @@ Edit `src/core/vehicle/Car.ts`:
 ### Styling with Tailwind
 
 The UI components use Tailwind CSS utility classes. You can customize:
+
 - Colors in `tailwind.config.js`
 - UI components in `App.vue`
 

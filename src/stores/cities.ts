@@ -7,6 +7,7 @@ import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import {
+    AMSTERDAM_BUILDINGS,
     MALTA_BUILDINGS,
     MONACO_BUILDINGS,
     STOCKHOLM_BUILDINGS,
@@ -30,6 +31,14 @@ export interface CityConfig {
 
 // Available cities configuration
 export const CITY_CONFIGS: Record<string, CityConfig> = {
+    amsterdam: {
+        name: "Amsterdam",
+        file: "amsterdam.json",
+        buildings: AMSTERDAM_BUILDINGS,
+        elevation: { file: "Amsterdam.hgt", south: 52, west: 4 },
+        centerLat: 52.3731,
+        centerLon: 4.8925,
+    },
     monaco: {
         name: "Monaco",
         buildings: MONACO_BUILDINGS,

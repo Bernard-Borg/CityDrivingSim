@@ -52,6 +52,19 @@ export const STOCKHOLM_BUILDINGS: BuildingTheme = {
     wallMaterial: "plaster",
     residentialRoofShape: "gabled",
 };
+/** Brick facade palette and compact residential defaults for Amsterdam; explicit OSM tags take priority. */
+export const AMSTERDAM_BUILDINGS: BuildingTheme = {
+    wallColors: ["#754b3d", "#945e48", "#573c2d", "#aa7259", "#c29b80", "#e5ddcb"],
+    roofColors: ["#444749", "#605a53", "#945746", "#a5664e"],
+    shutterColors: ["#e6e3d7", "#294d3e", "#40464a"],
+    floorHeight: 3,
+    windowSpacing: 2.4,
+    weathering: 0.28,
+    balconyChance: 0.12,
+    residentialLevels: [3, 5],
+    wallMaterial: "brick",
+    residentialRoofShape: "gabled",
+};
 export type BuildingStyle =
     | "home"
     | "apartments"
