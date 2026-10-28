@@ -18,6 +18,7 @@ export class RoadSoundGenerator {
     private impactBuffer: AudioBuffer | null = null;
     private ignitionBuffer: AudioBuffer | null = null;
     private isEnabled = true;
+    private horn: { tones: OscillatorNode[]; gain: GainNode; filter: BiquadFilterNode } | null = null;
 
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
@@ -130,10 +131,45 @@ export class RoadSoundGenerator {
             );
         if (!enabled) this.stop();
     }
+    /** Starts or releases a sustained dual-tone horn with short attack and release envelopes.
+     * @param pressed - Whether the horn control is currently held.
+     */
+    setHorn(pressed: boolean): void {
+        const context = this.audioContext;
+        if (!pressed || !this.isEnabled) {
+            const horn = this.horn;
+            if (!horn || !context) return;
+            this.horn = null;
+            horn.gain.gain.cancelScheduledValues(context.currentTime);
+            horn.gain.gain.setTargetAtTime(0, context.currentTime, 0.025);
+            horn.tones.forEach(tone => tone.stop(context.currentTime + 0.15));
+            horn.tones[0]!.onended = () => {
+                horn.tones.forEach(tone => tone.disconnect());
+                horn.gain.disconnect(); horn.filter.disconnect();
+            };
+            return;
+        }
+        if (this.horn || !context || !this.masterGain) return;
+        this.start();
+        const gain = context.createGain(), filter = context.createBiquadFilter();
+        gain.gain.value = 0;
+        gain.gain.setTargetAtTime(0.12, context.currentTime, 0.012);
+        filter.type = "lowpass"; filter.frequency.value = 1800; filter.Q.value = 0.5;
+        filter.connect(gain); gain.connect(this.masterGain);
+        const tones = [350, 440].map(frequency => {
+            const tone = context.createOscillator();
+            tone.type = "sawtooth"; tone.frequency.value = frequency;
+            tone.connect(filter); tone.start();
+            return tone;
+        });
+        this.horn = { tones, gain, filter };
+    }
+
     /**
      * Stops currently playing audio owned by the instance.
      */
     stop(): void {
+        this.setHorn(false);
         for (const source of this.effects) {
             source.stop();
             source.disconnect();

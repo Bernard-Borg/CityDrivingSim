@@ -31,6 +31,7 @@ export class CarControls {
     private focused = true;
     private paused = false;
     private audioUnlocked = false;
+    private hornPressed = false;
     private soundCooldown = 0;
 
     private throttleInput: number = 0;
@@ -194,6 +195,11 @@ export class CarControls {
             this.unlockAudio();
         }
         switch (e.key.toLowerCase()) {
+            case "h":
+                e.preventDefault();
+                this.unlockAudio();
+                this.hornPressed = true;
+                break;
             case "i":
                 e.preventDefault();
                 if (!e.repeat) this.toggleIgnition();
@@ -247,6 +253,9 @@ export class CarControls {
      */
     private handleKeyUp(e: KeyboardEvent): void {
         switch (e.key.toLowerCase()) {
+            case "h":
+                this.hornPressed = false;
+                break;
             case "w":
             case "arrowup":
                 this.keys.forward = false;
@@ -457,6 +466,7 @@ export class CarControls {
         const running = this.car.getEngineState() === "running";
         this.engineSoundGenerator.setEnabled(enabled && running);
         this.roadSoundGenerator.setEnabled(enabled);
+        this.roadSoundGenerator.setHorn(enabled && (this.hornPressed || !!useTouchStore().pressed.KeyH));
         const impact = this.car.consumeImpact();
         if (!enabled) return;
         const speed = Math.abs(this.car.getSpeed());
@@ -524,6 +534,8 @@ export class CarControls {
      * Clears held keys and filtered values and releases vehicle control requests.
      */
     resetInput(): void {
+        this.hornPressed = false;
+        this.roadSoundGenerator.setHorn(false);
         useTouchStore().reset();
         for (const key of Object.keys(this.keys) as Array<keyof InputState>) this.keys[key] = false;
         this.throttleInput = this.brakeInput = this.steeringInput = 0;

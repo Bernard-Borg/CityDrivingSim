@@ -10,6 +10,7 @@ const DRIVING_CONTROLS = [
     ["Space / E (hold)", "Handbrake"],
     ["Shift", "Boost"],
     ["I", "Ignition / park"],
+    ["H (hold)", "Horn"],
     ["V", "First / third person"],
     ["C", "Creative mode / fly"],
     ["Mouse drag", "Look around (first person: ±80°)"],
@@ -29,6 +30,7 @@ const FLIGHT_CONTROLS = [
     ["F3", "Performance graphs"],
     ["?", "Open help"],
 ];
+
 const state = useStateStore();
 const helpDialog = ref<HTMLDialogElement | null>(null);
 

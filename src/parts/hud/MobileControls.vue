@@ -1,36 +1,209 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue';
-import { useTouchStore } from '@/stores/touch';
-import { useStateStore } from '@/stores/state';
+import { computed, onMounted, onUnmounted } from "vue";
+import { useTouchStore } from "@/stores/touch";
+import { useStateStore } from "@/stores/state";
 
 const touch = useTouchStore();
 const state = useStateStore();
 const pointers = new Map<number, string>();
 const lookPointers = new Map<number, { x: number; y: number }>();
-const controls = computed(() => state.creativeMode
-    ? [['KeyW', 'Forward'], ['KeyS', 'Back'], ['Space', 'Up'], ['KeyQ', 'Down'], ['ShiftLeft', 'Fast']]
-    : [['KeyS', 'Brake / R'], ['KeyW', 'Gas'], ['Space', 'Handbrake'], ['ShiftLeft', 'Boost']]);
-const emit = defineEmits<{ (e: 'gesture'): void }>();
+
+const controls = computed(() =>
+    state.creativeMode
+        ? [
+              ["KeyW", "Forward"],
+              ["KeyS", "Back"],
+              ["Space", "Up"],
+              ["KeyQ", "Down"],
+              ["ShiftLeft", "Fast"],
+          ]
+        : [
+              ["KeyS", "Brake / R"],
+              ["KeyW", "Gas"],
+              ["Space", "Handbrake"],
+              ["ShiftLeft", "Boost"],
+          ],
+);
+const emit = defineEmits<{ (e: "gesture"): void }>();
+
 const down = (e: PointerEvent, key: string) => {
-    emit('gesture'); e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    pointers.set(e.pointerId, key); touch.pressed[key] = true;
+    emit("gesture");
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, key);
+    touch.pressed[key] = true;
 };
-const up = (e: PointerEvent) => { const key = pointers.get(e.pointerId); pointers.delete(e.pointerId); if (key) touch.pressed[key] = [...pointers.values()].includes(key); lookPointers.delete(e.pointerId); };
-const lookDown = (e: PointerEvent) => { e.preventDefault(); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); };
-const lookMove = (e: PointerEvent) => { const last = lookPointers.get(e.pointerId); if (!last) return; touch.lookX += e.clientX - last.x; touch.lookY += e.clientY - last.y; last.x = e.clientX; last.y = e.clientY; };
-const reset = () => { pointers.clear(); lookPointers.clear(); touch.reset(); };
-onMounted(() => { window.addEventListener('blur', reset); document.addEventListener('visibilitychange', reset); });
-onUnmounted(() => { reset(); window.removeEventListener('blur', reset); document.removeEventListener('visibilitychange', reset); });
+
+const up = (e: PointerEvent) => {
+    const key = pointers.get(e.pointerId);
+    pointers.delete(e.pointerId);
+    if (key) touch.pressed[key] = [...pointers.values()].includes(key);
+    lookPointers.delete(e.pointerId);
+};
+
+const lookDown = (e: PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    lookPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+};
+
+const lookMove = (e: PointerEvent) => {
+    const last = lookPointers.get(e.pointerId);
+    if (!last) return;
+    touch.lookX += e.clientX - last.x;
+    touch.lookY += e.clientY - last.y;
+    last.x = e.clientX;
+    last.y = e.clientY;
+};
+
+const reset = () => {
+    pointers.clear();
+    lookPointers.clear();
+    touch.reset();
+};
+
+onMounted(() => {
+    window.addEventListener("blur", reset);
+    document.addEventListener("visibilitychange", reset);
+});
+
+onUnmounted(() => {
+    reset();
+    window.removeEventListener("blur", reset);
+    document.removeEventListener("visibilitychange", reset);
+});
 </script>
 <template>
     <div class="mobile-controls" aria-label="Touch controls">
-        <div class="steering"><button v-for="[key, label] in [['KeyA','←'],['KeyD','→']]" :key="key" :aria-label="label === '←' ? 'Steer left' : 'Steer right'" :class="{held:touch.pressed[key]}" @pointerdown="down($event,key)" @pointerup="up" @pointercancel="up" @lostpointercapture="up">{{ label }}</button></div>
-        <div class="look-pad" aria-label="Drag to look around" @pointerdown="lookDown" @pointermove="lookMove" @pointerup="up" @pointercancel="up" @lostpointercapture="up">Look</div>
-        <div class="pedals"><button v-if="!state.creativeMode" class="view-button" @click="touch.viewRequested = true">View</button><button v-for="[key,label] in controls" :key="key" :class="{held:touch.pressed[key]}" @pointerdown="down($event,key)" @pointerup="up" @pointercancel="up" @lostpointercapture="up">{{ label }}</button></div>
+        <div class="steering">
+            <button
+                v-for="[key, label] in [
+                    ['KeyA', '←'],
+                    ['KeyD', '→'],
+                ]"
+                :key="key"
+                :aria-label="label === '←' ? 'Steer left' : 'Steer right'"
+                :class="{ held: touch.pressed[key] }"
+                @pointerdown="down($event, key)"
+                @pointerup="up"
+                @pointercancel="up"
+                @lostpointercapture="up"
+            >
+                {{ label }}
+            </button>
+        </div>
+        <button
+            v-if="!state.creativeMode"
+            class="horn-button"
+            aria-label="Horn (hold)"
+            :class="{ held: touch.pressed.KeyH }"
+            @pointerdown="down($event, 'KeyH')"
+            @pointerup="up"
+            @pointercancel="up"
+            @lostpointercapture="up"
+        >
+            Horn
+        </button>
+        <div
+            class="look-pad"
+            aria-label="Drag to look around"
+            @pointerdown="lookDown"
+            @pointermove="lookMove"
+            @pointerup="up"
+            @pointercancel="up"
+            @lostpointercapture="up"
+        >
+            Look
+        </div>
+        <div class="pedals">
+            <button
+                v-if="!state.creativeMode"
+                class="view-button"
+                @click="touch.viewRequested = true"
+            >
+                View</button
+            ><button
+                v-for="[key, label] in controls"
+                :key="key"
+                :class="{ held: touch.pressed[key] }"
+                @pointerdown="down($event, key)"
+                @pointerup="up"
+                @pointercancel="up"
+                @lostpointercapture="up"
+            >
+                {{ label }}
+            </button>
+        </div>
     </div>
 </template>
 <style scoped>
-.mobile-controls{display:none;position:absolute;inset:0;pointer-events:none;z-index:18}.steering,.pedals,.look-pad{position:absolute;pointer-events:auto;touch-action:none;user-select:none}.steering{left:16px;bottom:max(18px,env(safe-area-inset-bottom));display:flex;gap:12px}.pedals{right:16px;bottom:max(18px,env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(2,72px);gap:8px}.mobile-controls button,.look-pad{background:#13251ee8;border:1px solid #8aafa480;border-radius:14px;color:#f1fff8;min-width:64px;min-height:58px;font:600 15px system-ui}.steering button{font-size:30px}.mobile-controls button.held{background:#567e68}.look-pad{right:20px;bottom:210px;width:100px;height:65px;display:grid;place-items:center;color:#b6cec2}
-.view-button{grid-column:1/-1;min-height:40px}
-@media(pointer:coarse){.mobile-controls{display:block}}
+.mobile-controls {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 18;
+}
+.steering,
+.pedals,
+.look-pad {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+}
+.steering {
+    left: 16px;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    display: flex;
+    gap: 12px;
+}
+.pedals {
+    right: 16px;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(2, 72px);
+    gap: 8px;
+}
+.mobile-controls button,
+.look-pad {
+    background: #13251ee8;
+    border: 1px solid #8aafa480;
+    border-radius: 14px;
+    color: #f1fff8;
+    min-width: 64px;
+    min-height: 58px;
+    font: 600 15px system-ui;
+}
+.steering button {
+    font-size: 30px;
+}
+.mobile-controls button.held {
+    background: #567e68;
+}
+.look-pad {
+    right: 20px;
+    bottom: 210px;
+    width: 100px;
+    height: 65px;
+    display: grid;
+    place-items: center;
+    color: #b6cec2;
+}
+.horn-button {
+    position: absolute;
+    left: 16px;
+    bottom: 90px;
+    pointer-events: auto;
+    touch-action: none;
+}
+.view-button {
+    grid-column: 1/-1;
+    min-height: 40px;
+}
+@media (pointer: coarse) {
+    .mobile-controls {
+        display: block;
+    }
+}
 </style>

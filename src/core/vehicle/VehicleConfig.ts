@@ -144,7 +144,7 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
         path: "/models/nsx/nsx.gltf",
         length: 2.6,
         wheelRadius: 0.4,
-        eye: [0.22, 0.24, -0.08],
+        eye: [-0.18, 0.24, 0.05],
     },
     physics: {
         maxSpeed: 200,
@@ -204,8 +204,7 @@ const JEEP_GLADIATOR: VehicleConfig = {
         path: "/models/jeep/jeep.gltf",
         length: 2.8,
         wheelRadius: 0.4,
-        // Gladiator cabin sits ahead of the model centre because of its pickup bed.
-        eye: [0.22, 0.24, 0.16],
+        eye: [0.18, 0.24, 0.08],
     },
     physics: {
         maxSpeed: 180,
@@ -265,7 +264,7 @@ const VW_GOLF_MK1: VehicleConfig = {
         path: "/models/vw/golf.gltf",
         length: 2.5,
         wheelRadius: 0.35,
-        eye: [0.22, 0.24, -0.08],
+        eye: [0.18, 0.24, -0.08],
     },
     physics: {
         maxSpeed: 160,

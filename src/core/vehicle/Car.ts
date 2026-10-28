@@ -1,3 +1,4 @@
+import { createWheelRig, createSteeringWheelRig } from "./WheelRig";
 /**
  * Car types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -51,6 +52,7 @@ export class Car {
     private driverEyeOffset = new THREE.Vector3(0.2, 0.2, -0.2);
     private gltfWheelSpinMeshes: THREE.Object3D[] = [];
     private gltfFrontWheelPivots: THREE.Object3D[] = [];
+    private cabinSteeringWheels: Array<{ pivot: THREE.Group; axis: THREE.Vector3 }> = [];
 
     // Physics properties
     private position: THREE.Vector3;
@@ -158,66 +160,10 @@ export class Car {
         // Update camera target offset based on model bounds
         this.cameraTargetOffset.set(0, centeredSize.y * 0.5, centeredSize.z * 0.15);
 
-        // Cache wheel spin targets (polySurface parent or mesh) and wheel pivots for steering
-        this.gltfWheelSpinMeshes = [];
-        this.gltfFrontWheelPivots = [];
-        const frontWheelNodes: THREE.Object3D[] = [];
-        model.traverse((child) => {
-            // Spin meshes: polySurface..._frontL/_frontR/_rearL/_rearR
-            if (child instanceof THREE.Mesh) {
-                const name = child.name.toLowerCase();
-                if (
-                    name.includes("polysurface") &&
-                    (name.includes("_front") || name.includes("_rear"))
-                ) {
-                    const spinTarget = child.parent ?? child;
-                    if (!this.gltfWheelSpinMeshes.includes(spinTarget)) {
-                        spinTarget.matrixAutoUpdate = true;
-                        this.gltfWheelSpinMeshes.push(spinTarget);
-                    }
-                }
-            }
-
-            // Steering nodes: 3DWheel Front L/R (wrap in a pivot for clean yaw)
-            const normalizedName = child.name.replace(/\s+/g, "_");
-            if (normalizedName === "3DWheel_Front_L" || normalizedName === "3DWheel_Front_R") {
-                frontWheelNodes.push(child);
-            }
-        });
-
-        // Create steering pivots after traversal to avoid duplicate creation
-        frontWheelNodes.forEach((wheelNode) => {
-            if (
-                this.gltfFrontWheelPivots.some(
-                    (pivot) => pivot.name === `${wheelNode.name}_steerPivot`,
-                )
-            ) {
-                return;
-            }
-            const parent = wheelNode.parent;
-            if (!parent) return;
-            let pivot: THREE.Object3D | null = null;
-            if (parent.name.endsWith("_steerPivot")) {
-                pivot = parent;
-            } else {
-                pivot = new THREE.Object3D();
-                pivot.name = `${wheelNode.name}_steerPivot`;
-                // Place pivot at wheel position in parent space
-                pivot.position.copy(wheelNode.position);
-                // Keep pivot unrotated so yaw is clean around local Y
-                pivot.quaternion.identity();
-                pivot.scale.set(1, 1, 1);
-                parent.add(pivot);
-                pivot.updateMatrixWorld(true);
-                pivot.attach(wheelNode); // preserve world transform
-            }
-            pivot.userData.baseQuat = pivot.quaternion.clone();
-            this.gltfFrontWheelPivots.push(pivot);
-        });
-
-        if (this.gltfFrontWheelPivots.length === 0) {
-            console.warn("No front wheel nodes found for steering.");
-        }
+        const wheels = createWheelRig(model, this.visualBody);
+        this.gltfWheelSpinMeshes = wheels.spin;
+        this.gltfFrontWheelPivots = wheels.front;
+        this.cabinSteeringWheels = createSteeringWheelRig(model, this.visualBody);
     }
 
     /**
@@ -311,6 +257,10 @@ export class Car {
         this.mesh.position.copy(this.position);
         this.mesh.quaternion.copy(this.rotation);
         const speedMps = this.speed / 3.6;
+
+        // A 12:1 visual steering ratio, capped at 1.5 turns either side of centre.
+        const cabinAngle = THREE.MathUtils.clamp(-this.physics.steeringAngle * 12, -Math.PI * 3, Math.PI * 3);
+        this.cabinSteeringWheels.forEach(({ pivot, axis }) => pivot.quaternion.setFromAxisAngle(axis, cabinAngle));
 
         // Animate wheels (rotate when moving)
         if (this.gltfWheelSpinMeshes.length > 0) {
