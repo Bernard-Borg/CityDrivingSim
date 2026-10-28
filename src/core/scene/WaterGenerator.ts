@@ -29,8 +29,9 @@ export class WaterGenerator {
     private areas = new SpatialGrid<WaterArea>(100);
     private time = { value: 0 };
     private bankMaterial = new THREE.MeshStandardMaterial({ color: 0x8b826e, roughness: 0.95, side: THREE.DoubleSide });
-    private material = new THREE.MeshStandardMaterial({
-        color: 0x167e9e, roughness: 0.32, metalness: 0.15, side: THREE.DoubleSide,
+    private material = new THREE.MeshPhysicalMaterial({
+        color: 0x167e9e, roughness: 0.24, metalness: 0, side: THREE.DoubleSide,
+        ior: 1.333, specularIntensity: 0.45,
     });
 
     constructor(private scene: THREE.Scene) {
@@ -46,6 +47,15 @@ export class WaterGenerator {
                 float ripple = sin(dot(waterPosition, vec2(0.38, 0.21)) + waterTime * 1.3)
                     * sin(dot(waterPosition, vec2(-0.17, 0.49)) - waterTime * 0.9);
                 diffuseColor.rgb *= 1.0 + ripple * 0.055;`);
+            shader.fragmentShader = shader.fragmentShader.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+                // Analytic slopes of three small waves: break up sunlight without moving shores.
+                float waveA = dot(waterPosition, vec2(0.38, 0.21)) + waterTime * 1.3;
+                float waveB = dot(waterPosition, vec2(-0.17, 0.49)) - waterTime * 0.9;
+                float waveC = dot(waterPosition, vec2(1.07, -0.83)) + waterTime * 1.8;
+                vec2 waterSlope = vec2(0.38, 0.21) * cos(waveA) * 0.07
+                    + vec2(-0.17, 0.49) * cos(waveB) * 0.05
+                    + vec2(1.07, -0.83) * cos(waveC) * 0.012;
+                normal = normalize(normal + (viewMatrix * vec4(-waterSlope.x, 0.0, -waterSlope.y, 0.0)).xyz);`);
         };
     }
 
