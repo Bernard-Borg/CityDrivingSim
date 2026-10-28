@@ -18,7 +18,9 @@ export class Car {
     readonly ready: Promise<void>;
     private disposed = false;
     private groundOffset = 0.4;
-    private creativeSpawnHeight: number | null = null;
+    private verticalVelocity = 0;
+    private landingCompression = 0;
+    private previousLandingCompression = 0;
     private world: CollisionWorld | null = null;
     private surface: (x: number, z: number, y: number) => SurfaceSample & { grip: number } = () => ({ height: 0.06, grip: 1, slopeX: 0, slopeZ: 0 });
     private groundNormal = new THREE.Vector3(0, 1, 0);
@@ -173,11 +175,15 @@ export class Car {
         this.previousPosition.copy(this.position);
         this.previousRotation.copy(this.rotation);
         this.previousBodyLean.copy(this.bodyLean);
+        this.previousLandingCompression = this.landingCompression;
+        this.landingCompression *= Math.exp(-8 * delta);
         if (this.engineState === 'starting') {
             this.ignitionRemaining = Math.max(0, this.ignitionRemaining - delta);
             if (this.ignitionRemaining === 0) this.engineState = 'running';
         }
         const contact = this.surface(this.physics.x, this.physics.z, this.position.y);
+        const contactHeight = contact.height + this.groundOffset * Math.sqrt(1 + contact.slopeX ** 2 + contact.slopeZ ** 2);
+        const grounded = this.position.y <= contactHeight + 0.001 && this.verticalVelocity <= 0;
         this.physics.step(delta, {
             throttle: this.throttleInput,
             brake: this.brakeInput,
@@ -185,17 +191,25 @@ export class Car {
             handbrake: this.handbrakeActive,
             boost: this.isBoosting,
             parkingBrake: this.engineState !== 'running',
+            grounded,
         }, contact.grip, contact.slopeX, contact.slopeZ);
-        const proposed = this.surface(this.physics.x, this.physics.z, this.position.y);
-        const impact = this.engineState === 'running'
-            ? this.world?.resolve(this.physics, proposed.height + this.groundOffset, this.config.collision) ?? 0 : 0;
+        const impact = this.engineState === 'running' || !grounded
+            ? this.world?.resolve(this.physics, this.position.y, this.config.collision) ?? 0 : 0;
         this.impact = Math.max(this.impact, impact);
         // Cancel stored steering rotation on contact rather than sweeping the body into the wall again.
         if (impact > 0) this.physics.yawRate = 0;
         const road = this.surface(this.physics.x, this.physics.z, this.position.y);
-        this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
-        if (this.engineState === 'running') this.creativeSpawnHeight = null;
-        this.position.set(this.physics.x, this.creativeSpawnHeight ?? road.height + this.groundOffset / this.groundNormal.y, this.physics.z);
+        const floor = road.height + this.groundOffset * Math.sqrt(1 + road.slopeX ** 2 + road.slopeZ ** 2);
+        const launchVelocity = grounded ? contact.slopeX * this.physics.vx + contact.slopeZ * this.physics.vz : this.verticalVelocity;
+        let height = this.position.y + launchVelocity * delta - 0.5 * 9.81 * delta * delta;
+        this.verticalVelocity = launchVelocity - 9.81 * delta;
+        if (height <= floor) {
+            if (this.verticalVelocity < -1) this.landingCompression = Math.min(0.14, Math.max(this.landingCompression, -this.verticalVelocity * 0.009));
+            height = floor;
+            this.verticalVelocity = 0;
+            this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
+        } else this.alignToGround(road, 0);
+        this.position.set(this.physics.x, height, this.physics.z);
         const motion = this.config.bodyMotion;
         const leanResponse = 1 - Math.exp(-motion.response * delta);
         this.bodyLean.x += (THREE.MathUtils.clamp(-this.physics.longitudinalAcceleration * motion.pitchGain, -0.025, 0.025) - this.bodyLean.x) * leanResponse;
@@ -295,8 +309,8 @@ export class Car {
         return this.speed;
     }
 
-    setPosition(x: number, y: number, z: number, preserveElevation = false): void {
-        this.creativeSpawnHeight = preserveElevation ? y : null;
+    setPosition(x: number, y: number, z: number, preserveElevation = true): void {
+        this.verticalVelocity = 0;
         this.physics.x = x;
         this.physics.z = z;
         const road = this.surface(x, z, y);
@@ -354,7 +368,10 @@ export class Car {
         const x = Math.sin(this.physics.yaw), z = Math.cos(this.physics.yaw);
         const forward = new THREE.Vector3(x, -(this.groundNormal.x * x + this.groundNormal.z * z) / this.groundNormal.y, z).normalize();
         const right = new THREE.Vector3().crossVectors(this.groundNormal, forward).normalize();
-        this.rotation.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, this.groundNormal, forward));
+        const target = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, this.groundNormal, forward));
+        // Heading stays in sync with physics in the air and on land; the normal above
+        // supplies gradual contact tilt without delaying steering response.
+        this.rotation.copy(target);
     }
 
     consumeImpact(): number {
@@ -370,11 +387,13 @@ export class Car {
         // Chassis feedback is visual only; camera mounts and contact orientation stay steady.
         this.visualBody.rotation.set(THREE.MathUtils.lerp(this.previousBodyLean.x, this.bodyLean.x, alpha), 0,
             THREE.MathUtils.lerp(this.previousBodyLean.y, this.bodyLean.y, alpha));
+        this.visualBody.position.y = -THREE.MathUtils.lerp(this.previousLandingCompression, this.landingCompression, alpha);
     }
     getRenderPosition(): THREE.Vector3 { return this.renderPosition.clone(); }
     getRenderRotation(): THREE.Quaternion { return this.renderRotation.clone(); }
     resetInterpolation(): void { this.snapRenderPose(); }
     private snapRenderPose(): void {
+        this.landingCompression = this.previousLandingCompression = 0;
         this.previousBodyLean.copy(this.bodyLean);
         this.previousPosition.copy(this.position); this.renderPosition.copy(this.position);
         this.previousRotation.copy(this.rotation); this.renderRotation.copy(this.rotation);

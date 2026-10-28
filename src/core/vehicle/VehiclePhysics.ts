@@ -8,6 +8,7 @@ export interface VehicleInput {
     handbrake: boolean;
     boost: boolean;
     parkingBrake?: boolean;
+    grounded?: boolean;
 }
 
 export const FIXED_STEP = 1 / 120;
@@ -41,6 +42,18 @@ export class VehiclePhysics {
     }
 
     step(dt: number, input: VehicleInput, grip = 1, slopeX = 0, slopeZ = 0): void {
+        if (input.grounded === false) {
+            // Limited air attitude control rotates the chassis, never its flight momentum.
+            const steer = Math.max(-1, Math.min(1, input.steering / this.config.maxSteeringAngle));
+            this.steeringAngle = steer * this.config.maxSteeringAngle;
+            const targetYawRate = steer * this.config.maxYawRate * 0.25;
+            this.yawRate += (targetYawRate - this.yawRate) * (1 - Math.exp(-2 * dt));
+            this.boosting = false;
+            this.longitudinalAcceleration = this.lateralAcceleration = 0;
+            this.x += this.vx * dt; this.z += this.vz * dt;
+            this.yaw += this.yawRate * dt;
+            return;
+        }
         if (input.parkingBrake) { this.reset(); return; }
         const cfg = this.config;
         const clamp = (v: number, low: number, high: number) => Math.max(low, Math.min(high, v));

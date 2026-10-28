@@ -271,6 +271,8 @@ export class CarControls {
         // S/Down brakes forward travel before engaging reverse; W/Up brakes reverse travel.
         const targetBrake = changingDirection || opposingPedals ? 1 : 0;
 
+        if (targetThrottle !== 0 && this.car.getEngineState() === 'off') this.toggleIgnition();
+
         // Smooth throttle and brake
         const throttleRate = targetThrottle > this.throttleInput ? this.throttleRiseRate : this.throttleFallRate;
         this.throttleInput = targetBrake || handbrake ? 0

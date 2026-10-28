@@ -17,7 +17,9 @@ The shared mode flag lives in the Pinia state store. Flight hides the car, switc
 its ignition off, clears motion/held controls, silences vehicle effects and pauses
 vehicle simulation. Entering flight starts at the car?s coordinates and elevation.
 Returning to driving places the car at the flight position with ignition off,
-preserving its altitude while parked. Starting the engine restores road contact.
+preserving its initial altitude. The car then falls under gravity until it contacts
+the ground, even with ignition off. Pressing the accelerator starts ignition;
+held throttle moves the car once startup completes.
 The selected mode carries across city switches during this session.
 
 - WASD / arrow keys: fly forward/backward and sideways. Forward follows your view.
@@ -229,6 +231,15 @@ GPU execution and are not GPU timing measurements. Sampling and scene counting
 stop when the panel is disabled. The panel replaces the FPS badge in its top-right
 position and includes FPS. Closing it restores the simple badge. The compact HUD
 labels omit these explanatory details; the timing and count definitions live here.
+
+## Gravity and contact
+
+The car integrates vertical motion at 9.81 m/s? independently of engine state.
+An elevated spawn falls instead of snapping onto the road. Airborne tyres supply
+no acceleration, braking or steering forces; horizontal momentum is retained.
+Ground contact arrests downward motion without a rebound. Uphill and downhill
+road forces still use the sampled surface slope. This is a height-field contact
+model, not a full rigid-body suspension or rollover simulation.
 
 ## Elevation
 
