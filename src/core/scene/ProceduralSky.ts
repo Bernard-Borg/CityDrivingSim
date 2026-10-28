@@ -1,4 +1,9 @@
-import * as THREE from 'three';
+/**
+ * ProceduralSky types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
+import * as THREE from "three";
 
 /** Camera-centred daytime sky: one draw call, no textures or volumetric ray marching. */
 export class ProceduralSky {
@@ -74,18 +79,32 @@ export class ProceduralSky {
     });
     private mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), this.material);
 
+    /**
+     * Initializes instance state and owned resources using the supplied dependencies.
+     *
+     * @param scene - Scene receiving generated objects; ownership remains with the caller.
+     */
     constructor(private scene: THREE.Scene) {
-        this.mesh.name = 'Procedural sky';
+        this.mesh.name = "Procedural sky";
         this.mesh.frustumCulled = false;
         this.mesh.renderOrder = -1000;
         scene.add(this.mesh);
     }
 
+    /**
+     * Centres the sky on the camera and updates cloud animation time in seconds.
+     *
+     * @param camera - Camera controlled or followed by this operation.
+     * @param seconds - Animation time in seconds.
+     */
     update(camera: THREE.Camera, seconds: number): void {
         this.mesh.position.copy(camera.position);
         this.material.uniforms.skyTime.value = seconds;
     }
 
+    /**
+     * Releases owned resources and unregisters scene objects, browser listeners or audio nodes as applicable.
+     */
     dispose(): void {
         this.scene.remove(this.mesh);
         this.mesh.geometry.dispose();

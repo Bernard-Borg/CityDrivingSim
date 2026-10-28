@@ -1,4 +1,9 @@
 /**
+ * SoundManager types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
+/**
  * Sound Manager for handling game audio
  * Place audio files in public/sounds/ directory
  */
@@ -8,10 +13,16 @@ export class SoundManager {
     private isEnabled: boolean = true;
     private masterVolume: number = 0.7;
 
+    /**
+     * Initializes instance state and owned resources using the supplied dependencies.
+     */
     private constructor() {
         // Private constructor for singleton
     }
 
+    /**
+     * Returns the shared sound manager singleton, creating it on first access.
+     */
     static getInstance(): SoundManager {
         if (!SoundManager.instance) {
             SoundManager.instance = new SoundManager();
@@ -26,7 +37,7 @@ export class SoundManager {
         try {
             const audio = new Audio(path);
             audio.volume = this.masterVolume;
-            audio.preload = 'auto';
+            audio.preload = "auto";
             this.sounds.set(name, audio);
         } catch (error) {
             console.warn(`Failed to load sound: ${name}`, error);
@@ -78,6 +89,11 @@ export class SoundManager {
         });
     }
 
+    /**
+     * Enables or disables this subsystem and synchronizes its input or playback state.
+     *
+     * @param enabled - Whether this subsystem is enabled.
+     */
     setEnabled(enabled: boolean): void {
         this.isEnabled = enabled;
         if (!enabled) {
@@ -85,10 +101,16 @@ export class SoundManager {
         }
     }
 
+    /**
+     * Reports whether audio playback is enabled.
+     */
     getEnabled(): boolean {
         return this.isEnabled;
     }
 
+    /**
+     * Toggles global sound enablement.
+     */
     toggleMute(): boolean {
         this.isEnabled = !this.isEnabled;
         if (!this.isEnabled) {
@@ -97,6 +119,11 @@ export class SoundManager {
         return this.isEnabled;
     }
 
+    /**
+     * Applies master playback volume to managed audio elements.
+     *
+     * @param volume - Playback gain, normally zero through one.
+     */
     setMasterVolume(volume: number): void {
         this.masterVolume = Math.max(0, Math.min(1, volume));
     }

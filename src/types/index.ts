@@ -1,9 +1,14 @@
+/**
+ * Shared GeoJSON and simulation callback contracts.
+ * @packageDocumentation
+ */
+
 // Type definitions for the city driving simulator
 
 // GeoJSON FeatureCollection types for  data
 // Road-specific types (legacy, for backward compatibility)
 export interface FeatureProperties {
-    '@id': string;
+    "@id": string;
     highway?: string;
     lanes?: string;
     lit?: string;
@@ -24,12 +29,12 @@ export interface FeatureProperties {
 }
 
 export interface LineStringGeometry {
-    type: 'LineString';
+    type: "LineString";
     coordinates: Array<[number, number]>; // [longitude, latitude]
 }
 
 export interface Feature {
-    type: 'Feature';
+    type: "Feature";
     id?: string | number;
     properties: FeatureProperties;
     geometry: LineStringGeometry;
@@ -37,16 +42,16 @@ export interface Feature {
 
 // OSM format types (native OpenStreetMap structure)
 export interface OSMNode {
-    type: 'node';
+    type: "node";
     id: number;
     lat: number;
     lon: number;
 }
 
 export interface OSMWay {
-    type: 'way';
+    type: "way";
     id: number;
-    nodes: number[];  // Array of node IDs
+    nodes: number[]; // Array of node IDs
     tags?: {
         highway?: string;
         [key: string]: string | undefined;
@@ -66,7 +71,7 @@ export interface RoadPoint {
 }
 
 export interface Road {
-    type: 'motorway' | 'trunk' | 'primary' | 'secondary' | 'tertiary' | 'residential' | 'service';
+    type: "motorway" | "trunk" | "primary" | "secondary" | "tertiary" | "residential" | "service";
     points: RoadPoint[];
 }
 
@@ -103,28 +108,32 @@ export type LoadCompleteCallback = () => void;
 
 // Generic GeoJSON types (can be used for other cities too)
 export interface GeoJSONPoint {
-    type: 'Point';
+    type: "Point";
     coordinates: [number, number]; // [longitude, latitude]
 }
 
 export interface GeoJSONLineString {
-    type: 'LineString';
+    type: "LineString";
     coordinates: Array<[number, number]>; // Array of [longitude, latitude]
 }
 
 export interface GeoJSONPolygon {
-    type: 'Polygon';
+    type: "Polygon";
     coordinates: Array<Array<[number, number]>>;
 }
 
 export interface GeoJSONMultiPolygon {
-    type: 'MultiPolygon';
+    type: "MultiPolygon";
     coordinates: Array<Array<Array<[number, number]>>>;
 }
-export type GeoJSONGeometry = GeoJSONPoint | GeoJSONLineString | GeoJSONPolygon | GeoJSONMultiPolygon;
+export type GeoJSONGeometry =
+    | GeoJSONPoint
+    | GeoJSONLineString
+    | GeoJSONPolygon
+    | GeoJSONMultiPolygon;
 
 export interface GeoJSONFeature {
-    type: 'Feature';
+    type: "Feature";
     id?: string | number;
     properties: {
         highway?: string;
@@ -134,7 +143,7 @@ export interface GeoJSONFeature {
 }
 
 export interface GeoJSONFeatureCollection {
-    type: 'FeatureCollection';
+    type: "FeatureCollection";
     generator?: string;
     copyright?: string;
     timestamp?: string;

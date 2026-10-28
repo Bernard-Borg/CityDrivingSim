@@ -1,11 +1,19 @@
 /**
+ * EngineSoundGenerator types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
+/**
  * Procedural engine sound generator using Web Audio API
  * Generates dynamic engine sounds that react to car speed and acceleration
  */
 
-import { DEFAULT_VEHICLE, targetEngineRPM } from '@/core/vehicle/VehicleConfig';
-import type { VehicleConfig } from '@/core/vehicle/VehicleConfig';
+import { DEFAULT_VEHICLE, targetEngineRPM } from "@/core/vehicle/VehicleConfig";
+import type { VehicleConfig } from "@/core/vehicle/VehicleConfig";
 
+/**
+ * Owns a Web Audio oscillator graph for procedural engine tones.
+ */
 export class EngineSoundGenerator {
     private audioContext: AudioContext | null = null;
     private masterGain: GainNode | null = null;
@@ -20,25 +28,62 @@ export class EngineSoundGenerator {
     private gainNodes: GainNode[] = [];
 
     // Sound parameters
-    private get BASE_FREQUENCY() { return this.config.baseFrequency; }
-    private get MIN_RPM() { return this.config.idleRPM; }
-    private get MAX_RPM() { return this.config.maxRPM; }
-    getRPM(): number { return this.isPlaying ? this.currentRPM : 0; }
-    unlock(): void { if (this.audioContext?.state === 'suspended') this.audioContext.resume().catch(() => {}); }
+    /**
+     * Returns configured engine base frequency in hertz.
+     */
+    private get BASE_FREQUENCY() {
+        return this.config.baseFrequency;
+    }
+    /**
+     * Returns configured idle RPM.
+     */
+    private get MIN_RPM() {
+        return this.config.idleRPM;
+    }
+    /**
+     * Returns configured maximum RPM.
+     */
+    private get MAX_RPM() {
+        return this.config.maxRPM;
+    }
+    /**
+     * Returns current engine speed in revolutions per minute.
+     */
+    getRPM(): number {
+        return this.isPlaying ? this.currentRPM : 0;
+    }
+    /**
+     * Attempts to resume the audio context following a browser user gesture.
+     */
+    unlock(): void {
+        if (this.audioContext?.state === "suspended") this.audioContext.resume().catch(() => {});
+    }
 
     private isEnabled: boolean = true;
 
-    constructor(private config: VehicleConfig['audio'] = DEFAULT_VEHICLE.audio, private MAX_CAR_SPEED = DEFAULT_VEHICLE.physics.boostSpeed) {
+    /**
+     * Initializes instance state and owned resources using the supplied dependencies.
+     *
+     * @param config - Subsystem configuration.
+     * @param MAX_CAR_SPEED - Speed normalization limit in km/h for audio synthesis.
+     */
+    constructor(
+        private config: VehicleConfig["audio"] = DEFAULT_VEHICLE.audio,
+        private MAX_CAR_SPEED = DEFAULT_VEHICLE.physics.boostSpeed,
+    ) {
         // Initialize AudioContext (may need user interaction first)
         this.initAudioContext();
     }
 
+    /**
+     * Initializes the browser audio context and engine processing graph.
+     */
     private async initAudioContext(): Promise<void> {
         try {
             // Use AudioContext if available
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             if (!AudioContextClass) {
-                console.warn('Web Audio API not supported');
+                console.warn("Web Audio API not supported");
                 return;
             }
 
@@ -56,20 +101,20 @@ export class EngineSoundGenerator {
 
             // Low-pass filter to keep the sound deep and remove harsh highs
             this.lowpassFilter = this.audioContext.createBiquadFilter();
-            this.lowpassFilter.type = 'lowpass';
+            this.lowpassFilter.type = "lowpass";
             this.lowpassFilter.frequency.value = 180;
             this.lowpassFilter.Q.value = 0.7;
 
             // Warm saturation to make the engine sound less sterile
             this.distortion = this.audioContext.createWaveShaper();
             this.distortion.curve = this.createWarmDistortionCurve(0.25);
-            this.distortion.oversample = '4x';
+            this.distortion.oversample = "4x";
 
             // Chain: filter -> distortion -> engine gain -> master
             this.lowpassFilter.connect(this.distortion);
             this.distortion.connect(this.engineGain);
         } catch (error) {
-            console.warn('Failed to initialize AudioContext:', error);
+            console.warn("Failed to initialize AudioContext:", error);
         }
     }
 
@@ -80,9 +125,9 @@ export class EngineSoundGenerator {
         if (!this.isEnabled || !this.audioContext) return;
 
         // Resume audio context if suspended (browser autoplay policy)
-        if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume().catch(err => {
-                console.debug('Failed to resume audio context:', err);
+        if (this.audioContext.state === "suspended") {
+            this.audioContext.resume().catch((err) => {
+                console.debug("Failed to resume audio context:", err);
             });
         }
 
@@ -108,7 +153,7 @@ export class EngineSoundGenerator {
         if (!this.isPlaying) return;
 
         // Stop all oscillators
-        this.oscillators.forEach(osc => {
+        this.oscillators.forEach((osc) => {
             try {
                 osc.stop();
                 osc.disconnect();
@@ -117,7 +162,7 @@ export class EngineSoundGenerator {
             }
         });
 
-        this.gainNodes.forEach(gain => gain.disconnect());
+        this.gainNodes.forEach((gain) => gain.disconnect());
         this.oscillators = [];
         this.gainNodes = [];
         this.isPlaying = false;
@@ -137,17 +182,16 @@ export class EngineSoundGenerator {
         // Create multiple oscillators for realistic deep engine rumble
         // Use triangle/sine to avoid harsh harmonics
         // Main engine tone (fundamental) - this will be updated dynamically
-        this.createOscillator(this.BASE_FREQUENCY, 0.7, 'triangle');
+        this.createOscillator(this.BASE_FREQUENCY, 0.7, "triangle");
 
         // Deep bass rumble (0.5x - sub-harmonic) - strong low-end foundation
-        this.createOscillator(this.BASE_FREQUENCY * 0.5, 0.5, 'sine');
+        this.createOscillator(this.BASE_FREQUENCY * 0.5, 0.5, "sine");
 
         // Subtle harmonic (1.1x) - mild character without ringing
-        this.createOscillator(this.BASE_FREQUENCY * 1.1, 0.12, 'triangle');
-
+        this.createOscillator(this.BASE_FREQUENCY * 1.1, 0.12, "triangle");
 
         // Start all oscillators
-        this.oscillators.forEach(osc => {
+        this.oscillators.forEach((osc) => {
             osc.start();
         });
     }
@@ -225,20 +269,36 @@ export class EngineSoundGenerator {
         // Use a cubic curve (even slower growth) to keep frequencies low at all RPMs
         const frequencyCurve = Math.pow(rpmRatio, 0.7); // Grows very slowly - stays in bass range
         const frequencyRange = 95; // Very limited frequency range (Hz) - deep engine rumble
-        const baseFreq = this.BASE_FREQUENCY + (frequencyCurve * frequencyRange); // ~30 Hz to ~55 Hz (deep, rumbly)
+        const baseFreq = this.BASE_FREQUENCY + frequencyCurve * frequencyRange; // ~30 Hz to ~55 Hz (deep, rumbly)
 
         // Update oscillator frequencies - keep everything deep and low-pitched
         if (this.oscillators.length >= 3 && Number.isFinite(baseFreq)) {
-            this.oscillators[0].frequency.setTargetAtTime(baseFreq, this.audioContext.currentTime, 0.1); // Main tone
-            this.oscillators[1].frequency.setTargetAtTime(baseFreq * 0.5, this.audioContext.currentTime, 0.1); // Deep bass rumble
-            this.oscillators[2].frequency.setTargetAtTime(baseFreq * 1.1, this.audioContext.currentTime, 0.1); // Subtle harmonic
+            this.oscillators[0].frequency.setTargetAtTime(
+                baseFreq,
+                this.audioContext.currentTime,
+                0.1,
+            ); // Main tone
+            this.oscillators[1].frequency.setTargetAtTime(
+                baseFreq * 0.5,
+                this.audioContext.currentTime,
+                0.1,
+            ); // Deep bass rumble
+            this.oscillators[2].frequency.setTargetAtTime(
+                baseFreq * 1.1,
+                this.audioContext.currentTime,
+                0.1,
+            ); // Subtle harmonic
         }
 
         // Dynamically open the low-pass filter slightly with RPM
         if (this.lowpassFilter) {
-            const cutoffRaw = 120 + (frequencyCurve * 180); // 120 Hz to 300 Hz
+            const cutoffRaw = 120 + frequencyCurve * 180; // 120 Hz to 300 Hz
             const cutoff = Number.isFinite(cutoffRaw) ? cutoffRaw : 120;
-            this.lowpassFilter.frequency.setTargetAtTime(cutoff, this.audioContext.currentTime, 0.1);
+            this.lowpassFilter.frequency.setTargetAtTime(
+                cutoff,
+                this.audioContext.currentTime,
+                0.1,
+            );
         }
 
         // Adjust volume based on acceleration (louder when accelerating)
@@ -277,6 +337,9 @@ export class EngineSoundGenerator {
         }
     }
 
+    /**
+     * Reports whether audio playback is enabled.
+     */
     getEnabled(): boolean {
         return this.isEnabled;
     }
@@ -286,9 +349,9 @@ export class EngineSoundGenerator {
      */
     dispose(): void {
         this.stop();
-        if (this.audioContext && this.audioContext.state !== 'closed') {
-            this.audioContext.close().catch(err => {
-                console.debug('Failed to close audio context:', err);
+        if (this.audioContext && this.audioContext.state !== "closed") {
+            this.audioContext.close().catch((err) => {
+                console.debug("Failed to close audio context:", err);
             });
         }
         this.audioContext = null;
@@ -298,13 +361,18 @@ export class EngineSoundGenerator {
         this.distortion = null;
     }
 
+    /**
+     * Builds a soft-saturation transfer curve for shaping engine tones.
+     *
+     * @param amount - Distortion intensity.
+     */
     private createWarmDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
         const samples = 44100;
         const curve = new Float32Array(samples) as Float32Array<ArrayBuffer>;
-        const k = typeof amount === 'number' ? amount : 0;
+        const k = typeof amount === "number" ? amount : 0;
         for (let i = 0; i < samples; i++) {
             const x = (i * 2) / samples - 1;
-            curve[i] = (1 + k) * x / (1 + k * Math.abs(x));
+            curve[i] = ((1 + k) * x) / (1 + k * Math.abs(x));
         }
         return curve;
     }

@@ -1,3 +1,8 @@
+/**
+ * Shared session UI state and vehicle telemetry.
+ * @packageDocumentation
+ */
+
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type { VehicleTelemetry, PerformanceSample } from "@/core/DrivingSimulator";
@@ -20,7 +25,15 @@ export const useStateStore = defineStore("state", () => {
 
     const heading = ref(0);
     const displayedHeading = ref(0);
-    const vehicle = ref<VehicleTelemetry>({ engine: 'off', rpm: 0, maxRPM: 6000, maxSpeed: 250, handbrake: true, name: DEFAULT_VEHICLE.name, gear: 'P' });
+    const vehicle = ref<VehicleTelemetry>({
+        engine: "off",
+        rpm: 0,
+        maxRPM: 6000,
+        maxSpeed: 250,
+        handbrake: true,
+        name: DEFAULT_VEHICLE.name,
+        gear: "P",
+    });
     const showPerformance = ref(false);
     const performanceHistory = ref<PerformanceSample[]>([]);
 

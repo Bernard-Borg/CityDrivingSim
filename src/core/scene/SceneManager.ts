@@ -1,3 +1,8 @@
+/**
+ * SceneManager types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
 import { SceneVisibility } from "./SceneVisibility";
 import { useLoadingStore } from "@/stores/loading";
 import * as THREE from "three";
@@ -14,6 +19,9 @@ import type { GeoJSON, GeoJSONFeature } from "@/types";
 import type { RoadLevelSettings } from "./RoadProfiles";
 import { useCitiesStore } from "@/stores/cities";
 
+/**
+ * Loads city data and coordinates terrain, road, water, scenery, collision and visibility generation.
+ */
 export class SceneManager {
     readonly collisions = new CollisionWorld();
     private disposed = false;
@@ -35,26 +43,46 @@ export class SceneManager {
     private natural: NaturalGenerator;
     private decor: DecorGenerator;
 
+    /**
+     * Initializes instance state and owned resources using the supplied dependencies.
+     *
+     * @param scene - Scene receiving generated objects; ownership remains with the caller.
+     */
     constructor(private scene: THREE.Scene) {
         const existing = new Set(scene.children);
         this.roadGenerator = new RoadGenerator(scene, this.collisions);
         this.treeGenerator = new TreeGenerator(scene);
         this.buildingGenerator = new BuildingGenerator(scene, this.collisions);
-        this.buildingGenerator.setGeometryCutter(geometry => this.roadGenerator.cutSceneryGeometry(geometry));
+        this.buildingGenerator.setGeometryCutter((geometry) =>
+            this.roadGenerator.cutSceneryGeometry(geometry),
+        );
         this.water = new WaterGenerator(scene);
         this.natural = new NaturalGenerator(scene);
         this.decor = new DecorGenerator(scene, this.collisions);
-        this.sceneryRoots = scene.children.filter(object => !existing.has(object));
+        this.sceneryRoots = scene.children.filter((object) => !existing.has(object));
         this.startPosition = new THREE.Vector3(0, ROAD_HEIGHT + 0.4, 0);
     }
 
+    /**
+     * Extracts coordinate pairs from a supported GeoJSON feature for elevation coverage checks.
+     *
+     * @param feature - GeoJSON feature to inspect.
+     */
     private coordinates(feature: GeoJSONFeature): Array<[number, number]> {
         const geometry = feature.geometry;
         if (geometry.type === "Point") return [geometry.coordinates];
         if (geometry.type === "LineString") return geometry.coordinates;
-        return geometry.type === "MultiPolygon" ? geometry.coordinates.flat(2) : geometry.coordinates.flat();
+        return geometry.type === "MultiPolygon"
+            ? geometry.coordinates.flat(2)
+            : geometry.coordinates.flat();
     }
 
+    /**
+     * Filters features outside the elevation tile or generated terrain coverage.
+     *
+     * @param data - OSM-derived GeoJSON collection.
+     * @param label - Feature category for coverage diagnostics.
+     */
     private coveredData(data: GeoJSON, label: string): GeoJSON {
         if (!this.elevationTile) return data;
         const features = data.features.filter((feature) =>
@@ -72,6 +100,11 @@ export class SceneManager {
         return { ...data, features };
     }
 
+    /**
+     * Fetches optional scenery GeoJSON, returning null when loading fails or the resource is unavailable.
+     *
+     * @param path - Resource URL.
+     */
     private async optionalData(path: string): Promise<GeoJSON | null> {
         try {
             const response = await fetch(path, {
@@ -85,12 +118,24 @@ export class SceneManager {
         }
     }
 
+    /**
+     * Loads a city and builds its water, terrain, roads, scenery, collisions and visibility index with progress reporting.
+     *
+     * @param city - Configured city identifier.
+     * @param savedPosition - Optional saved WGS84 coordinates and local elevation.
+     */
     async loadCityMap(
         city: string,
         savedPosition?: { lat: number; lon: number; y?: number },
     ): Promise<void> {
         const loading = useLoadingStore();
-        const report = async (message: string, detail = '') => {
+        /**
+         * Publishes a loading stage and checks for disposal before and after yielding to the UI.
+         *
+         * @param message - Loading stage label.
+         * @param detail - Additional loading-stage information shown beneath the stage label.
+         */
+        const report = async (message: string, detail = "") => {
             if (this.disposed) throw new Error("City loading cancelled");
             await loading.stage(message, detail);
             if (this.disposed) throw new Error("City loading cancelled");
@@ -105,10 +150,7 @@ export class SceneManager {
         const response = await fetch(`/data/roads/${config.file}`, {
             signal: AbortSignal.timeout(30000),
         });
-        if (!response.ok)
-            throw new Error(
-                `Failed to load ${config.file}: ${response.status}`,
-            );
+        if (!response.ok) throw new Error(`Failed to load ${config.file}: ${response.status}`);
         await report("Parsing road data", config.file);
         let data: GeoJSON = await response.json();
         if (this.disposed) return;
@@ -118,22 +160,15 @@ export class SceneManager {
         this.elevationTile = null;
         if (config.elevation) {
             await report("Loading elevation data", config.elevation.file);
-            const elevationResponse = await fetch(
-                `/data/elevation/${config.elevation.file}`,
-                { signal: AbortSignal.timeout(60000) },
-            );
+            const elevationResponse = await fetch(`/data/elevation/${config.elevation.file}`, {
+                signal: AbortSignal.timeout(60000),
+            });
             if (!elevationResponse.ok)
-                throw new Error(
-                    `Failed to load elevation: ${elevationResponse.status}`,
-                );
+                throw new Error(`Failed to load elevation: ${elevationResponse.status}`);
             const buffer = await elevationResponse.arrayBuffer();
             if (this.disposed) return;
             await report("Preparing terrain heights");
-            this.elevationTile = new HgtTile(
-                buffer,
-                config.elevation.south,
-                config.elevation.west,
-            );
+            this.elevationTile = new HgtTile(buffer, config.elevation.south, config.elevation.west);
             data = this.coveredData(data, "road");
             const bounds = {
                 minX: Infinity,
@@ -162,18 +197,35 @@ export class SceneManager {
             );
         }
         if (!this.terrain) {
-            const bounds = { minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity };
-            for (const feature of data.features) for (const [lon, lat] of this.coordinates(feature)) {
-                const p = this.latLonToLocal(lat, lon);
-                bounds.minX = Math.min(bounds.minX, p.x); bounds.maxX = Math.max(bounds.maxX, p.x);
-                bounds.minZ = Math.min(bounds.minZ, p.z); bounds.maxZ = Math.max(bounds.maxZ, p.z);
-            }
-            if (Number.isFinite(bounds.minX)) this.flatBounds = {
-                minX: bounds.minX - 600, maxX: bounds.maxX + 600,
-                minZ: bounds.minZ - 600, maxZ: bounds.maxZ + 600,
+            const bounds = {
+                minX: Infinity,
+                minZ: Infinity,
+                maxX: -Infinity,
+                maxZ: -Infinity,
             };
+            for (const feature of data.features)
+                for (const [lon, lat] of this.coordinates(feature)) {
+                    const p = this.latLonToLocal(lat, lon);
+                    bounds.minX = Math.min(bounds.minX, p.x);
+                    bounds.maxX = Math.max(bounds.maxX, p.x);
+                    bounds.minZ = Math.min(bounds.minZ, p.z);
+                    bounds.maxZ = Math.max(bounds.maxZ, p.z);
+                }
+            if (Number.isFinite(bounds.minX))
+                this.flatBounds = {
+                    minX: bounds.minX - 600,
+                    maxX: bounds.maxX + 600,
+                    minZ: bounds.minZ - 600,
+                    maxZ: bounds.maxZ + 600,
+                };
         }
-        if (!this.terrain && this.flatBounds) this.terrain = new ElevationTerrain(null, this.centerLat, this.centerLon, this.flatBounds);
+        if (!this.terrain && this.flatBounds)
+            this.terrain = new ElevationTerrain(
+                null,
+                this.centerLat,
+                this.centerLon,
+                this.flatBounds,
+            );
         await report("Loading scenery data", "Nature, buildings and street furniture");
         const [naturalData, buildingData, decorData] = await Promise.all([
             this.optionalData(`/data/natural/${config.file}`),
@@ -181,20 +233,53 @@ export class SceneManager {
             this.optionalData(`/data/decor/${config.file}`),
         ]);
         if (this.disposed) return;
+        /**
+         * Projects the input coordinates into the local coordinate system used by the current operation.
+         *
+         * @param lat - WGS84 latitude in decimal degrees.
+         * @param lon - WGS84 longitude in decimal degrees.
+         */
         const project = (lat: number, lon: number) => this.latLonToLocal(lat, lon);
-        const sample = (x: number, z: number) => this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
+        /**
+         * Samples the represented surface height and, where available, slopes and contact metadata.
+         *
+         * @param x - Local eastward coordinate in metres.
+         * @param z - Local southward coordinate in metres.
+         */
+        const sample = (x: number, z: number) =>
+            this.terrain?.sample(x, z) ?? { height: 0, slopeX: 0, slopeZ: 0 };
+        /**
+         * Returns the represented surface elevation at a local horizontal position, or no value outside mapped water.
+         *
+         * @param x - Local eastward coordinate in metres.
+         * @param z - Local southward coordinate in metres.
+         */
         const heightAt = (x: number, z: number) => sample(x, z).height;
         await report("Generating water and coastlines");
-        if (naturalData) this.water.generate(naturalData, project,
-            this.terrain?.bounds ?? this.flatBounds ?? { minX: -25000, minZ: -25000, maxX: 25000, maxZ: 25000 },
-            sample, this.terrain?.referenceHeight ?? 0, minimumAt => {
-                let flatHeight = 0.15;
-                this.terrain?.raiseMinimum((x, z) => {
-                    const floor = minimumAt(x, z); flatHeight = Math.max(flatHeight, floor); return floor;
-                });
-                // Without elevation data, retain a level map above its highest mapped water.
-                if (!this.elevationTile) this.terrain?.raiseMinimum(() => flatHeight);
-            });
+        if (naturalData)
+            this.water.generate(
+                naturalData,
+                project,
+                this.terrain?.bounds ??
+                    this.flatBounds ?? {
+                        minX: -25000,
+                        minZ: -25000,
+                        maxX: 25000,
+                        maxZ: 25000,
+                    },
+                sample,
+                this.terrain?.referenceHeight ?? 0,
+                (minimumAt) => {
+                    let flatHeight = 0.15;
+                    this.terrain?.raiseMinimum((x, z) => {
+                        const floor = minimumAt(x, z);
+                        flatHeight = Math.max(flatHeight, floor);
+                        return floor;
+                    });
+                    // Without elevation data, retain a level map above its highest mapped water.
+                    if (!this.elevationTile) this.terrain?.raiseMinimum(() => flatHeight);
+                },
+            );
         await report("Loading road-level settings");
         let roadLevels: Partial<RoadLevelSettings> = {};
         const levelsResponse = await fetch("/data/roads/road-levels.json", {
@@ -221,58 +306,104 @@ export class SceneManager {
             (message, detail) => report(message, detail),
         );
         this.collisions.setTunnelQuery((x, z, y) => this.roadGenerator.isInTunnel(x, z, y));
-        this.collisions.setRoadOpeningQuery((x, z, y, owner) => this.roadGenerator.isTunnelOpening(x, z, y, owner));
-        this.collisions.setBounds(this.elevationTile ? this.terrain?.bounds ?? null : null);
+        this.collisions.setRoadOpeningQuery((x, z, y, owner) =>
+            this.roadGenerator.isTunnelOpening(x, z, y, owner),
+        );
+        this.collisions.setBounds(this.elevationTile ? (this.terrain?.bounds ?? null) : null);
         if (!this.roadGenerator.getRoads().length)
             throw new Error("This city has no drivable roads.");
         await report("Building terrain mesh");
         this.createGround();
         if (naturalData) {
             await report("Generating parks and beaches");
-            this.natural.generate(naturalData, project, this.terrain, geometry => {
+            this.natural.generate(naturalData, project, this.terrain, (geometry) => {
                 this.roadGenerator.cutTerrainGeometry(geometry);
                 this.water.cutTerrain(geometry, sample);
             });
             await report("Generating trees");
-            const trees: GeoJSON = { ...naturalData, features: naturalData.features.filter(f => f.properties.natural === "tree" && f.geometry.type === "Point") };
+            const trees: GeoJSON = {
+                ...naturalData,
+                features: naturalData.features.filter(
+                    (f) => f.properties.natural === "tree" && f.geometry.type === "Point",
+                ),
+            };
             // Fill mapped tree rows at 8 m intervals; avoid duplicating individually mapped trees.
-            const occupied = new Set(trees.features.map(f => {
-                const [lon, lat] = (f.geometry as { coordinates: [number, number] }).coordinates;
-                const q = project(lat, lon); return `${Math.round(q.x / 4)},${Math.round(q.z / 4)}`;
-            }));
-            for (const f of naturalData.features) if (f.properties.natural === "tree_row" && f.geometry.type === "LineString") {
-                const coords = f.geometry.coordinates;
-                for (let i = 1; i < coords.length; i++) {
-                    const a = project(coords[i - 1][1], coords[i - 1][0]), b = project(coords[i][1], coords[i][0]);
-                    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 8));
-                    for (let j = 0; j < steps; j++) {
-                        const t = j / steps, x = a.x + (b.x - a.x) * t, z = a.z + (b.z - a.z) * t;
-                        const key = `${Math.round(x / 4)},${Math.round(z / 4)}`;
-                        if (occupied.has(key)) continue;
-                        occupied.add(key);
-                        trees.features.push({ type: "Feature", properties: { natural: "tree" }, geometry: { type: "Point", coordinates: [
-                            coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * t,
-                            coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * t] } });
+            const occupied = new Set(
+                trees.features.map((f) => {
+                    const [lon, lat] = (f.geometry as { coordinates: [number, number] })
+                        .coordinates;
+                    const q = project(lat, lon);
+                    return `${Math.round(q.x / 4)},${Math.round(q.z / 4)}`;
+                }),
+            );
+            for (const f of naturalData.features)
+                if (f.properties.natural === "tree_row" && f.geometry.type === "LineString") {
+                    const coords = f.geometry.coordinates;
+                    for (let i = 1; i < coords.length; i++) {
+                        const a = project(coords[i - 1][1], coords[i - 1][0]),
+                            b = project(coords[i][1], coords[i][0]);
+                        const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 8));
+                        for (let j = 0; j < steps; j++) {
+                            const t = j / steps,
+                                x = a.x + (b.x - a.x) * t,
+                                z = a.z + (b.z - a.z) * t;
+                            const key = `${Math.round(x / 4)},${Math.round(z / 4)}`;
+                            if (occupied.has(key)) continue;
+                            occupied.add(key);
+                            trees.features.push({
+                                type: "Feature",
+                                properties: { natural: "tree" },
+                                geometry: {
+                                    type: "Point",
+                                    coordinates: [
+                                        coords[i - 1][0] + (coords[i][0] - coords[i - 1][0]) * t,
+                                        coords[i - 1][1] + (coords[i][1] - coords[i - 1][1]) * t,
+                                    ],
+                                },
+                            });
+                        }
                     }
                 }
-            }
             const coveredTrees = this.coveredData(trees, "tree");
-            this.treeGenerator.generateTreesFromGeoJSON(coveredTrees, this.centerLat, this.centerLon, heightAt);
-            for (const feature of coveredTrees.features) if (feature.geometry.type === "Point") {
-                const [lon, lat] = feature.geometry.coordinates, p = project(lat, lon);
-                this.collisions.addTrunk(p, 0.25, heightAt(p.x, p.z));
-            }
+            this.treeGenerator.generateTreesFromGeoJSON(
+                coveredTrees,
+                this.centerLat,
+                this.centerLon,
+                heightAt,
+            );
+            for (const feature of coveredTrees.features)
+                if (feature.geometry.type === "Point") {
+                    const [lon, lat] = feature.geometry.coordinates,
+                        p = project(lat, lon);
+                    this.collisions.addTrunk(p, 0.25, heightAt(p.x, p.z));
+                }
         }
-        const scenery: GeoJSON = { type: "FeatureCollection", features: [...(decorData?.features ?? []),
-            ...(naturalData?.features.filter(f => f.properties.natural === "shrub") ?? [])] };
-        await report("Generating street furniture", `${scenery.features.length.toLocaleString()} mapped features`);
-        this.decor.generate(scenery, project, (x, z, layer, wall) => {
-            if (wall) return this.roadGenerator.getWallHeight(x, z, layer);
-            const ground = heightAt(x, z);
-            const road = this.roadGenerator.getRoadState(x, z, ground + layer * 5 + 0.4, true);
-            return road.roadId ? road.height : ground;
-        }, (x, z) => !this.terrain || this.terrain.contains(x, z));
-        await report("Generating buildings and tunnel openings", `${buildingData?.features.length.toLocaleString() ?? 0} mapped features`);
+        const scenery: GeoJSON = {
+            type: "FeatureCollection",
+            features: [
+                ...(decorData?.features ?? []),
+                ...(naturalData?.features.filter((f) => f.properties.natural === "shrub") ?? []),
+            ],
+        };
+        await report(
+            "Generating street furniture",
+            `${scenery.features.length.toLocaleString()} mapped features`,
+        );
+        this.decor.generate(
+            scenery,
+            project,
+            (x, z, layer, wall) => {
+                if (wall) return this.roadGenerator.getWallHeight(x, z, layer);
+                const ground = heightAt(x, z);
+                const road = this.roadGenerator.getRoadState(x, z, ground + layer * 5 + 0.4, true);
+                return road.roadId ? road.height : ground;
+            },
+            (x, z) => !this.terrain || this.terrain.contains(x, z),
+        );
+        await report(
+            "Generating buildings and tunnel openings",
+            `${buildingData?.features.length.toLocaleString() ?? 0} mapped features`,
+        );
         if (buildingData)
             this.buildingGenerator.generateBuildingsFromGeoJSON(
                 this.coveredData(buildingData, "building"),
@@ -283,10 +414,7 @@ export class SceneManager {
             );
         await report("Finding starting position");
         if (savedPosition) {
-            const local = this.latLonToLocal(
-                savedPosition.lat,
-                savedPosition.lon,
-            );
+            const local = this.latLonToLocal(savedPosition.lat, savedPosition.lon);
             if (!this.elevationTile || !this.terrain || this.terrain.contains(local.x, local.z))
                 this.startPosition.set(
                     local.x,
@@ -305,25 +433,27 @@ export class SceneManager {
             vz: 0,
         };
         this.startPosition.y =
-            this.roadGenerator.getRoadState(
-                spawn.x,
-                spawn.z,
-                this.startPosition.y,
-                true,
-            ).height + 0.4;
+            this.roadGenerator.getRoadState(spawn.x, spawn.z, this.startPosition.y, true).height +
+            0.4;
         this.collisions.resolve(spawn, this.startPosition.y);
         this.startPosition.set(
             spawn.x,
-            this.getRoadState(spawn.x, spawn.z, this.startPosition.y).height +
-                0.4,
+            this.getRoadState(spawn.x, spawn.z, this.startPosition.y).height + 0.4,
             spawn.z,
         );
-        if (this.isInWater(this.startPosition)) this.startPosition.copy(this.roadGenerator.getSpawnPosition());
+        if (this.isInWater(this.startPosition))
+            this.startPosition.copy(this.roadGenerator.getSpawnPosition());
         await report("Preparing nearby scenery");
-        this.visibility.build([...this.sceneryRoots, ...(this.groundGroup ? [this.groundGroup] : [])]);
+        this.visibility.build([
+            ...this.sceneryRoots,
+            ...(this.groundGroup ? [this.groundGroup] : []),
+        ]);
         this.visibility.update(this.startPosition, 0, true);
     }
 
+    /**
+     * Clears generated city content, collisions and visibility state while retaining reusable generators.
+     */
     private clearScene(): void {
         this.visibility.clear();
         this.water.clear();
@@ -344,6 +474,9 @@ export class SceneManager {
         this.buildingGenerator.clear();
     }
 
+    /**
+     * Builds chunked terrain and backdrop meshes, subtracting mapped water and road openings.
+     */
     private createGround(): void {
         this.groundMaterial = new THREE.MeshStandardMaterial({
             color: 0xa49b80,
@@ -356,36 +489,96 @@ export class SceneManager {
         this.groundGroup = new THREE.Group();
         this.scene.add(this.groundGroup);
         if (this.terrain && !this.elevationTile) {
-            const b = this.terrain.bounds, edge = Math.max(25000, Math.abs(b.minX), Math.abs(b.maxX), Math.abs(b.minZ), Math.abs(b.maxZ)) + 1;
-            for (const [minX, minZ, maxX, maxZ] of [[-edge, -edge, edge, b.minZ], [-edge, b.maxZ, edge, edge],
-                [-edge, b.minZ, b.minX, b.maxZ], [b.maxX, b.minZ, edge, b.maxZ]]) {
+            const b = this.terrain.bounds,
+                edge =
+                    Math.max(
+                        25000,
+                        Math.abs(b.minX),
+                        Math.abs(b.maxX),
+                        Math.abs(b.minZ),
+                        Math.abs(b.maxZ),
+                    ) + 1;
+            for (const [minX, minZ, maxX, maxZ] of [
+                [-edge, -edge, edge, b.minZ],
+                [-edge, b.maxZ, edge, edge],
+                [-edge, b.minZ, b.minX, b.maxZ],
+                [b.maxX, b.minZ, edge, b.maxZ],
+            ]) {
                 const geometry = new THREE.PlaneGeometry(maxX - minX, maxZ - minZ);
-                geometry.rotateX(-Math.PI / 2); geometry.translate((minX + maxX) / 2, this.terrain.heights[0], (minZ + maxZ) / 2);
-                const mesh = new THREE.Mesh(geometry, this.groundMaterial); mesh.receiveShadow = true; this.groundGroup.add(mesh);
+                geometry.rotateX(-Math.PI / 2);
+                geometry.translate((minX + maxX) / 2, this.terrain.heights[0], (minZ + maxZ) / 2);
+                const mesh = new THREE.Mesh(geometry, this.groundMaterial);
+                mesh.receiveShadow = true;
+                this.groundGroup.add(mesh);
             }
         }
         if (!this.terrain) {
-            const bounds = this.flatBounds ?? { minX: -600, minZ: -600, maxX: 600, maxZ: 600 };
-            const addPatch = (minX: number, minZ: number, maxX: number, maxZ: number, cut: boolean) => {
-                const width = maxX - minX, depth = maxZ - minZ;
+            const bounds = this.flatBounds ?? {
+                minX: -600,
+                minZ: -600,
+                maxX: 600,
+                maxZ: 600,
+            };
+            /**
+             * Builds one flat ground patch and optionally subtracts road and water openings.
+             *
+             * @param minX - Western bound in local metres.
+             * @param minZ - Northern bound in local metres.
+             * @param maxX - Eastern bound in local metres.
+             * @param maxZ - Southern bound in local metres.
+             * @param cut - Geometry cutter applied to generated surfaces.
+             */
+            const addPatch = (
+                minX: number,
+                minZ: number,
+                maxX: number,
+                maxZ: number,
+                cut: boolean,
+            ) => {
+                const width = maxX - minX,
+                    depth = maxZ - minZ;
                 if (width <= 0 || depth <= 0) return;
-                const geometry = new THREE.PlaneGeometry(width, depth, cut ? Math.ceil(width / 40) : 1, cut ? Math.ceil(depth / 40) : 1);
-                geometry.rotateX(-Math.PI / 2); geometry.translate((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
+                const geometry = new THREE.PlaneGeometry(
+                    width,
+                    depth,
+                    cut ? Math.ceil(width / 40) : 1,
+                    cut ? Math.ceil(depth / 40) : 1,
+                );
+                geometry.rotateX(-Math.PI / 2);
+                geometry.translate((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
                 if (cut) {
                     this.roadGenerator.cutTerrainGeometry(geometry);
-                    this.water.cutTerrain(geometry, () => ({ height: 0, slopeX: 0, slopeZ: 0 }));
+                    this.water.cutTerrain(geometry, () => ({
+                        height: 0,
+                        slopeX: 0,
+                        slopeZ: 0,
+                    }));
                 }
                 geometry.computeBoundingSphere();
                 const mesh = new THREE.Mesh(geometry, this.groundMaterial!);
-                mesh.receiveShadow = true; this.groundGroup!.add(mesh);
+                mesh.receiveShadow = true;
+                this.groundGroup!.add(mesh);
             };
             // Bound clipping work to small triangles near the actual map. Cutting a
             // 50 km plane at once gathers every opening and fragments giant polygons.
             for (let z = bounds.minZ; z < bounds.maxZ; z += 400)
                 for (let x = bounds.minX; x < bounds.maxX; x += 400)
-                    addPatch(x, z, Math.min(x + 400, bounds.maxX), Math.min(z + 400, bounds.maxZ), true);
+                    addPatch(
+                        x,
+                        z,
+                        Math.min(x + 400, bounds.maxX),
+                        Math.min(z + 400, bounds.maxZ),
+                        true,
+                    );
             // Keep the surrounding flat backdrop without running cutouts outside map coverage.
-            const edge = Math.max(25000, Math.abs(bounds.minX), Math.abs(bounds.maxX), Math.abs(bounds.minZ), Math.abs(bounds.maxZ)) + 1;
+            const edge =
+                Math.max(
+                    25000,
+                    Math.abs(bounds.minX),
+                    Math.abs(bounds.maxX),
+                    Math.abs(bounds.minZ),
+                    Math.abs(bounds.maxZ),
+                ) + 1;
             addPatch(-edge, -edge, edge, bounds.minZ, false);
             addPatch(-edge, bounds.maxZ, edge, edge, false);
             addPatch(-edge, bounds.minZ, bounds.minX, bounds.maxZ, false);
@@ -408,19 +601,11 @@ export class SceneManager {
                             r = row + j;
                         const x = terrain.bounds.minX + c * terrain.stepX,
                             z = terrain.bounds.minZ + r * terrain.stepZ;
-                        positions.push(
-                            x,
-                            terrain.heights[r * terrain.columns + c],
-                            z,
-                        );
+                        positions.push(x, terrain.heights[r * terrain.columns + c], z);
                         const nx =
-                            (terrain.sample(x + 1, z).height -
-                                terrain.sample(x - 1, z).height) /
-                            2;
+                            (terrain.sample(x + 1, z).height - terrain.sample(x - 1, z).height) / 2;
                         const nz =
-                            (terrain.sample(x, z + 1).height -
-                                terrain.sample(x, z - 1).height) /
-                            2;
+                            (terrain.sample(x, z + 1).height - terrain.sample(x, z - 1).height) / 2;
                         const n = new THREE.Vector3(-nx, 1, -nz).normalize();
                         normals.push(n.x, n.y, n.z);
                     }
@@ -433,14 +618,8 @@ export class SceneManager {
                         indices.push(a, c, b, b, c, d);
                     }
                 const geometry = new THREE.BufferGeometry();
-                geometry.setAttribute(
-                    "position",
-                    new THREE.Float32BufferAttribute(positions, 3),
-                );
-                geometry.setAttribute(
-                    "normal",
-                    new THREE.Float32BufferAttribute(normals, 3),
-                );
+                geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+                geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
                 geometry.setIndex(indices);
                 this.roadGenerator.cutTerrainGeometry(geometry);
                 this.water.cutTerrain(geometry, (x, z) => terrain.sample(x, z));
@@ -451,6 +630,12 @@ export class SceneManager {
             }
     }
 
+    /**
+     * Projects WGS84 latitude/longitude into local metres with X east and Z south.
+     *
+     * @param lat - WGS84 latitude in decimal degrees.
+     * @param lon - WGS84 longitude in decimal degrees.
+     */
     private latLonToLocal(lat: number, lon: number): { x: number; z: number } {
         const R = 6371000; // Earth radius in meters
         const dLat = ((lat - this.centerLat) * Math.PI) / 180;
@@ -484,6 +669,9 @@ export class SceneManager {
         return { lat: this.centerLat, lon: this.centerLon };
     }
 
+    /**
+     * Returns the selected vehicle spawn position in local metres.
+     */
     getStartPosition(): THREE.Vector3 {
         return this.startPosition.clone();
     }
@@ -502,21 +690,47 @@ export class SceneManager {
         );
     }
 
+    /**
+     * Selects a reachable road contact at a vehicle position, falling back to terrain.
+     *
+     * @param x - Local eastward coordinate in metres.
+     * @param z - Local southward coordinate in metres.
+     * @param y - Local elevation in metres.
+     */
     getRoadState(x: number, z: number, y: number) {
         return this.roadGenerator.getRoadState(x, z, y);
     }
 
+    /**
+     * Checks whether a local position intersects mapped water at its elevation.
+     *
+     * @param position - Local position or saved geographic position, as indicated by the parameter type.
+     */
     isInWater(position: THREE.Vector3): boolean {
         const waterHeight = this.water.heightAt(position.x, position.z);
         if (waterHeight === null) return false;
         const road = this.getRoadState(position.x, position.z, position.y);
         // Bridges and enclosed tunnels retain their own contact even over/under water.
-        if (road.roadId && (road.structure === "tunnel" || road.height > waterHeight + 0.15)) return false;
+        if (road.roadId && (road.structure === "tunnel" || road.height > waterHeight + 0.15))
+            return false;
         return true;
     }
 
-    update(elapsed: number, position?: THREE.Vector3, force = false): void { this.water.update(elapsed); if (position) this.visibility.update(position, elapsed, force); }
+    /**
+     * Advances water animation and scenery activation around the supplied observer.
+     *
+     * @param elapsed - Animation time in seconds.
+     * @param position - Local position or saved geographic position, as indicated by the parameter type.
+     * @param force - Whether to bypass the normal refresh interval.
+     */
+    update(elapsed: number, position?: THREE.Vector3, force = false): void {
+        this.water.update(elapsed);
+        if (position) this.visibility.update(position, elapsed, force);
+    }
 
+    /**
+     * Releases owned resources and unregisters scene objects, browser listeners or audio nodes as applicable.
+     */
     dispose(): void {
         this.disposed = true;
         this.clearScene();
@@ -531,6 +745,9 @@ export class SceneManager {
         this.roadGenerator.setTerrain(null);
     }
 
+    /**
+     * Returns the identifier of the currently loaded city.
+     */
     getCurrentCity(): string {
         return this.currentCity;
     }

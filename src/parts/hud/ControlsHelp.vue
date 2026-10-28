@@ -32,7 +32,7 @@ const FLIGHT_CONTROLS = [
 const state = useStateStore();
 const helpDialog = ref<HTMLDialogElement | null>(null);
 
-const controls = computed(() => state.creativeMode ? FLIGHT_CONTROLS : DRIVING_CONTROLS);
+const controls = computed(() => (state.creativeMode ? FLIGHT_CONTROLS : DRIVING_CONTROLS));
 
 const emit = defineEmits<{
     (e: "pauseChanged", paused: boolean): void;
@@ -73,14 +73,10 @@ onUnmounted(() => {
     >
         <div class="panel-title">
             <span id="help-title">DRIVER'S HANDBOOK</span
-            ><button aria-label="Close controls help" @click="closeHelp">
-                ×
-            </button>
+            ><button aria-label="Close controls help" @click="closeHelp">×</button>
         </div>
         <h2>Make yourself at home.</h2>
-        <p class="help-intro">
-            The simulation is paused while this guide is open.
-        </p>
+        <p class="help-intro">The simulation is paused while this guide is open.</p>
         <dl class="controls-list">
             <div v-for="[key, action] in controls" :key="key">
                 <dt>
@@ -90,9 +86,8 @@ onUnmounted(() => {
             </div>
         </dl>
         <p class="help-note">
-            Switching off the engine applies the parking brake and holds the car
-            on hills. Starting releases it after ignition. First-person looking
-            stays horizontal.
+            Switching off the engine applies the parking brake and holds the car on hills. Starting
+            releases it after ignition. First-person looking stays horizontal.
         </p>
         <button class="hud-button resume-button" @click="closeHelp">
             Back to driving <small>ESC</small>

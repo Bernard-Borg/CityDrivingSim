@@ -1,3 +1,8 @@
+/**
+ * WaterGenerator types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
 import * as THREE from "three";
 import { RoadCutouts } from "./RoadCutouts";
 import { SpatialGrid, closestPoint } from "./CollisionWorld";
@@ -16,16 +21,24 @@ interface WaterArea {
     holes: Point[][];
     height: number;
 }
+/**
+ * Formats a horizontal point into a stable rounded key used to stitch coastline endpoints.
+ *
+ * @param p - Point or OSM tag record, as indicated by its type.
+ */
 const key = (p: Point) => `${p.x.toFixed(3)},${p.z.toFixed(3)}`;
+/**
+ * Checks whether a point lies inside the represented bounds or corridor region.
+ *
+ * @param p - Point or OSM tag record, as indicated by its type.
+ * @param ring - Polygon ring.
+ */
 function contains(p: Point, ring: Point[]): boolean {
     let inside = false;
     for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
         const a = ring[i],
             b = ring[j];
-        if (
-            a.z > p.z !== b.z > p.z &&
-            p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x
-        )
+        if (a.z > p.z !== b.z > p.z && p.x < ((b.x - a.x) * (p.z - a.z)) / (b.z - a.z) + a.x)
             inside = !inside;
     }
     return inside;
@@ -51,21 +64,24 @@ export class WaterGenerator {
         specularIntensity: 0.45,
     });
 
+    /**
+     * Initializes instance state and owned resources using the supplied dependencies.
+     *
+     * @param scene - Scene receiving generated objects; ownership remains with the caller.
+     */
     constructor(private scene: THREE.Scene) {
         this.group.name = "Water";
         scene.add(this.group);
         // Subtle world-space ripples: no vertex displacement at shorelines or new textures.
         this.material.onBeforeCompile = (shader) => {
             shader.uniforms.waterTime = this.time;
-            shader.vertexShader =
-                "varying vec2 waterPosition;\n" + shader.vertexShader;
+            shader.vertexShader = "varying vec2 waterPosition;\n" + shader.vertexShader;
             shader.vertexShader = shader.vertexShader.replace(
                 "#include <begin_vertex>",
                 "#include <begin_vertex>\nwaterPosition = position.xz;",
             );
             shader.fragmentShader =
-                "uniform float waterTime;\nvarying vec2 waterPosition;\n" +
-                shader.fragmentShader;
+                "uniform float waterTime;\nvarying vec2 waterPosition;\n" + shader.fragmentShader;
             shader.fragmentShader = shader.fragmentShader.replace(
                 "#include <color_fragment>",
                 `#include <color_fragment>
@@ -88,6 +104,16 @@ export class WaterGenerator {
         };
     }
 
+    /**
+     * Generates the supported OSM features using the supplied coordinate and elevation samplers.
+     *
+     * @param data - OSM-derived GeoJSON collection.
+     * @param project - Projection from latitude/longitude to local horizontal coordinates.
+     * @param bounds - Local horizontal bounds in metres.
+     * @param sample - Terrain height and slope sampler in local metre coordinates.
+     * @param referenceHeight - Source elevation datum offset in metres.
+     * @param prepareTerrain - Optional callback receiving the shoreline minimum-height sampler.
+     */
     generate(
         data: WaterData,
         project: (lat: number, lon: number) => Point,
@@ -100,13 +126,16 @@ export class WaterGenerator {
         const lines: Point[][] = [],
             islands: Point[][] = [],
             inland: WaterArea[] = [];
-        const convert = (ring: Coordinate[]) =>
-            ring.map(([lon, lat]) => project(lat, lon));
+        /**
+         * Projects an OSM coordinate ring into local horizontal coordinates.
+         *
+         * @param ring - Polygon ring.
+         */
+        const convert = (ring: Coordinate[]) => ring.map(([lon, lat]) => project(lat, lon));
         for (const feature of data.features) {
             const { geometry: g, properties: p } = feature;
             if (p.natural === "coastline") {
-                if (g.type === "LineString")
-                    lines.push(convert(g.coordinates as Coordinate[]));
+                if (g.type === "LineString") lines.push(convert(g.coordinates as Coordinate[]));
                 if (g.type === "Polygon")
                     islands.push(convert((g.coordinates as Coordinate[][])[0]));
             } else if (p.natural === "water") {
@@ -147,10 +176,7 @@ export class WaterGenerator {
         const ends = new Set(lines.map((line) => key(line[line.length - 1])));
         const used = new Set<Point[]>(),
             chains: Point[][] = [];
-        for (const first of [
-            ...lines.filter((line) => !ends.has(key(line[0]))),
-            ...lines,
-        ]) {
+        for (const first of [...lines.filter((line) => !ends.has(key(line[0]))), ...lines]) {
             if (used.has(first)) continue;
             const chain = [...first];
             used.add(first);
@@ -160,8 +186,7 @@ export class WaterGenerator {
                 used.add(next);
                 next = starts.get(key(chain[chain.length - 1]));
             }
-            if (key(chain[0]) === key(chain[chain.length - 1]))
-                islands.push(chain);
+            if (key(chain[0]) === key(chain[chain.length - 1])) islands.push(chain);
             else chains.push(chain);
         }
         const pieces = chains.flatMap((chain) => this.clipLine(chain, bounds));
@@ -175,20 +200,20 @@ export class WaterGenerator {
             { x: bounds.minX, z: bounds.maxZ },
         ];
         const cornerT = [0, width, width + depth, 2 * width + depth];
+        /**
+         * Returns distance around the map boundary for an edge point, or null for an interior point.
+         *
+         * @param p - Point or OSM tag record, as indicated by its type.
+         */
         const boundaryT = (p: Point): number | null => {
             if (Math.abs(p.z - bounds.minZ) < 0.01) return p.x - bounds.minX;
-            if (Math.abs(p.x - bounds.maxX) < 0.01)
-                return width + p.z - bounds.minZ;
-            if (Math.abs(p.z - bounds.maxZ) < 0.01)
-                return width + depth + bounds.maxX - p.x;
-            if (Math.abs(p.x - bounds.minX) < 0.01)
-                return 2 * width + depth + bounds.maxZ - p.z;
+            if (Math.abs(p.x - bounds.maxX) < 0.01) return width + p.z - bounds.minZ;
+            if (Math.abs(p.z - bounds.maxZ) < 0.01) return width + depth + bounds.maxX - p.x;
+            if (Math.abs(p.x - bounds.minX) < 0.01) return 2 * width + depth + bounds.maxZ - p.z;
             return null;
         };
         const valid = pieces.filter(
-            (piece) =>
-                boundaryT(piece[0]) !== null &&
-                boundaryT(piece[piece.length - 1]) !== null,
+            (piece) => boundaryT(piece[0]) !== null && boundaryT(piece[piece.length - 1]) !== null,
         );
         if (valid.length !== pieces.length)
             console.warn(
@@ -220,18 +245,13 @@ export class WaterGenerator {
                         ((boundaryT(a[0])! - end + perimeter) % perimeter) -
                         ((boundaryT(b[0])! - end + perimeter) % perimeter),
                 )[0];
-                const travel =
-                    (boundaryT(next[0])! - end + perimeter) % perimeter;
+                const travel = (boundaryT(next[0])! - end + perimeter) % perimeter;
                 const between = cornerT
                     .map((t, i) => ({
                         distance: (t - end + perimeter) % perimeter,
                         point: corners[i],
                     }))
-                    .filter(
-                        (corner) =>
-                            corner.distance > 0.0001 &&
-                            corner.distance < travel,
-                    )
+                    .filter((corner) => corner.distance > 0.0001 && corner.distance < travel)
                     .sort((a, b) => a.distance - b.distance);
                 ring.push(...between.map((corner) => corner.point));
                 piece = next;
@@ -239,9 +259,7 @@ export class WaterGenerator {
             if (closed)
                 seas.push({
                     outer: ring,
-                    holes: islands.filter((island) =>
-                        contains(island[0], ring),
-                    ),
+                    holes: islands.filter((island) => contains(island[0], ring)),
                     height: -referenceHeight,
                 });
             else
@@ -260,10 +278,7 @@ export class WaterGenerator {
             const radius = 80;
             for (const area of [...seas, ...inland])
                 for (const ring of [area.outer, ...area.holes]) {
-                    for (const line of this.clipLine(
-                        [...ring, ring[0]],
-                        bounds,
-                    ))
+                    for (const line of this.clipLine([...ring, ring[0]], bounds))
                         for (let i = 1; i < line.length; i++) {
                             const a = line[i - 1],
                                 b = line[i],
@@ -290,11 +305,15 @@ export class WaterGenerator {
         let count = 0;
         for (const area of [...seas, ...inland])
             count += this.addArea(area, bounds, sample) ? 1 : 0;
-        console.log(
-            `Generated ${count} water areas (${seas.length} coastal sea polygons)`,
-        );
+        console.log(`Generated ${count} water areas (${seas.length} coastal sea polygons)`);
     }
 
+    /**
+     * Clips a polyline to the loaded rectangular map bounds.
+     *
+     * @param line - Polyline vertices.
+     * @param bounds - Local horizontal bounds in metres.
+     */
     private clipLine(line: Point[], bounds: TerrainBounds): Point[][] {
         const pieces: Point[][] = [];
         let current: Point[] = [];
@@ -323,10 +342,7 @@ export class WaterGenerator {
             }
             const start = { x: a.x + dx * lo, z: a.z + dz * lo },
                 end = { x: a.x + dx * hi, z: a.z + dz * hi };
-            if (
-                current.length &&
-                key(current[current.length - 1]) !== key(start)
-            ) {
+            if (current.length && key(current[current.length - 1]) !== key(start)) {
                 pieces.push(current);
                 current = [];
             }
@@ -337,18 +353,26 @@ export class WaterGenerator {
         return pieces;
     }
 
+    /**
+     * Triangulates a water polygon and holes, adds its mesh and indexes its elevation.
+     *
+     * @param area - Water polygon with holes and elevation.
+     * @param bounds - Local horizontal bounds in metres.
+     * @param sample - Terrain height and slope sampler in local metre coordinates.
+     */
     private addArea(
         area: WaterArea,
         bounds: TerrainBounds,
         sample: (x: number, z: number) => SurfaceSample,
     ): boolean {
+        /**
+         * Converts a horizontal polygon ring into Three.js triangulation coordinates.
+         *
+         * @param ring - Polygon ring.
+         */
         const vectors = (ring: Point[]) => {
             const result = ring.map((p) => new THREE.Vector2(p.x, p.z));
-            if (
-                result.length > 1 &&
-                result[0].equals(result[result.length - 1])
-            )
-                result.pop();
+            if (result.length > 1 && result[0].equals(result[result.length - 1])) result.pop();
             return result;
         };
         const outer = vectors(area.outer),
@@ -393,10 +417,7 @@ export class WaterGenerator {
         }
         if (!positions.length) return false;
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute(
-            "position",
-            new THREE.Float32BufferAttribute(positions, 3),
-        );
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
         geometry.computeVertexNormals();
         const mesh = new THREE.Mesh(geometry, this.material);
         mesh.receiveShadow = true;
@@ -414,18 +435,13 @@ export class WaterGenerator {
                                 low = k === "x" ? bounds.minX : bounds.minZ,
                                 high = k === "x" ? bounds.maxX : bounds.maxZ;
                             return (
-                                (Math.abs(a[k] - low) < 0.01 &&
-                                    Math.abs(b[k] - low) < 0.01) ||
-                                (Math.abs(a[k] - high) < 0.01 &&
-                                    Math.abs(b[k] - high) < 0.01)
+                                (Math.abs(a[k] - low) < 0.01 && Math.abs(b[k] - low) < 0.01) ||
+                                (Math.abs(a[k] - high) < 0.01 && Math.abs(b[k] - high) < 0.01)
                             );
                         })
                     )
                         continue;
-                    const steps = Math.max(
-                        1,
-                        Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 10),
-                    );
+                    const steps = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / 10));
                     for (let j = 0; j < steps; j++) {
                         const p = {
                             x: a.x + ((b.x - a.x) * j) / steps,
@@ -463,10 +479,7 @@ export class WaterGenerator {
             }
         if (banks.length) {
             const bankGeometry = new THREE.BufferGeometry();
-            bankGeometry.setAttribute(
-                "position",
-                new THREE.Float32BufferAttribute(banks, 3),
-            );
+            bankGeometry.setAttribute("position", new THREE.Float32BufferAttribute(banks, 3));
             bankGeometry.computeVertexNormals();
             const bank = new THREE.Mesh(bankGeometry, this.bankMaterial);
             bank.receiveShadow = true;
@@ -482,6 +495,12 @@ export class WaterGenerator {
         return true;
     }
 
+    /**
+     * Returns the represented surface elevation at a local horizontal position, or no value outside mapped water.
+     *
+     * @param x - Local eastward coordinate in metres.
+     * @param z - Local southward coordinate in metres.
+     */
     heightAt(x: number, z: number): number | null {
         let height: number | null = null;
         for (const area of this.areas.at(x, z))
@@ -492,15 +511,29 @@ export class WaterGenerator {
                 height = Math.max(height ?? -Infinity, area.height);
         return height;
     }
+    /**
+     * Subtracts mapped water openings from terrain geometry in place.
+     *
+     * @param geometry - Buffer geometry modified in place.
+     * @param sample - Terrain height and slope sampler in local metre coordinates.
+     */
     cutTerrain(
         geometry: THREE.BufferGeometry,
         sample: (x: number, z: number) => SurfaceSample,
     ): void {
         this.cuts.apply(geometry, { sample });
     }
+    /**
+     * Updates the shared water ripple animation clock in seconds.
+     *
+     * @param elapsed - Animation time in seconds.
+     */
     update(elapsed: number): void {
         this.time.value = elapsed;
     }
+    /**
+     * Clears generated content and cached lookup data so the instance can be reused.
+     */
     clear(): void {
         for (const child of [...this.group.children]) {
             (child as THREE.Mesh).geometry.dispose();
@@ -509,6 +542,9 @@ export class WaterGenerator {
         this.cuts.clear();
         this.areas.clear();
     }
+    /**
+     * Releases owned resources and unregisters scene objects, browser listeners or audio nodes as applicable.
+     */
     dispose(): void {
         this.clear();
         this.material.dispose();

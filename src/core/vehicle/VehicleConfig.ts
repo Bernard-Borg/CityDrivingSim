@@ -1,3 +1,8 @@
+/**
+ * VehicleConfig types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
 export type EngineState = "off" | "starting" | "running";
 export interface VehicleConfig {
     id: string;
@@ -120,6 +125,13 @@ export const VEHICLES: Record<string, VehicleConfig> = {
     [DEFAULT_VEHICLE.id]: DEFAULT_VEHICLE,
 };
 
+/**
+ * Estimates RPM from signed speed in km/h, throttle load and configured gear speed boundaries.
+ *
+ * @param speed - Signed vehicle speed in km/h.
+ * @param throttle - Normalized signed throttle request.
+ * @param audio - Engine sound and gear tuning.
+ */
 export function targetEngineRPM(
     speed: number,
     throttle: number,
@@ -130,15 +142,10 @@ export function targetEngineRPM(
     const start = gear === 0 ? 0 : audio.gears[gear - 1] * 0.6;
     const ratio = Math.max(
         0,
-        Math.min(
-            1,
-            (Math.abs(speed) - start) / Math.max(1, audio.gears[gear] - start),
-        ),
+        Math.min(1, (Math.abs(speed) - start) / Math.max(1, audio.gears[gear] - start)),
     );
     return Math.min(
         audio.maxRPM,
-        audio.idleRPM +
-            ratio * (audio.maxRPM - audio.idleRPM) * 0.77 +
-            Math.abs(throttle) * 1500,
+        audio.idleRPM + ratio * (audio.maxRPM - audio.idleRPM) * 0.77 + Math.abs(throttle) * 1500,
     );
 }

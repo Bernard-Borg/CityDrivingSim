@@ -1,4 +1,9 @@
-import * as THREE from 'three';
+/**
+ * BuildingAppearance types and implementation for the city driving simulator.
+ * @packageDocumentation
+ */
+
+import * as THREE from "three";
 
 export interface BuildingTheme {
     wallColors: string[];
@@ -10,87 +15,276 @@ export interface BuildingTheme {
     balconyChance: number;
     residentialLevels: [number, number];
     wallMaterial: string;
-    residentialRoofShape?: 'flat' | 'gabled' | 'hipped';
+    residentialRoofShape?: "flat" | "gabled" | "hipped";
 }
 export const MALTA_BUILDINGS: BuildingTheme = {
-    wallColors: ['#d9c594', '#cdb785', '#e4d3ab', '#c4ad7d', '#e1cda0'],
-    roofColors: ['#b7aa91', '#c1b499', '#a99c86'], shutterColors: ['#305b47', '#683e36', '#35546b', '#7c6543'],
-    floorHeight: 3.1, windowSpacing: 2.8, weathering: 0.36, balconyChance: 0.35, residentialLevels: [1, 3], wallMaterial: 'limestone',
+    wallColors: ["#d9c594", "#cdb785", "#e4d3ab", "#c4ad7d", "#e1cda0"],
+    roofColors: ["#b7aa91", "#c1b499", "#a99c86"],
+    shutterColors: ["#305b47", "#683e36", "#35546b", "#7c6543"],
+    floorHeight: 3.1,
+    windowSpacing: 2.8,
+    weathering: 0.36,
+    balconyChance: 0.35,
+    residentialLevels: [1, 3],
+    wallMaterial: "limestone",
 };
 export const MONACO_BUILDINGS: BuildingTheme = {
-    wallColors: ['#ead7bf', '#e3bfae', '#eee6d4', '#d8c9b4', '#e6cfaa', '#f0e9dc'],
-    roofColors: ['#a96e51', '#b87d5b', '#aa9d8d'], shutterColors: ['#52685d', '#6b7374', '#637c8b'],
-    floorHeight: 3, windowSpacing: 3.2, weathering: 0.18, balconyChance: 0.6, residentialLevels: [2, 5], wallMaterial: 'plaster',
+    wallColors: ["#ead7bf", "#e3bfae", "#eee6d4", "#d8c9b4", "#e6cfaa", "#f0e9dc"],
+    roofColors: ["#a96e51", "#b87d5b", "#aa9d8d"],
+    shutterColors: ["#52685d", "#6b7374", "#637c8b"],
+    floorHeight: 3,
+    windowSpacing: 3.2,
+    weathering: 0.18,
+    balconyChance: 0.6,
+    residentialLevels: [2, 5],
+    wallMaterial: "plaster",
 };
 /** Fallback palette follows the warm plaster/red/white facades present in the Stockholm export. */
 export const STOCKHOLM_BUILDINGS: BuildingTheme = {
-    wallColors: ['#dfc17d', '#e9d8ad', '#d39d7e', '#c98069', '#eee8d9', '#c1b7a6', '#b36b56'],
-    roofColors: ['#41484a', '#555957', '#6b716b', '#8b5948'],
-    shutterColors: ['#e8e5dc', '#4b5652', '#656c70'],
-    floorHeight: 3.1, windowSpacing: 2.7, weathering: 0.22, balconyChance: 0.18,
-    residentialLevels: [3, 5], wallMaterial: 'plaster', residentialRoofShape: 'gabled',
+    wallColors: ["#dfc17d", "#e9d8ad", "#d39d7e", "#c98069", "#eee8d9", "#c1b7a6", "#b36b56"],
+    roofColors: ["#41484a", "#555957", "#6b716b", "#8b5948"],
+    shutterColors: ["#e8e5dc", "#4b5652", "#656c70"],
+    floorHeight: 3.1,
+    windowSpacing: 2.7,
+    weathering: 0.22,
+    balconyChance: 0.18,
+    residentialLevels: [3, 5],
+    wallMaterial: "plaster",
+    residentialRoofShape: "gabled",
 };
-export type BuildingStyle = 'home' | 'apartments' | 'church' | 'civic' | 'commercial' | 'industrial' | 'garage' | 'greenhouse' | 'ruins' | 'construction' | 'canopy' | 'parking' | 'bunker';
+export type BuildingStyle =
+    | "home"
+    | "apartments"
+    | "church"
+    | "civic"
+    | "commercial"
+    | "industrial"
+    | "garage"
+    | "greenhouse"
+    | "ruins"
+    | "construction"
+    | "canopy"
+    | "parking"
+    | "bunker";
 type Tags = Record<string, string | number | boolean | undefined>;
+/**
+ * Hashes an OSM identifier into a stable seed for repeatable building variation.
+ *
+ * @param id - Stable OSM identifier.
+ */
 export function buildingSeed(id: string): number {
     let value = 2166136261;
     for (let i = 0; i < id.length; i++) value = Math.imul(value ^ id.charCodeAt(i), 16777619);
     return value >>> 0;
 }
+/**
+ * Classifies OSM building tags into a supported procedural facade style.
+ *
+ * @param p - Point or OSM tag record, as indicated by its type.
+ */
 export function buildingStyle(p: Tags): BuildingStyle {
-    const type = String(p.building ?? '').toLowerCase();
-    if (['church', 'chapel', 'cathedral', 'synagogue', 'mosque', 'temple'].includes(type) || p.amenity === 'place_of_worship') return 'church';
-    if (type === 'ruins' || p.ruins === 'yes') return 'ruins';
-    if (type === 'construction') return 'construction';
-    if (['roof', 'carport', 'tent'].includes(type) || p.amenity === 'shelter') return 'canopy';
-    if (type === 'greenhouse') return 'greenhouse';
-    if (type === 'parking') return 'parking';
-    if (type === 'bunker') return 'bunker';
-    if (['garage', 'garages', 'shed', 'service', 'toilets'].includes(type)) return 'garage';
-    if (['industrial', 'warehouse', 'hangar', 'barn'].includes(type)) return 'industrial';
-    if (['apartments', 'hotel', 'residential', 'terrace', 'terraced'].includes(type)) return 'apartments';
-    if (['retail', 'commercial', 'office', 'restaurant', 'kiosk'].includes(type) || type.includes('bureaux') || ['restaurant', 'bank', 'cafe', 'casino'].includes(String(p.amenity))) return 'commercial';
-    if (['public', 'civic', 'school', 'hospital', 'college', 'university', 'government', 'museum', 'police', 'stadium', 'train_station'].includes(type)
-        || ['school', 'hospital', 'library', 'courthouse', 'police', 'community_centre'].includes(String(p.amenity)) || p.historic) return 'civic';
-    return 'home';
+    const type = String(p.building ?? "").toLowerCase();
+    if (
+        ["church", "chapel", "cathedral", "synagogue", "mosque", "temple"].includes(type) ||
+        p.amenity === "place_of_worship"
+    )
+        return "church";
+    if (type === "ruins" || p.ruins === "yes") return "ruins";
+    if (type === "construction") return "construction";
+    if (["roof", "carport", "tent"].includes(type) || p.amenity === "shelter") return "canopy";
+    if (type === "greenhouse") return "greenhouse";
+    if (type === "parking") return "parking";
+    if (type === "bunker") return "bunker";
+    if (["garage", "garages", "shed", "service", "toilets"].includes(type)) return "garage";
+    if (["industrial", "warehouse", "hangar", "barn"].includes(type)) return "industrial";
+    if (["apartments", "hotel", "residential", "terrace", "terraced"].includes(type))
+        return "apartments";
+    if (
+        ["retail", "commercial", "office", "restaurant", "kiosk"].includes(type) ||
+        type.includes("bureaux") ||
+        ["restaurant", "bank", "cafe", "casino"].includes(String(p.amenity))
+    )
+        return "commercial";
+    if (
+        [
+            "public",
+            "civic",
+            "school",
+            "hospital",
+            "college",
+            "university",
+            "government",
+            "museum",
+            "police",
+            "stadium",
+            "train_station",
+        ].includes(type) ||
+        ["school", "hospital", "library", "courthouse", "police", "community_centre"].includes(
+            String(p.amenity),
+        ) ||
+        p.historic
+    )
+        return "civic";
+    return "home";
 }
+/**
+ * Parses a supported colour tag or returns the configured fallback.
+ *
+ * @param value - Input value to normalize, clamp or parse.
+ * @param fallback - Value used for missing or invalid input.
+ */
 function color(value: unknown, fallback: string): THREE.Color {
-    const text = String(value ?? '').toLowerCase().trim();
-    return new THREE.Color(/^#[0-9a-f]{3}([0-9a-f]{3})?$/.test(text) || Object.hasOwn(THREE.Color.NAMES, text) ? text : fallback);
+    const text = String(value ?? "")
+        .toLowerCase()
+        .trim();
+    return new THREE.Color(
+        /^#[0-9a-f]{3}([0-9a-f]{3})?$/.test(text) || Object.hasOwn(THREE.Color.NAMES, text)
+            ? text
+            : fallback,
+    );
 }
+/**
+ * Combines OSM tags, a stable seed and city theme into height, facade and roof parameters.
+ *
+ * @param p - Point or OSM tag record, as indicated by its type.
+ * @param seed - Stable variation seed.
+ * @param theme - City building palette and generation defaults.
+ */
 export function resolveBuildingAppearance(p: Tags, seed: number, theme: BuildingTheme) {
-    const style = buildingStyle(p), pick = (colors: string[], shift = 0) => colors.length ? colors[(seed + shift) % colors.length] : '#d2c5aa';
-    const smallWoodenHouse = ['allotment_house', 'cabin', 'hut'].includes(String(p.building));
-    const material = String(p['building:material'] ?? (smallWoodenHouse ? 'wood' : undefined) ?? (style === 'church' || style === 'ruins' ? 'stone' : style === 'industrial' ? 'metal' : style === 'greenhouse' ? 'glass' : style === 'parking' || style === 'bunker' ? 'concrete' : theme.wallMaterial));
-    const defaults: Record<BuildingStyle, number> = { home: theme.residentialLevels[0] + seed % Math.max(1, theme.residentialLevels[1] - theme.residentialLevels[0] + 1),
-        apartments: 4 + seed % 3, church: p.building === 'cathedral' ? 7 : p.building === 'chapel' ? 2 : 4,
-        civic: 3, commercial: 3, industrial: 2, garage: 1, greenhouse: 1, ruins: 1, construction: 3, canopy: 1, parking: 3, bunker: 1 };
-    const taggedLevels = Number(p['building:levels'] ?? p.levels);
-    const levels = Number.isFinite(taggedLevels) && taggedLevels > 0 ? taggedLevels : smallWoodenHouse ? 1 : defaults[style];
-    const taggedHeight = parseFloat(String(p.height ?? ''));
-    const height = Number.isFinite(taggedHeight) && taggedHeight > 0 ? taggedHeight : style === 'ruins' ? 1.8 : levels * theme.floorHeight;
-    const roofShape = String(p['roof:shape'] ?? (p.building === 'tent' ? 'pyramidal' : style === 'church' && ['church', 'chapel', 'cathedral'].includes(String(p.building)) || style === 'industrial' || style === 'greenhouse' ? 'gabled' : (style === 'home' || style === 'apartments') ? theme.residentialRoofShape ?? 'flat' : 'flat'));
-    const roofMaterial = String(p['roof:material'] ?? (style === 'greenhouse' ? 'glass' : style === 'industrial' ? 'metal' : roofShape === 'flat' ? 'concrete' : 'roof_tiles'));
-    const wallFallback = material === 'brick' ? '#aa7057' : material === 'glass' ? '#83a9b1' : material === 'metal' ? '#a7adae'
-        : material === 'wood' ? '#937452' : pick(theme.wallColors);
-    return { style, levels, height, roofShape, roofMaterial, material,
-        wallColor: color(p['building:colour'] ?? p.colour, wallFallback),
-        roofColor: color(p['roof:colour'], roofMaterial === 'grass' ? '#71865c' : roofMaterial === 'wood' ? '#937452' : roofMaterial === 'metal' ? '#959fa2' : pick(theme.roofColors, 1)),
+    /**
+     * Selects a deterministic colour from the active palette using a seed offset.
+     *
+     * @param colors - Palette for deterministic selection.
+     * @param shift - Seed offset for a separate variation channel.
+     */
+    const style = buildingStyle(p),
+        pick = (colors: string[], shift = 0) =>
+            colors.length ? colors[(seed + shift) % colors.length] : "#d2c5aa";
+    const smallWoodenHouse = ["allotment_house", "cabin", "hut"].includes(String(p.building));
+    const material = String(
+        p["building:material"] ??
+            (smallWoodenHouse ? "wood" : undefined) ??
+            (style === "church" || style === "ruins"
+                ? "stone"
+                : style === "industrial"
+                  ? "metal"
+                  : style === "greenhouse"
+                    ? "glass"
+                    : style === "parking" || style === "bunker"
+                      ? "concrete"
+                      : theme.wallMaterial),
+    );
+    const defaults: Record<BuildingStyle, number> = {
+        home:
+            theme.residentialLevels[0] +
+            (seed % Math.max(1, theme.residentialLevels[1] - theme.residentialLevels[0] + 1)),
+        apartments: 4 + (seed % 3),
+        church: p.building === "cathedral" ? 7 : p.building === "chapel" ? 2 : 4,
+        civic: 3,
+        commercial: 3,
+        industrial: 2,
+        garage: 1,
+        greenhouse: 1,
+        ruins: 1,
+        construction: 3,
+        canopy: 1,
+        parking: 3,
+        bunker: 1,
+    };
+    const taggedLevels = Number(p["building:levels"] ?? p.levels);
+    const levels =
+        Number.isFinite(taggedLevels) && taggedLevels > 0
+            ? taggedLevels
+            : smallWoodenHouse
+              ? 1
+              : defaults[style];
+    const taggedHeight = parseFloat(String(p.height ?? ""));
+    const height =
+        Number.isFinite(taggedHeight) && taggedHeight > 0
+            ? taggedHeight
+            : style === "ruins"
+              ? 1.8
+              : levels * theme.floorHeight;
+    const roofShape = String(
+        p["roof:shape"] ??
+            (p.building === "tent"
+                ? "pyramidal"
+                : (style === "church" &&
+                        ["church", "chapel", "cathedral"].includes(String(p.building))) ||
+                    style === "industrial" ||
+                    style === "greenhouse"
+                  ? "gabled"
+                  : style === "home" || style === "apartments"
+                    ? (theme.residentialRoofShape ?? "flat")
+                    : "flat"),
+    );
+    const roofMaterial = String(
+        p["roof:material"] ??
+            (style === "greenhouse"
+                ? "glass"
+                : style === "industrial"
+                  ? "metal"
+                  : roofShape === "flat"
+                    ? "concrete"
+                    : "roof_tiles"),
+    );
+    const wallFallback =
+        material === "brick"
+            ? "#aa7057"
+            : material === "glass"
+              ? "#83a9b1"
+              : material === "metal"
+                ? "#a7adae"
+                : material === "wood"
+                  ? "#937452"
+                  : pick(theme.wallColors);
+    return {
+        style,
+        levels,
+        height,
+        roofShape,
+        roofMaterial,
+        material,
+        wallColor: color(p["building:colour"] ?? p.colour, wallFallback),
+        roofColor: color(
+            p["roof:colour"],
+            roofMaterial === "grass"
+                ? "#71865c"
+                : roofMaterial === "wood"
+                  ? "#937452"
+                  : roofMaterial === "metal"
+                    ? "#959fa2"
+                    : pick(theme.roofColors, 1),
+        ),
         shutterColor: color(undefined, pick(theme.shutterColors, 2)),
-        balcony: (style === 'home' || style === 'apartments') && seed % 100 < theme.balconyChance * 100,
+        balcony:
+            (style === "home" || style === "apartments") && seed % 100 < theme.balconyChance * 100,
     };
 }
 export type BuildingAppearance = ReturnType<typeof resolveBuildingAppearance>;
 
 /** One shared facade shader; per-vertex attributes select palettes/styles without per-building textures. */
 export function createBuildingMaterials() {
-    const wall = new THREE.MeshStandardMaterial({ roughness: 0.88, side: THREE.DoubleSide, vertexColors: true });
-    wall.onBeforeCompile = shader => {
-        shader.vertexShader = `attribute vec4 facade; attribute vec3 shutters; attribute vec2 finish;
-            varying vec4 vFacade; varying vec3 vShutters; varying vec2 vFinish;\n` + shader.vertexShader;
-        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFacade=facade; vShutters=shutters; vFinish=finish;');
-        shader.fragmentShader = 'varying vec4 vFacade; varying vec3 vShutters; varying vec2 vFinish;\n' + shader.fragmentShader;
-        shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    const wall = new THREE.MeshStandardMaterial({
+        roughness: 0.88,
+        side: THREE.DoubleSide,
+        vertexColors: true,
+    });
+    wall.onBeforeCompile = (shader) => {
+        shader.vertexShader =
+            `attribute vec4 facade; attribute vec3 shutters; attribute vec2 finish;
+            varying vec4 vFacade; varying vec3 vShutters; varying vec2 vFinish;\n` +
+            shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvFacade=facade; vShutters=shutters; vFinish=finish;",
+        );
+        shader.fragmentShader =
+            "varying vec4 vFacade; varying vec3 vShutters; varying vec2 vFinish;\n" +
+            shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <color_fragment>",
+            `#include <color_fragment>
             vec3 baseColor = diffuseColor.rgb;
             vec2 metre = vMapUv; vec2 cell = fract(metre / vFacade.xy);
             float style = vFacade.z; float floorNo = floor(metre.y / vFacade.y);
@@ -140,15 +334,26 @@ export function createBuildingMaterials() {
             if (style > 10.5 && style < 11.5) diffuseColor.rgb *= mix(0.35,1.0,step(cell.y,0.24));
             if (style > 11.5) diffuseColor.rgb *= 1.0-step(0.67,cell.y)*step(cell.y,0.78)*step(0.2,cell.x)*step(cell.x,0.8)*0.8;
             diffuseColor.rgb = mix(baseColor, diffuseColor.rgb, 1.0-smoothstep(0.15,0.9,max(fwidth(metre.x),fwidth(metre.y))));
-        `);
+        `,
+        );
         // Enable built-in UV varyings while the facade itself is generated mathematically.
     };
-    const roof = new THREE.MeshStandardMaterial({ roughness: 0.92, side: THREE.DoubleSide, vertexColors: true });
-    roof.onBeforeCompile = shader => {
-        shader.vertexShader = 'attribute float roofFinish; varying float vRoofFinish;\n' + shader.vertexShader;
-        shader.vertexShader = shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRoofFinish=roofFinish;');
-        shader.fragmentShader = 'varying float vRoofFinish;\n' + shader.fragmentShader;
-        shader.fragmentShader = shader.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    const roof = new THREE.MeshStandardMaterial({
+        roughness: 0.92,
+        side: THREE.DoubleSide,
+        vertexColors: true,
+    });
+    roof.onBeforeCompile = (shader) => {
+        shader.vertexShader =
+            "attribute float roofFinish; varying float vRoofFinish;\n" + shader.vertexShader;
+        shader.vertexShader = shader.vertexShader.replace(
+            "#include <begin_vertex>",
+            "#include <begin_vertex>\nvRoofFinish=roofFinish;",
+        );
+        shader.fragmentShader = "varying float vRoofFinish;\n" + shader.fragmentShader;
+        shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <color_fragment>",
+            `#include <color_fragment>
             vec2 p=vMapUv;
             float noise=fract(sin(dot(floor(p*24.0),vec2(12.9898,78.233)))*43758.5453);
             diffuseColor.rgb *= 0.94+noise*0.06;
@@ -161,10 +366,13 @@ export function createBuildingMaterials() {
                 diffuseColor.rgb=mix(vec3(0.29,0.48,0.48),vec3(0.65),grid);
             }
             else if(vRoofFinish>3.5) diffuseColor.rgb *= 0.88+0.12*sin(p.x*20.0+sin(p.y*2.0));
-        `);
+        `,
+        );
     };
     // A shared 1px white map enables Three's UV plumbing; detail needs no image assets.
     const map = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
-    map.needsUpdate = true; wall.map = map; roof.map = map;
+    map.needsUpdate = true;
+    wall.map = map;
+    roof.map = map;
     return { wall, roof, map };
 }

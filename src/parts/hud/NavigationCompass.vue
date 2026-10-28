@@ -31,9 +31,7 @@ const compass = computed(() =>
     }).filter((mark) => Math.abs(mark.delta) < 100),
 );
 
-const heading = computed(() =>
-    String(Math.round(headingValue.value) % 360).padStart(3, "0"),
-);
+const heading = computed(() => String(Math.round(headingValue.value) % 360).padStart(3, "0"));
 </script>
 <template>
     <div class="navigation-strip" aria-label="Compass and coordinates">
@@ -85,13 +83,7 @@ const heading = computed(() =>
     height: 40px;
     margin-top: 3px;
     overflow: hidden;
-    mask-image: linear-gradient(
-        to right,
-        transparent,
-        #000 16%,
-        #000 84%,
-        transparent
-    );
+    mask-image: linear-gradient(to right, transparent, #000 16%, #000 84%, transparent);
     border-bottom: 1px solid #c4d7cd66;
     background: linear-gradient(transparent, #07101255);
 }

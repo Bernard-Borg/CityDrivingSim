@@ -1,3 +1,8 @@
+/**
+ * Ambient Vite client and Vue component module declarations.
+ * @packageDocumentation
+ */
+
 /// <reference types="vite/client" />
 
 declare module '*.vue' {

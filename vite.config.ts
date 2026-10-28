@@ -1,3 +1,8 @@
+/**
+ * Vite build configuration and source alias registration.
+ * @packageDocumentation
+ */
+
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { fileURLToPath, URL } from "node:url";

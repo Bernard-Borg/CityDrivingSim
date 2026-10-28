@@ -1,3 +1,8 @@
+/**
+ * City configuration and saved geographic vehicle positions.
+ * @packageDocumentation
+ */
+
 import { useLocalStorage } from "@vueuse/core";
 import { defineStore } from "pinia";
 import { ref } from "vue";
@@ -73,11 +78,22 @@ export const useCitiesStore = defineStore("cities", () => {
 
     const availableCities = ref<string[]>([]);
 
+    /**
+     * Persists the current vehicle position under its city identifier.
+     *
+     * @param city - Configured city identifier.
+     * @param position - Local position or saved geographic position, as indicated by the parameter type.
+     */
     const savePosition = (city: string, position: SavedPosition): void => {
         const key = `${STORAGE_KEY_POSITION}_${city}`;
         localStorage.setItem(key, JSON.stringify(position));
     };
 
+    /**
+     * Reads and validates a saved geographic position, returning null for missing or malformed data.
+     *
+     * @param city - Configured city identifier.
+     */
     const getSavedPosition = (city: string): SavedPosition | null => {
         const key = `${STORAGE_KEY_POSITION}_${city}`;
         try {
@@ -96,6 +112,9 @@ export const useCitiesStore = defineStore("cities", () => {
         }
     };
 
+    /**
+     * Checks configured road files with HEAD requests and populates selectable cities, falling back to the config list.
+     */
     const loadCities = async () => {
         // Try to fetch each city config to see which files exist
         const available: string[] = [];
@@ -118,10 +137,20 @@ export const useCitiesStore = defineStore("cities", () => {
         availableCities.value = available.length > 0 ? available : cities; // Fallback to config list;
     };
 
+    /**
+     * Returns city configuration or null for an unknown identifier.
+     *
+     * @param city - Configured city identifier.
+     */
     const getCityConfig = (city: string): CityConfig | null => {
         return CITY_CONFIGS[city] || null;
     };
 
+    /**
+     * Returns the city display name, falling back to the supplied identifier.
+     *
+     * @param city - Configured city identifier.
+     */
     const getCityName = (city: string): string => {
         const config = getCityConfig(city);
         return config?.name || city;
