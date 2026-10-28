@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Wander</title>
+  <rect width="64" height="64" rx="15" fill="#101d20"/>
+  <path d="M14 54 25 10h14l11 44" fill="#29463b"/>
+  <path d="M14 54 25 10M50 54 39 10" fill="none" stroke="#a5d3b7" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 14v7m0 9v9m0 10v6" fill="none" stroke="#f1d77a" stroke-width="4" stroke-linecap="round"/>
+</svg>
