@@ -61,6 +61,11 @@ export class DecorGenerator {
         for (const feature of data.features) {
             const p = feature.properties,
                 g = feature.geometry;
+            const isBusStop = p.highway === "bus_stop"
+                || ((p.public_transport === "platform" || p.highway === "platform") && p.bus === "yes");
+            // Keep bus-stop signs, but omit other platform outlines and amenities.
+            if (!isBusStop && (p.highway === "platform" || p.public_transport === "platform"
+                || p.railway === "platform" || p["construction:railway"] === "platform")) continue;
             const coords =
                 g.type === "Point"
                     ? [g.coordinates]
@@ -86,8 +91,6 @@ export class DecorGenerator {
                         String(p.barrier),
                     ) || p.historic === "citywalls",
                 );
-            const isBusStop =
-                p.highway === "bus_stop" || (p.public_transport === "platform" && p.bus === "yes");
             const platform = p.highway === "platform" || p.public_transport === "platform";
             const barrier = String(p.barrier ?? (p.historic === "citywalls" ? "wall" : ""));
             const linear =
