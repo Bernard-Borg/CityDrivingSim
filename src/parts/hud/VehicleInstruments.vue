@@ -147,8 +147,8 @@ const ticks = computed(() =>
 .instrument-cluster {
     position: absolute;
     bottom: 22px;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 20px;
+    transform: none;
     width: min(600px, calc(100vw - 32px));
     z-index: 10;
     padding: 12px 24px 2px;
@@ -459,5 +459,8 @@ const ticks = computed(() =>
     .parking-indicator small {
         font-size: 9px;
     }
+}
+@media (pointer: coarse) {
+    .instrument-cluster { left: 12px; bottom: 155px; transform: scale(0.58); transform-origin: bottom left; width: min(600px, calc(100vw - 24px)); }
 }
 </style>

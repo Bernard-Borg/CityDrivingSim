@@ -5,18 +5,32 @@ import VehicleInstruments from "./hud/VehicleInstruments.vue";
 import NavigationCompass from "./hud/NavigationCompass.vue";
 import HudActions from "./hud/HudActions.vue";
 import ControlsHelp from "./hud/ControlsHelp.vue";
+import LocationSearch from "./hud/LocationSearch.vue";
+import GraphicsSettings from "./hud/GraphicsSettings.vue";
+import MobileControls from "./hud/MobileControls.vue";
+import type { MapLocation } from "@/core/LocationSearch";
 import PerformancePanel from "./hud/PerformancePanel.vue";
 
 const state = useStateStore();
 
 const help = ref<InstanceType<typeof ControlsHelp> | null>(null);
+const helpPaused = ref(false),
+    searchPaused = ref(false),
+    settingsPaused = ref(false);
 const actions = ref<InstanceType<typeof HudActions> | null>(null);
 
-const playing = computed(
-    () => !state.showCityMenu && !state.isLoading && !state.loadError,
+const playing = computed(() => !state.showCityMenu && !state.isLoading && !state.loadError);
+
+const controlsPaused = computed(
+    () => helpPaused.value || searchPaused.value || settingsPaused.value,
 );
 
 const emit = defineEmits<{
+    (e: "vehicleSelected", id: string): void;
+    (e: "search", query: string): void;
+    (e: "teleport", location: MapLocation): void;
+    (e: "graphicsChanged"): void;
+    (e: "touchGesture"): void;
     (e: "toggleStreetNames"): void;
     (e: "resetLocation"): void;
     (e: "citySelected", city: string): void;
@@ -25,6 +39,13 @@ const emit = defineEmits<{
     (e: "pauseChanged", paused: boolean): void;
     (e: "performanceChanged", enabled: boolean): void;
 }>();
+
+const setPause = (kind: "help" | "search" | "settings", paused: boolean) => {
+    if (kind === "help") helpPaused.value = paused;
+    if (kind === "search") searchPaused.value = paused;
+    if (kind === "settings") settingsPaused.value = paused;
+    emit("pauseChanged", controlsPaused.value);
+};
 
 const togglePerformance = () => {
     state.showPerformance = !state.showPerformance;
@@ -35,9 +56,7 @@ const togglePerformance = () => {
 const onKey = (e: KeyboardEvent) => {
     if (
         !playing.value ||
-        (e.target as HTMLElement)?.matches(
-            'input,textarea,select,[contenteditable="true"]',
-        )
+        (e.target as HTMLElement)?.matches('input,textarea,select,[contenteditable="true"]')
     )
         return;
     if (
@@ -64,12 +83,19 @@ const onKey = (e: KeyboardEvent) => {
 onMounted(() => window.addEventListener("keydown", onKey));
 onUnmounted(() => window.removeEventListener("keydown", onKey));
 </script>
+
 <template>
     <template v-if="playing">
         <NavigationCompass />
+        <GraphicsSettings
+            @graphics-changed="emit('graphicsChanged')"
+            @pause-changed="setPause('settings', $event)"
+        />
+        <MobileControls v-if="!controlsPaused" @gesture="emit('touchGesture')" />
         <VehicleInstruments v-if="!state.creativeMode" />
         <HudActions
             ref="actions"
+            @vehicle-selected="emit('vehicleSelected', $event)"
             @creative-changed="emit('creativeChanged', $event)"
             @help="help?.open()"
             @performance="togglePerformance"
@@ -78,17 +104,16 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
             @toggle-street-names="emit('toggleStreetNames')"
             @city-selected="emit('citySelected', $event)"
         />
-        <PerformancePanel
-            v-if="state.showPerformance"
-            @close="togglePerformance"
-        />
+        <PerformancePanel v-if="state.showPerformance" @close="togglePerformance" />
     </template>
-    <div
-        v-if="!playing || !state.showPerformance"
-        class="absolute top-5 right-5 z-10"
-    >
+    <div v-if="!playing || !state.showPerformance" class="absolute flex gap-3 top-5 right-5 z-10">
+        <LocationSearch
+            @search="emit('search', $event)"
+            @teleport="emit('teleport', $event)"
+            @pause-changed="setPause('search', $event)"
+        />
         <div
-            class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border border-white/20"
+            class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border flex items-center max-h-12 border-white/20"
         >
             <div class="text-sm text-gray-300">
                 <span class="text-white font-bold">{{ state.fps }}</span> FPS
@@ -97,7 +122,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     </div>
     <ControlsHelp
         ref="help"
-        @pause-changed="emit('pauseChanged', $event)"
+        @pause-changed="setPause('help', $event)"
         @closed="actions?.focusHelp()"
     />
 </template>

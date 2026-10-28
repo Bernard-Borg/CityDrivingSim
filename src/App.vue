@@ -3,9 +3,13 @@ import { ref, onMounted, onUnmounted } from "vue";
 import { DrivingSimulator } from "./core/DrivingSimulator";
 import { SoundManager } from "./utils/SoundManager";
 import type { Ref } from "vue";
+import { useVehiclesStore } from "./stores/vehicles";
+import { VEHICLES, DEFAULT_VEHICLE } from "./core/vehicle/VehicleConfig";
 import Overlay from "./parts/Overlay.vue";
 import CitySelection from "./parts/CitySelection.vue";
 import LoadingScreen from "./parts/LoadingScreen.vue";
+import { useNavigationStore } from "./stores/navigation";
+import type { MapLocation } from "./core/LocationSearch";
 import { useLoadingStore } from "./stores/loading";
 import { useCitiesStore } from "./stores/cities.ts";
 import { useSettingsStore } from "./stores/settings.ts";
@@ -17,6 +21,8 @@ const cityStore = useCitiesStore();
 const settings = useSettingsStore();
 const state = useStateStore();
 const loading = useLoadingStore();
+const navigation = useNavigationStore();
+const vehicles = useVehiclesStore();
 
 let simulator: DrivingSimulator | null = null;
 let unmounted = false;
@@ -26,6 +32,7 @@ const selectCity = async (city: string) => {
     state.loadError = "";
     state.showCitySwitcher = false;
     try {
+        navigation.query = ""; navigation.results = []; navigation.error = "";
         state.currentCity = city;
         state.showCityMenu = false;
         state.isLoading = true;
@@ -37,8 +44,9 @@ const selectCity = async (city: string) => {
         }
 
         const savedPos = cityStore.getSavedPosition(city);
-        simulator = new DrivingSimulator(canvasContainer.value!);
+        simulator = new DrivingSimulator(canvasContainer.value!, VEHICLES[vehicles.selectedId] ?? DEFAULT_VEHICLE);
         simulator.setPerformanceEnabled(state.showPerformance);
+        simulator.setGraphics(settings.shadowsEnabled, settings.renderScale);
         state.performanceHistory = [];
         simulator.onVehicleUpdate(data => { Object.assign(state.vehicle, data); });
         simulator.onPerformanceUpdate(data => {
@@ -125,6 +133,29 @@ const toggleStreetNames = () => {
     }
 };
 
+const searchLocations = (query: string) => {
+    navigation.error = '';
+    try { navigation.results = simulator?.searchLocations(query) ?? []; }
+    catch (error) { navigation.results = []; navigation.error = error instanceof Error ? error.message : 'Unable to search this map.'; }
+};
+const teleport = (location: MapLocation) => {
+    try { simulator?.teleportTo(location); navigation.error = ''; }
+    catch (error) { navigation.error = error instanceof Error ? error.message : 'Unable to teleport.'; }
+};
+const switchVehicle = async (id: string) => {
+    if (!simulator || vehicles.switching || !VEHICLES[id]) return;
+    vehicles.switching = true;
+    vehicles.error = "";
+    try {
+        if (await simulator.switchVehicle(VEHICLES[id])) vehicles.selectedId = id;
+    } catch (error) {
+        vehicles.error = error instanceof Error ? error.message : "Unable to load this vehicle.";
+    } finally {
+        vehicles.switching = false;
+    }
+};
+const applyGraphics = () => simulator?.setGraphics(settings.shadowsEnabled, settings.renderScale);
+
 onMounted(async () => {
     if (!canvasContainer.value) return;
 
@@ -165,6 +196,11 @@ onUnmounted(() => {
         <CitySelection v-if="state.showCityMenu" @citySelected="selectCity" />
 
         <Overlay
+            @vehicleSelected="switchVehicle"
+            @search="searchLocations"
+            @teleport="teleport"
+            @graphicsChanged="applyGraphics"
+            @touchGesture="simulator?.unlockTouchAudio()"
             @citySelected="selectCity"
             @toggleStreetNames="toggleStreetNames"
             @resetLocation="simulator && simulator.resetCarPosition()"

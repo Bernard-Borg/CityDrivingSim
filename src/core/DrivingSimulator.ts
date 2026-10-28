@@ -1,3 +1,4 @@
+import type { MapLocation } from "./LocationSearch";
 /**
  * DrivingSimulator types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -87,7 +88,7 @@ export class DrivingSimulator {
      */
     constructor(
         private container: HTMLElement,
-        readonly vehicleConfig: VehicleConfig = DEFAULT_VEHICLE,
+        public vehicleConfig: VehicleConfig = DEFAULT_VEHICLE,
     ) {
         // Initialize Three.js core
         this.scene = new THREE.Scene();
@@ -227,6 +228,49 @@ export class DrivingSimulator {
             throw error;
         } finally {
             this.loading = false;
+        }
+    }
+
+    /** Loads a replacement vehicle without rebuilding the city; preserves position and heading.
+     * The replacement starts parked with its ignition off. A failed load leaves the old car usable.
+     * @param config - Model and handling configuration for the replacement vehicle.
+     * @returns Whether the replacement was installed before the simulator was disposed.
+     */
+    async switchVehicle(config: VehicleConfig): Promise<boolean> {
+        if (!this.isLoaded || !this.car || this.disposed) return false;
+        if (this.vehicleConfig.id === config.id) return true;
+        const previous = this.car;
+        const replacement = new Car(this.scene, config);
+        replacement.setVisible(false);
+        let controls: CarControls | null = null;
+        try {
+            await replacement.ready;
+            if (this.disposed || this.car !== previous) {
+                replacement.dispose();
+                return false;
+            }
+            replacement.setWorld(this.sceneManager.collisions, (x, z, y) =>
+                this.sceneManager.getRoadState(x, z, y));
+            const position = previous.getPosition();
+            const direction = previous.getDirection();
+            replacement.setPosition(position.x, position.y, position.z);
+            replacement.setRotation(Math.atan2(direction.x, direction.z));
+            controls = new CarControls(replacement, this.camera, this.renderer.domElement);
+            controls.setPaused(this.paused || !!this.flight?.enabled);
+            this.carControls?.dispose();
+            previous.dispose();
+            this.car = replacement;
+            this.carControls = controls;
+            this.vehicleConfig = config;
+            replacement.setVisible(!this.flight?.enabled);
+            this.firstPersonView = false;
+            this.cameraReset = true;
+            this.physicsClock.reset();
+            return true;
+        } catch (error) {
+            controls?.dispose();
+            replacement.dispose();
+            throw error;
         }
     }
 
@@ -749,6 +793,40 @@ export class DrivingSimulator {
     /**
      * Moves the sunlight shadow volume with the camera while retaining the configured sun direction.
      */
+    /** Unlocks vehicle audio during a touch gesture. */
+    unlockTouchAudio(): void { this.carControls?.unlockTouchAudio(); }
+
+    /** Applies live renderer quality preferences without rebuilding the city.
+     * @param shadows - Whether shadow maps should be rendered.
+     * @param scale - Maximum device pixel ratio used for rendering (0.75?2).
+     */
+    setGraphics(shadows: boolean, scale = 1): void {
+        this.renderer.shadowMap.enabled = shadows;
+        this.renderer.shadowMap.needsUpdate = true;
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, Math.max(0.75, Math.min(2, scale))));
+        this.renderer.setSize(window.innerWidth, window.innerHeight);
+        this.scene.traverse(object => {
+            if (object instanceof THREE.Mesh) for (const material of Array.isArray(object.material) ? object.material : [object.material]) material.needsUpdate = true;
+        });
+    }
+
+    /** Searches locations in the active city only. */
+    searchLocations(query: string): MapLocation[] { return this.isLoaded ? this.sceneManager.searchLocations(query) : []; }
+
+    /** Teleports the active camera or stopped vehicle to a validated map location.
+     * @param location - Destination from coordinate input or the active city street search.
+     */
+    teleportTo(location: MapLocation): void {
+        if (!this.isLoaded || !this.car) return;
+        const position = this.sceneManager.teleportPosition(location.lat, location.lon, location.y);
+        this.carControls?.resetInput();
+        if (this.flight?.enabled) this.camera.position.copy(position).add(new THREE.Vector3(0, 3, 0));
+        else { this.car.resetPhysics(); this.car.setPosition(position.x, position.y, position.z); this.car.resetInterpolation(); this.cameraReset = true; }
+        this.physicsClock.reset();
+        this.sceneManager.update(performance.now() / 1000, this.flight?.enabled ? this.camera.position : position, true);
+        this.coordinateUpdateCallbacks.forEach(callback => callback(location.lat, location.lon));
+    }
+
     private updateSunlight(): void {
         if (!this.sunlight) return;
         // Anchor the shadow volume locally, snapped to shadow texels to limit shimmer.

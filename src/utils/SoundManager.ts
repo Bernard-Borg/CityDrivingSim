@@ -5,7 +5,6 @@
 
 /**
  * Sound Manager for handling game audio
- * Place audio files in public/sounds/ directory
  */
 export class SoundManager {
     private static instance: SoundManager | null = null;

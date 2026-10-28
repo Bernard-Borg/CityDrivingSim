@@ -1,3 +1,4 @@
+import { parseCoordinates, type MapLocation } from "../LocationSearch";
 /**
  * SceneManager types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -750,6 +751,35 @@ export class SceneManager {
     /**
      * Returns the identifier of the currently loaded city.
      */
+    /** Searches loaded street names or a decimal latitude/longitude pair within terrain bounds.
+     * @param query - Street name or latitude followed by longitude.
+     * @returns Teleport destinations within the loaded map.
+     */
+    searchLocations(query: string): MapLocation[] {
+        const coordinate = parseCoordinates(query);
+        if (coordinate) {
+            this.teleportPosition(coordinate.lat, coordinate.lon);
+            return [{ label: 'Coordinates', ...coordinate }];
+        }
+        return this.roadGenerator.findStreets(query).filter(item => !this.terrain || this.terrain.contains(item.position.x, item.position.z))
+            .map(item => ({ label: item.name, ...this.localToLatLon(item.position.x, item.position.z), y: item.position.y }));
+    }
+
+    /** Resolves a map-bounded destination to a vehicle-centre position on its road or terrain.
+     * @param lat - WGS84 latitude in degrees.
+     * @param lon - WGS84 longitude in degrees.
+     * @param y - Optional solved street-deck elevation in local metres.
+     * @returns A new local destination vector; rejects points outside loaded terrain.
+     */
+    teleportPosition(lat: number, lon: number, y?: number): THREE.Vector3 {
+        if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) throw new Error('Enter valid latitude and longitude.');
+        const point = this.latLonToLocal(lat, lon);
+        if (!this.terrain || !this.terrain.contains(point.x, point.z)) throw new Error('That location is outside the loaded map.');
+        const ground = this.terrain.sample(point.x, point.z).height;
+        const road = this.roadGenerator.getRoadState(point.x, point.z, (y ?? ground + 0.4), true);
+        return new THREE.Vector3(point.x, road.height + 0.4, point.z);
+    }
+
     getCurrentCity(): string {
         return this.currentCity;
     }

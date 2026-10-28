@@ -1,3 +1,4 @@
+import { useTouchStore } from "@/stores/touch";
 /**
  * FreeFlightControls types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -158,6 +159,7 @@ export class FreeFlightControls {
     private reset = () => {
         this.keys.clear();
         this.dragging = false;
+        useTouchStore().reset();
     };
     /**
      * Clears flight input when the document is hidden.
@@ -171,13 +173,17 @@ export class FreeFlightControls {
      * @param delta - Elapsed time in seconds.
      */
     update(delta: number): void {
+        const touch = useTouchStore();
+        if (this.enabled && !this.paused) { this.yaw -= touch.lookX * 0.005; this.pitch = THREE.MathUtils.clamp(this.pitch - touch.lookY * 0.005, -1.55, 1.55); touch.lookX = touch.lookY = 0; }
         if (!this.enabled || this.paused || document.hidden || delta > 0.25) return;
         /**
          * Reports whether any supplied keyboard code is currently held.
          *
          * @param keys - Keyboard codes to query.
          */
-        const held = (...keys: string[]) => (keys.some((key) => this.keys.has(key)) ? 1 : 0);
+        const codes: Record<string, string> = { w: 'KeyW', s: 'KeyS', a: 'KeyA', d: 'KeyD', q: 'KeyQ', e: 'Space', ' ': 'Space', shift: 'ShiftLeft' };
+        const held = (...keys: string[]) => (keys.some(key => this.keys.has(key) || touch.pressed[codes[key]]) ? 1 : 0);
+        this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, "YXZ"));
         this.camera.getWorldDirection(this.forward);
         this.right.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
         this.movement

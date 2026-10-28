@@ -840,6 +840,23 @@ export class RoadGenerator {
      * @param layer - OSM relative layer; zero and negative layers retain terrain placement.
      * @returns Wall base elevation in local metres.
      */
+    /** Finds up to eight named roads in the loaded map using case/accent-insensitive matching.
+     * @param query - Street name fragment.
+     * @returns Unique street names and positions on their solved road decks.
+     */
+    findStreets(query: string): Array<{ name: string; position: THREE.Vector3 }> {
+        const normalize = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        const needle = normalize(query.trim());
+        if (!needle) return [];
+        const found = new Map<string, { name: string; position: THREE.Vector3 }>();
+        for (const profile of this.profiles) {
+            const name = profile.input.name;
+            if (!name || !normalize(name).includes(needle) || found.has(name)) continue;
+            found.set(name, { name, position: profile.curve.getPoint(0.5).add(new THREE.Vector3(0, 0.4, 0)) });
+        }
+        return [...found.values()].sort((a, b) => Number(normalize(b.name) === needle) - Number(normalize(a.name) === needle) || a.name.localeCompare(b.name)).slice(0, 8);
+    }
+
     getWallHeight(x: number, z: number, layer: number): number {
         const ground = this.groundSample(x, z).height;
         if (layer <= 0) return ground;

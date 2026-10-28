@@ -4,6 +4,7 @@ import { useStateStore } from "@/stores/state";
 import { useSettingsStore } from "@/stores/settings";
 import { useCitiesStore } from "@/stores/cities";
 import { SoundManager } from "@/utils/SoundManager";
+import VehicleSelector from "./VehicleSelector.vue";
 import HudIcon from "./HudIcon.vue";
 
 const state = useStateStore();
@@ -13,6 +14,7 @@ const cityStore = useCitiesStore();
 const helpButton = ref<HTMLButtonElement | null>(null);
 
 const emit = defineEmits<{
+    (e: "vehicleSelected", id: string): void;
     (e: "help"): void;
     (e: "performance"): void;
     (e: "toggleIgnition"): void;
@@ -88,6 +90,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 }}</span>
             </button>
         </div>
+        <VehicleSelector @select="emit('vehicleSelected', $event)" />
         <div class="settings-tools">
             <button class="hud-button" :class="{ selected: state.creativeMode }" :aria-pressed="state.creativeMode"
                 title="Toggle creative mode (C)" @click="emit('creativeChanged', !state.creativeMode)">
@@ -278,5 +281,9 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
     .hud-tools {
         width: 210px;
     }
+}
+@media (pointer: coarse) {
+    .hud-tools { right: 12px; top: 158px; bottom: auto; width: 135px; max-height: 32vh; overflow-y: auto; }
+    .hud-button, .settings-tools .hud-button { font-size: 12px; min-height: 40px; }
 }
 </style>

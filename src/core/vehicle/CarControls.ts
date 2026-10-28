@@ -1,3 +1,4 @@
+import { useTouchStore } from "@/stores/touch";
 /**
  * CarControls types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -359,6 +360,15 @@ export class CarControls {
      * @param delta - Elapsed time in seconds.
      */
     update(delta: number): void {
+        const touch = useTouchStore();
+        if (touch.viewRequested) { this.firstPerson = !this.firstPerson; this.firstPersonYaw = this.firstPersonYawTarget = 0; touch.viewRequested = false; }
+        const keys = { ...this.keys, forward: this.keys.forward || !!touch.pressed.KeyW,
+            backward: this.keys.backward || !!touch.pressed.KeyS, left: this.keys.left || !!touch.pressed.KeyA,
+            right: this.keys.right || !!touch.pressed.KeyD, handbrake: this.keys.handbrake || !!touch.pressed.Space,
+            boost: this.keys.boost || !!touch.pressed.ShiftLeft };
+        if (this.firstPerson) this.firstPersonYawTarget = THREE.MathUtils.clamp(this.firstPersonYawTarget - touch.lookX * 0.005, -80 * Math.PI / 180, 80 * Math.PI / 180);
+        else { this.cameraAngleTarget -= touch.lookX * 0.005; this.cameraPitchTarget = THREE.MathUtils.clamp(this.cameraPitchTarget + touch.lookY * 0.005, 0.05, 1.3); }
+        touch.lookX = touch.lookY = 0;
         // Smooth camera angles to reduce jank
         this.cameraAngle = THREE.MathUtils.damp(
             this.cameraAngle,
@@ -380,15 +390,15 @@ export class CarControls {
         );
         // Throttle with smoother input response
         const speed = this.car.getSpeed();
-        const opposingPedals = this.keys.forward && this.keys.backward;
+        const opposingPedals = keys.forward && keys.backward;
         const changingDirection =
-            (this.keys.backward && speed > 0.1) || (this.keys.forward && speed < -0.1);
-        const handbrake = this.keys.brake || this.keys.handbrake;
+            (keys.backward && speed > 0.1) || (keys.forward && speed < -0.1);
+        const handbrake = keys.brake || keys.handbrake;
         let targetThrottle = 0;
         if (this.focused && !changingDirection && !opposingPedals && !handbrake) {
-            if (this.keys.forward) {
+            if (keys.forward) {
                 targetThrottle = 1;
-            } else if (this.keys.backward) {
+            } else if (keys.backward) {
                 targetThrottle = -1; // Reverse throttle
             }
         }
@@ -396,7 +406,7 @@ export class CarControls {
         // S/Down brakes forward travel before engaging reverse; W/Up brakes reverse travel.
         const targetBrake = changingDirection || opposingPedals ? 1 : 0;
 
-        if (targetThrottle !== 0 && this.car.getEngineState() === "off") this.toggleIgnition();
+        if (targetThrottle !== 0 && this.car.getEngineState() === "off") this.toggleIgnition(true);
 
         // Smooth throttle and brake
         const throttleRate =
@@ -408,7 +418,7 @@ export class CarControls {
         this.brakeInput = targetBrake;
 
         // Steering input (speed-dependent)
-        const rawSteer = (this.keys.left ? 1 : 0) + (this.keys.right ? -1 : 0);
+        const rawSteer = (keys.left ? 1 : 0) + (keys.right ? -1 : 0);
 
         const targetSteer = rawSteer;
         const reversingSteer = targetSteer * this.steeringInput < 0;
@@ -432,7 +442,7 @@ export class CarControls {
         this.car.setHandbrake(handbrake);
 
         // Boost
-        this.car.setBoost(this.keys.boost && this.car.getBoostAmount() > 0);
+        this.car.setBoost(keys.boost && this.car.getBoostAmount() > 0);
     }
 
     /**
@@ -464,6 +474,9 @@ export class CarControls {
     /**
      * Attempts to resume audio contexts following a browser user gesture.
      */
+    /** Resumes vehicle audio synchronously from a touch gesture. */
+    unlockTouchAudio(): void { this.unlockAudio(); }
+
     private unlockAudio(): void {
         this.audioUnlocked = true;
         this.engineSoundGenerator.unlock();
@@ -473,9 +486,9 @@ export class CarControls {
     /**
      * Toggles ignition between starting and off; the controls wrapper also coordinates ignition audio.
      */
-    toggleIgnition(): void {
+    toggleIgnition(preserveInput = false): void {
         if (this.paused) return;
-        this.resetInput();
+        if (!preserveInput) this.resetInput();
         this.silenceAudio();
         const state = this.car.toggleIgnition();
         if (state === "starting") {
@@ -511,6 +524,7 @@ export class CarControls {
      * Clears held keys and filtered values and releases vehicle control requests.
      */
     resetInput(): void {
+        useTouchStore().reset();
         for (const key of Object.keys(this.keys) as Array<keyof InputState>) this.keys[key] = false;
         this.throttleInput = this.brakeInput = this.steeringInput = 0;
         this.mouse.isDown = false;
