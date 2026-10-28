@@ -4,6 +4,7 @@ import { useStateStore } from "@/stores/state";
 import { useSettingsStore } from "@/stores/settings";
 import { useCitiesStore } from "@/stores/cities";
 import { SoundManager } from "@/utils/SoundManager";
+import CarRadio from "./CarRadio.vue";
 import VehicleSelector from "./VehicleSelector.vue";
 import HudIcon from "./HudIcon.vue";
 
@@ -91,6 +92,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
             </button>
         </div>
         <VehicleSelector @select="emit('vehicleSelected', $event)" />
+        <CarRadio v-if="!state.creativeMode" />
         <div class="settings-tools">
             <button class="hud-button" :class="{ selected: state.creativeMode }" :aria-pressed="state.creativeMode"
                 title="Toggle creative mode (C)" @click="emit('creativeChanged', !state.creativeMode)">

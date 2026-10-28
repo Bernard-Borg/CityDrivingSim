@@ -65,6 +65,10 @@ export interface VehicleConfig {
         maxYawRate: number;
         /** Base lateral acceleration budget in metres per second squared, scaled by surface grip. */
         cornerGrip: number;
+        /** Tyre traction multiplier applied to surface grip for cornering, braking and drive forces.
+         * A value of 1 uses the surface baseline; higher values increase grip.
+         */
+        gripMultiplier: number;
         /** Rate in inverse seconds at which yaw speed approaches the assisted target. */
         yawDamping: number;
         /** Constant rolling deceleration in metres per second squared. */
@@ -168,6 +172,7 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
         steeringAssist: 1,
         maxYawRate: 2.8,
         cornerGrip: 15.5,
+        gripMultiplier: 1.1,
         yawDamping: 0.9,
         rollingResistance: 0.15,
         engineResistance: 0.18,
@@ -228,6 +233,7 @@ const JEEP_GLADIATOR: VehicleConfig = {
         steeringAssist: 1,
         maxYawRate: 2.8,
         cornerGrip: 15.5,
+        gripMultiplier: 1.35,
         yawDamping: 0.9,
         rollingResistance: 0.15,
         engineResistance: 0.18,
@@ -288,6 +294,7 @@ const VW_GOLF_MK1: VehicleConfig = {
         steeringAssist: 1,
         maxYawRate: 2.8,
         cornerGrip: 15.5,
+        gripMultiplier: 1.05,
         yawDamping: 0.9,
         rollingResistance: 0.15,
         engineResistance: 0.18,

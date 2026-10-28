@@ -98,7 +98,7 @@ export class VehiclePhysics {
         const forward = this.forwardSpeed,
             lateral = this.vx * cos - this.vz * sin;
         const speed = Math.abs(forward),
-            surfaceGrip = clamp(grip, 0.15, 1.5);
+            surfaceGrip = clamp(grip, 0.15, 1.5) * Math.max(0.1, cfg.gripMultiplier);
         const pedal = Math.max(input.handbrake ? 1 : 0, clamp(input.brake, 0, 1));
         const throttle = clamp(input.throttle, -1, 1) * (1 - pedal);
         if (!input.boost) this.boostLocked = false;

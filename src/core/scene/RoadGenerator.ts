@@ -792,7 +792,7 @@ export class RoadGenerator {
         let result: RoadContact = {
             ...ground,
             surface: "ground",
-            grip: 0.55,
+            grip: 0.8,
             structure: "ground",
         };
         let best = Infinity;
