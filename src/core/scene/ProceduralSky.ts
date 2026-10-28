@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 /** Camera-centred daytime sky: one draw call, no textures or volumetric ray marching. */
 export class ProceduralSky {
-    static readonly sunDirection = new THREE.Vector3(200, 300, 100).normalize();
+    static readonly sunDirection = new THREE.Vector3(200, 75, 100).normalize();
     static readonly horizonColor = new THREE.Color(0xc4ddeb);
     private material = new THREE.ShaderMaterial({
         side: THREE.BackSide,
@@ -50,9 +50,11 @@ export class ProceduralSky {
                 float altitude = max(direction.y, 0.0);
                 vec3 color = mix(horizonColor, zenithColor, pow(altitude, 0.55));
                 float alignment = max(dot(direction, sunDirection), 0.0);
-                color += vec3(1.0, 0.77, 0.43) * pow(alignment, 32.0) * 0.18;
-                float disc = smoothstep(cos(0.0065), cos(0.0045), alignment);
-                color = mix(color, vec3(3.0, 2.7, 2.0), disc);
+                color += vec3(1.0, 0.77, 0.43) * pow(alignment, 48.0) * 0.32;
+                color += vec3(1.0, 0.85, 0.60) * pow(alignment, 1200.0) * 0.45;
+                float sunEdge = cos(0.009);
+                float sunAA = max(fwidth(alignment), 0.000001);
+                float disc = smoothstep(sunEdge - sunAA, sunEdge + sunAA, alignment);
 
                 // A distant cloud sheet, faded before its horizon projection becomes singular.
                 vec2 cloudUV = direction.xz / max(direction.y, 0.12) * 2.4;
@@ -63,6 +65,8 @@ export class ProceduralSky {
                 float sunward = cloudNoise(cloudUV + sunDirection.xz * 0.18);
                 vec3 cloudLight = cloudColor * (0.74 + 0.26 * smoothstep(0.45, 0.75, sunward));
                 color = mix(color, cloudLight, coverage * 0.94);
+                // Thin cloud attenuates the disc without erasing it completely.
+                color = mix(color, vec3(3.0, 2.7, 2.0), disc * (1.0 - coverage * 0.75));
                 gl_FragColor = vec4(color, 1.0);
                 #include <tonemapping_fragment>
                 #include <colorspace_fragment>

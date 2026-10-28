@@ -22,6 +22,7 @@ export class DrivingSimulator {
     private renderer: THREE.WebGLRenderer;
     private sceneManager: SceneManager;
     private sky: ProceduralSky;
+    private sunlight: THREE.DirectionalLight | null = null;
     private car: Car | null = null;
     private carControls: CarControls | null = null;
     private flight: FreeFlightControls | null = null;
@@ -102,12 +103,13 @@ export class DrivingSimulator {
                     (child) => child instanceof THREE.AmbientLight,
                 ).length === 0
             ) {
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                const ambientLight = new THREE.AmbientLight(0xdbe9ff, 0.22);
                 this.scene.add(ambientLight);
+                this.scene.add(new THREE.HemisphereLight(0xc6e1ff, 0x75664a, 0.65));
 
                 const directionalLight = new THREE.DirectionalLight(
-                    0xffffff,
-                    0.8,
+                    0xffebcf,
+                    2.4,
                 );
                 directionalLight.position.copy(ProceduralSky.sunDirection).multiplyScalar(375);
                 directionalLight.castShadow = true;
@@ -116,11 +118,15 @@ export class DrivingSimulator {
                 directionalLight.shadow.mapSize.height = 1024;
                 directionalLight.shadow.camera.near = 0.5;
                 directionalLight.shadow.camera.far = 1000;
-                directionalLight.shadow.camera.left = -500;
-                directionalLight.shadow.camera.right = 500;
-                directionalLight.shadow.camera.top = 500;
-                directionalLight.shadow.camera.bottom = -500;
+                directionalLight.shadow.camera.left = -100;
+                directionalLight.shadow.camera.right = 100;
+                directionalLight.shadow.camera.top = 100;
+                directionalLight.shadow.camera.bottom = -100;
+                directionalLight.shadow.bias = -0.00015;
+                directionalLight.shadow.normalBias = 0.12;
+                this.sunlight = directionalLight;
                 this.scene.add(directionalLight);
+                this.scene.add(directionalLight.target);
             }
 
             // Add fog for depth
@@ -168,6 +174,7 @@ export class DrivingSimulator {
             await useLoadingStore().stage("Rendering first frame");
             if (this.disposed) return;
             this.sky.update(this.camera, performance.now() / 1000);
+            this.updateSunlight();
             this.renderer.render(this.scene, this.camera);
             this.lastFrame = performance.now();
             this.physicsClock.reset();
@@ -399,6 +406,7 @@ export class DrivingSimulator {
         }
 
         this.sky.update(this.camera, nowFrame / 1000);
+        this.updateSunlight();
         this.renderer.render(this.scene, this.camera);
         if (this.performanceEnabled) {
             this.peakFrameMs = Math.max(this.peakFrameMs, elapsed * 1000);
@@ -556,6 +564,16 @@ export class DrivingSimulator {
         this.camera.updateProjectionMatrix();
         this.renderer.setSize(window.innerWidth, window.innerHeight);
     };
+
+    private updateSunlight(): void {
+        if (!this.sunlight) return;
+        // Anchor the shadow volume locally, snapped to shadow texels to limit shimmer.
+        const texel = 200 / this.sunlight.shadow.mapSize.width;
+        const target = this.sunlight.target.position;
+        target.copy(this.camera.position).divideScalar(texel).floor().multiplyScalar(texel);
+        this.sunlight.position.copy(target).addScaledVector(ProceduralSky.sunDirection, 375);
+        this.sunlight.target.updateMatrixWorld();
+    }
 
     dispose(): void {
         if (this.disposed) return;
