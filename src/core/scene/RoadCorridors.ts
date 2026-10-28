@@ -17,7 +17,7 @@ export class RoadCorridors {
                 const a = profile.curve.getPoint(i / count), b = profile.curve.getPoint((i + 1) / count);
                 const dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz);
                 if (length < 1e-6) continue;
-                const nx = -dz / length, nz = dx / length, half = profile.input.halfWidth;
+                const nx = -dz / length, nz = dx / length, half = Math.max(profile.halfWidthAt(i / count), profile.halfWidthAt((i + 1) / count));
                 const polygon = [{ x: a.x + nx * half, z: a.z + nz * half }, { x: b.x + nx * half, z: b.z + nz * half },
                     { x: b.x - nx * half, z: b.z - nz * half }, { x: a.x - nx * half, z: a.z - nz * half }];
                 let area = 0; for (let j = 0; j < 4; j++) area += polygon[j].x * polygon[(j + 1) % 4].z - polygon[(j + 1) % 4].x * polygon[j].z;

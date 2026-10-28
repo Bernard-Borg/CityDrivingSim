@@ -10,7 +10,7 @@ import { RoadCorridors } from './RoadCorridors';
 import { SpatialGrid, closestPoint, CollisionWorld } from './CollisionWorld';
 
 export const ROAD_HEIGHT = 0.06;
-interface RoadSegment { a: THREE.Vector3; b: THREE.Vector3; halfWidth: number; surface: string; profile: RoadProfile; }
+interface RoadSegment { a: THREE.Vector3; b: THREE.Vector3; halfWidth: number; surface: string; profile: RoadProfile; startT?: number; endT?: number; }
 
 export class RoadGenerator {
     private terrain: ElevationTerrain | null = null;
@@ -221,7 +221,7 @@ export class RoadGenerator {
             const id = String(feature.id ?? p['@id'] ?? `road-${index}`);
             const lanes = Math.max(1, parseInt(String(p.lanes ?? 1), 10) || 1);
             const parsedHeadroom = parseFloat(String(p.maxheight ?? ''));
-            inputs.push({ id, points: feature.geometry.coordinates.map(([lon, lat]) => this.latLonToLocal(lat, lon, centerLat, centerLon)),
+            inputs.push({ id, name: typeof p.name === 'string' ? p.name : undefined, points: feature.geometry.coordinates.map(([lon, lat]) => this.latLonToLocal(lat, lon, centerLat, centerLon)),
                 kind: tunnel || layer < 0 ? 'tunnel' : bridge || layer > 0 ? 'bridge' : 'ground', layer,
                 halfWidth: this.getRoadWidth(highway, lanes) / 2, lanes, surface: String(p.surface ?? 'asphalt').toLowerCase(),
                 headroom: Number.isFinite(parsedHeadroom) && parsedHeadroom >= 2 ? parsedHeadroom : undefined });
@@ -341,8 +341,8 @@ export class RoadGenerator {
         };
         for (let i = 0; i < segments; i++) {
             const a = curve.getPoint(i / segments), b = curve.getPoint((i + 1) / segments);
-            const pa = new THREE.Vector3(-curve.getTangent(i / segments).z, 0, curve.getTangent(i / segments).x).normalize();
-            const pb = new THREE.Vector3(-curve.getTangent((i + 1) / segments).z, 0, curve.getTangent((i + 1) / segments).x).normalize();
+            const pa = profile.perpendicularAt(i / segments);
+            const pb = profile.perpendicularAt((i + 1) / segments);
             const ga = this.groundSample(a.x, a.z).height, gb = this.groundSample(b.x, b.z).height;
             const lowered = Math.min(a.y - ga, b.y - gb) < -0.02;
             const portal = profile.input.kind === 'tunnel' && Math.min(ga - a.y, gb - b.y) < profile.headroom + this.settings.tunnelCover;
@@ -357,8 +357,8 @@ export class RoadGenerator {
             const raised = Math.max(a.y - ga, b.y - gb) > 0.2;
             if (profile.input.kind === 'ground' && !lowered && !raised) continue;
             for (const side of [-1, 1]) {
-                const ea = a.clone().addScaledVector(pa, side * width / 2);
-                const eb = b.clone().addScaledVector(pb, side * width / 2);
+                const ea = a.clone().addScaledVector(pa, side * profile.halfWidthAt(i / segments));
+                const eb = b.clone().addScaledVector(pb, side * profile.halfWidthAt((i + 1) / segments));
                 ea.y = profile.sample(ea.x, ea.z).height; eb.y = profile.sample(eb.x, eb.z).height;
                 if (profile.input.kind === 'bridge' || profile.input.kind === 'ground' && raised) {
                     const lowA = profile.input.kind === 'bridge' ? ea.y - this.settings.deckThickness : Math.min(ga, ea.y - this.settings.deckThickness);
@@ -382,8 +382,8 @@ export class RoadGenerator {
                 }
             }
             if (profile.input.kind === 'bridge') {
-                const la = a.clone().addScaledVector(pa, width / 2), ra = a.clone().addScaledVector(pa, -width / 2);
-                const lb = b.clone().addScaledVector(pb, width / 2), rb = b.clone().addScaledVector(pb, -width / 2);
+                const la = a.clone().addScaledVector(pa, profile.halfWidthAt(i / segments)), ra = a.clone().addScaledVector(pa, -profile.halfWidthAt(i / segments));
+                const lb = b.clone().addScaledVector(pb, profile.halfWidthAt((i + 1) / segments)), rb = b.clone().addScaledVector(pb, -profile.halfWidthAt((i + 1) / segments));
                 for (const p of [la, ra, lb, ra, rb, lb]) vertices.push(p.x, profile.sample(p.x, p.z).height - this.settings.deckThickness, p.z);
             }
         }
@@ -408,7 +408,7 @@ export class RoadGenerator {
         const points = curve.getPoints(sampleCount);
         this.roadSurfaceSamples.push({ points, halfWidth: roadWidth * 0.5, surface, profile: this.activeProfile! });
         for (let i = 1; i < points.length; i++) {
-            const segment = { a: points[i - 1], b: points[i], halfWidth: roadWidth * 0.5, surface, profile: this.activeProfile! };
+            const segment = { a: points[i - 1], b: points[i], halfWidth: Math.max(this.activeProfile!.halfWidthAt((i - 1) / sampleCount), this.activeProfile!.halfWidthAt(i / sampleCount)), surface, profile: this.activeProfile!, startT: (i - 1) / sampleCount, endT: i / sampleCount };
             this.surfaceGrid.insert(segment,
                 Math.min(segment.a.x, segment.b.x) - segment.halfWidth,
                 Math.min(segment.a.z, segment.b.z) - segment.halfWidth,
@@ -432,7 +432,10 @@ export class RoadGenerator {
         for (const road of this.surfaceGrid.at(x, z)) {
             const q = closestPoint({ x, z }, road.a, road.b);
             const distance = Math.hypot(x - q.x, z - q.z);
-            if (distance > road.halfWidth || checked.has(road.profile)) continue;
+            const segmentLength = Math.hypot(road.b.x - road.a.x, road.b.z - road.a.z);
+            const fraction = segmentLength ? Math.hypot(q.x - road.a.x, q.z - road.a.z) / segmentLength : 0;
+            const width = road.profile.halfWidthAt(THREE.MathUtils.lerp(road.startT ?? 0, road.endT ?? 1, fraction));
+            if (distance > width || checked.has(road.profile)) continue;
             checked.add(road.profile);
             const contact = road.profile.sample(x, z);
             const verticalDistance = Math.abs(y - 0.4 - contact.height);
@@ -442,6 +445,24 @@ export class RoadGenerator {
             if (score < best) { best = score; result = contact; }
         }
         return result;
+    }
+
+    getWallHeight(x: number, z: number, layer: number): number {
+        const ground = this.groundSample(x, z).height;
+        if (layer <= 0) return ground;
+        let height = ground, best = Infinity;
+        // Walls may sit beside the asphalt. Search nearby bridge segments on their own layer.
+        const candidates = new Set(this.surfaceGrid.at(x, z));
+        for (const dx of [-20, 0, 20]) for (const dz of [-20, 0, 20])
+            for (const road of this.surfaceGrid.at(x + dx, z + dz)) candidates.add(road);
+        for (const road of candidates) {
+            if (road.profile.input.kind !== 'bridge' || road.profile.input.layer !== layer) continue;
+            const q = closestPoint({ x, z }, road.a, road.b);
+            const distance = Math.hypot(x - q.x, z - q.z);
+            if (distance > road.halfWidth + 8 || distance >= best) continue;
+            best = distance; height = road.profile.sample(q.x, q.z).height;
+        }
+        return height;
     }
 
     cutTerrainGeometry(geometry: THREE.BufferGeometry): void {
@@ -490,11 +511,11 @@ export class RoadGenerator {
             const tangent = curve.getTangent(t);
 
             // Calculate perpendicular vector (for road width) - normalize to ensure consistent width
-            const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+            const perp = this.activeProfile?.perpendicularAt(t) ?? new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
             // Calculate left and right edge points
-            const leftPoint = point.clone().add(perp.clone().multiplyScalar(halfWidth));
-            const rightPoint = point.clone().add(perp.clone().multiplyScalar(-halfWidth));
+            const leftPoint = point.clone().add(perp.clone().multiplyScalar(this.activeProfile?.halfWidthAt(t) ?? halfWidth));
+            const rightPoint = point.clone().add(perp.clone().multiplyScalar(-(this.activeProfile?.halfWidthAt(t) ?? halfWidth)));
 
             // Add vertices (left edge)
             vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
@@ -565,17 +586,17 @@ export class RoadGenerator {
         curveLength: number
     ): void {
         const profile = this.activeProfile!;
-        const vertices: number[] = [], half = roadWidth / 2, height = profile.headroom;
+        const vertices: number[] = [], height = profile.headroom;
         const face = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => {
             for (const p of [a, b, c, c, b, d]) vertices.push(p.x, p.y, p.z);
         };
         for (let i = 0; i < numSegments; i++) {
             const a = curve.getPoint(i / numSegments), b = curve.getPoint((i + 1) / numSegments);
-            const na = new THREE.Vector3(-curve.getTangent(i / numSegments).z, 0, curve.getTangent(i / numSegments).x).normalize();
-            const nb = new THREE.Vector3(-curve.getTangent((i + 1) / numSegments).z, 0, curve.getTangent((i + 1) / numSegments).x).normalize();
+            const na = profile.perpendicularAt(i / numSegments);
+            const nb = profile.perpendicularAt((i + 1) / numSegments);
             const edges: THREE.Vector3[] = [];
             for (const side of [-1, 1]) {
-                const ea = a.clone().addScaledVector(na, half * side), eb = b.clone().addScaledVector(nb, half * side);
+                const ea = a.clone().addScaledVector(na, profile.halfWidthAt(i / numSegments) * side), eb = b.clone().addScaledVector(nb, profile.halfWidthAt((i + 1) / numSegments) * side);
                 ea.y = profile.sample(ea.x, ea.z).height; eb.y = profile.sample(eb.x, eb.z).height;
                 const ta = ea.clone().add(new THREE.Vector3(0, height, 0)), tb = eb.clone().add(new THREE.Vector3(0, height, 0));
                 face(ea, eb, ta, tb); edges.push(ta, tb);
@@ -694,10 +715,10 @@ export class RoadGenerator {
                 const t = i / numSegments;
                 const point = curve.getPoint(t);
                 const tangent = curve.getTangent(t);
-                const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                const perp = this.activeProfile?.perpendicularAt(t) ?? new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
                 // Calculate position along the edge
-                const edgePoint = point.clone().add(perp.clone().multiplyScalar(halfWidth * offsetMultiplier));
+                const edgePoint = point.clone().add(perp.clone().multiplyScalar((this.activeProfile?.halfWidthAt(t) ?? halfWidth) * offsetMultiplier));
                 edgePoint.y = lineHeight;
 
                 // Create two vertices for the width of the line (ribbon)
@@ -783,7 +804,7 @@ export class RoadGenerator {
                 const t = j / numSegments;
                 const point = curve.getPoint(t);
                 const tangent = curve.getTangent(t);
-                const perp = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                const perp = this.activeProfile?.perpendicularAt(t) ?? new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
 
                 // Accumulate arc length (distance from previous point)
                 if (lastPoint !== null) {
@@ -792,11 +813,11 @@ export class RoadGenerator {
                 lastPoint = point;
 
                 // Calculate position along divider line
-                const dividerPoint = point.clone().add(perp.clone().multiplyScalar(offsetFromCenter));
+                const dividerPoint = point.clone().add(perp.clone().multiplyScalar(offsetFromCenter * (this.activeProfile?.halfWidthAt(t) ?? roadWidth / 2) / (roadWidth / 2)));
                 dividerPoint.y = dividerHeight;
 
                 // Create two vertices for the width of the divider (ribbon)
-                const halfWidth = dividerWidth / 2;
+                const halfWidth = dividerWidth / 2 * (this.activeProfile?.dividerScaleAt(t) ?? 1);
                 const leftEdge = dividerPoint.clone().add(perp.clone().multiplyScalar(-halfWidth));
                 const rightEdge = dividerPoint.clone().add(perp.clone().multiplyScalar(halfWidth));
 

@@ -14,7 +14,7 @@ export class DecorGenerator {
     private batches = new Map<string, { shape: Shape; color: number; matrices: THREE.Matrix4[] }>();
     constructor(private scene: THREE.Scene, private collisions: CollisionWorld) { this.group.userData.cullDistance = 500; this.busStops.group.userData.cullDistance = 150; this.group.name = 'Street furniture'; scene.add(this.group); scene.add(this.busStops.group); }
     generate(data: GeoJSON, project: (lat: number, lon: number) => Point,
-        heightAt: (x: number, z: number, layer: number) => number, contains: (x: number, z: number) => boolean): void {
+        heightAt: (x: number, z: number, layer: number, wall: boolean) => number, contains: (x: number, z: number) => boolean): void {
         this.clear();
         let generated = 0;
         const metal = 0x454e52, wood = 0x9c714b, stone = 0xb8afa0, green = 0x46643c, blue = 0x3c779b;
@@ -25,7 +25,7 @@ export class DecorGenerator {
             if (!coords?.length) continue;
             const points = coords.map(([lon, lat]) => project(lat, lon));
             const layer = Number(p.layer) || 0;
-            const height = (pt: Point) => heightAt(pt.x, pt.z, layer);
+            const height = (pt: Point) => heightAt(pt.x, pt.z, layer, ['wall', 'retaining_wall', 'fence', 'guard_rail', 'chain'].includes(String(p.barrier)) || p.historic === 'citywalls');
             const isBusStop = p.highway === 'bus_stop' || (p.public_transport === 'platform' && p.bus === 'yes');
             const platform = p.highway === 'platform' || p.public_transport === 'platform';
             const barrier = String(p.barrier ?? (p.historic === 'citywalls' ? 'wall' : ''));

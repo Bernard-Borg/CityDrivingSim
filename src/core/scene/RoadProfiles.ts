@@ -27,7 +27,7 @@ export const DEFAULT_ROAD_LEVELS: RoadLevelSettings = {
 };
 export interface RoadInput {
     id: string; points: Point[]; kind: RoadKind; layer: number;
-    halfWidth: number; surface: string; lanes?: number; headroom?: number;
+    halfWidth: number; name?: string; surface: string; lanes?: number; headroom?: number;
 }
 interface Node extends Point {
     ground: number; height: number;
@@ -45,10 +45,39 @@ export class RoadProfile {
     readonly nodes: Node[];
     readonly curve: THREE.Curve<THREE.Vector3>;
     readonly headroom: number;
+    startLaneCount?: number;
+    endLaneCount?: number;
+    startHalfWidth: number;
+    endHalfWidth: number;
+    startNormal?: THREE.Vector3;
+    endNormal?: THREE.Vector3;
+    private horizontalLength = 0;
+    halfWidthAt(t: number): number {
+        const span = Math.min(25, this.horizontalLength / 2);
+        const start = 1 - smooth(t * this.horizontalLength / Math.max(0.01, span));
+        const end = 1 - smooth((1 - t) * this.horizontalLength / Math.max(0.01, span));
+        return this.input.halfWidth + (this.startHalfWidth - this.input.halfWidth) * start
+            + (this.endHalfWidth - this.input.halfWidth) * end;
+    }
+    dividerScaleAt(t: number): number {
+        const start = this.startLaneCount !== undefined && this.startLaneCount !== this.input.lanes ? smooth(t * this.horizontalLength / 15) : 1;
+        const end = this.endLaneCount !== undefined && this.endLaneCount !== this.input.lanes ? smooth((1 - t) * this.horizontalLength / 15) : 1;
+        return Math.min(start, end);
+    }
+    perpendicularAt(t: number): THREE.Vector3 {
+        const tangent = this.curve.getTangent(t);
+        const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+        const blend = Math.min(0.5, 15 / Math.max(1, this.horizontalLength));
+        if (this.startNormal && t < blend) normal.lerp(this.startNormal, 1 - smooth(t / blend));
+        if (this.endNormal && t > 1 - blend) normal.lerp(this.endNormal, 1 - smooth((1 - t) / blend));
+        return normal.normalize();
+    }
     private grid = new SpatialGrid<Segment>();
     private segments: Segment[] = [];
     constructor(readonly input: RoadInput, nodes: Node[], private groundAt: (x: number, z: number) => SurfaceSample, settings: RoadLevelSettings) {
         this.nodes = nodes;
+        this.startHalfWidth = this.endHalfWidth = input.halfWidth;
+        for (let i = 1; i < nodes.length; i++) this.horizontalLength += Math.hypot(nodes[i].x - nodes[i - 1].x, nodes[i].z - nodes[i - 1].z);
         this.headroom = settings.overrides[input.id]?.headroom ?? input.headroom ?? settings.tunnelHeadroom;
         const profile = this;
         const path = new THREE.CatmullRomCurve3(nodes.map(p => new THREE.Vector3(p.x, 0, p.z)), false, 'centripetal');
@@ -94,6 +123,28 @@ export class RoadProfile {
                 slopeX = (b.height - a.height) * dx / length2; slopeZ = (b.height - a.height) * dz / length2;
             }
         }
+        // Both sides of a join use the same cross-section plane, even where the
+        // terrain slopes across a wider carriageway. This removes vertical edge seams.
+        for (const start of [true, false]) {
+            const normal = start ? this.startNormal : this.endNormal;
+            if (!normal) continue;
+            const end = this.nodes[start ? 0 : this.nodes.length - 1];
+            const neighbor = this.nodes[start ? 1 : this.nodes.length - 2];
+            const direction = start ? 1 : -1;
+            const along = ((x - end.x) * normal.z - (z - end.z) * normal.x) * direction;
+            const span = Math.min(15, this.horizontalLength / 3);
+            if (along < -0.01 || along >= span) continue;
+            const blend = 1 - smooth(Math.max(0, along) / Math.max(span, 0.001));
+            const grade = (neighbor.height - end.height) / Math.max(0.001, Math.hypot(neighbor.x - end.x, neighbor.z - end.z));
+            if (Math.abs(along) < 1e-6) {
+                height = end.height;
+                slopeX = normal.z * direction * grade; slopeZ = -normal.x * direction * grade;
+                break;
+            }
+            height = THREE.MathUtils.lerp(height, end.height + Math.max(0, along) * grade, blend);
+            slopeX = THREE.MathUtils.lerp(slopeX, normal.z * direction * grade, blend);
+            slopeZ = THREE.MathUtils.lerp(slopeZ, -normal.x * direction * grade, blend);
+        }
         const surface = this.input.surface;
         const grip = ['gravel', 'dirt', 'ground', 'sand'].includes(surface) ? 0.6 : surface === 'cobblestone' ? 0.8 : 1;
         return { height, slopeX, slopeZ, surface, grip, structure: this.input.kind, roadId: this.input.id,
@@ -135,6 +186,7 @@ export class RoadProfileNetwork {
             }
         }
         this.plan('bridge'); this.plan('tunnel');
+        this.coupleBridgeDecks();
         this.separateCrossings();
         this.limitGrades('bridge'); this.limitGrades('tunnel');
         // Tunnel exits can share nodes with bridges. Reconcile both networks together
@@ -164,7 +216,93 @@ export class RoadProfileNetwork {
             }
         }
         for (const [node, values] of corrections) node.height += values.reduce((a, b) => a + b, 0) / values.length;
+        this.straightenBridgeSpans();
         this.blendApproaches();
+        this.configureJoins();
+    }
+
+    /** Local constraints between sustained parallel carriageways of the same named bridge. */
+    private straightenBridgeSpans(): void {
+        const owners = new Map<Node, Set<RoadProfile>>();
+        for (const p of this.profiles) for (const n of p.nodes) {
+            const set = owners.get(n) ?? new Set<RoadProfile>(); set.add(p); owners.set(n, set);
+        }
+        // Keep junctions and explicit height controls, but remove local bumps between them.
+        const heights = new Map<Node, number>();
+        for (const p of this.profiles) {
+            if (p.input.kind !== 'bridge') continue;
+            const anchors = p.nodes.map((n, i) => i === 0 || i === p.nodes.length - 1 || owners.get(n)!.size > 1 ? i : -1).filter(i => i >= 0);
+            for (let j = 1; j < anchors.length; j++) {
+                const a = anchors[j - 1], b = anchors[j], distances = [0];
+                for (let i = a + 1; i <= b; i++) distances.push(distances[distances.length - 1] + Math.hypot(p.nodes[i].x - p.nodes[i - 1].x, p.nodes[i].z - p.nodes[i - 1].z));
+                const total = distances[distances.length - 1];
+                for (let i = a + 1; i < b; i++) heights.set(p.nodes[i], THREE.MathUtils.lerp(p.nodes[a].height, p.nodes[b].height, distances[i - a] / Math.max(total, 0.001)));
+            }
+        }
+        for (const [n, height] of heights) n.height = height;
+    }
+
+    private configureJoins(): void {
+        const ends = new Map<Node, Array<{ p: RoadProfile; start: boolean }>>();
+        for (const p of this.profiles) for (const start of [true, false]) {
+            const node = p.nodes[start ? 0 : p.nodes.length - 1];
+            const list = ends.get(node) ?? []; list.push({ p, start }); ends.set(node, list);
+        }
+        for (const list of ends.values()) {
+            if (list.length !== 2) continue; // Branching intersections retain their own widths.
+            const normals = list.map(({ p, start }) => {
+                const t = p.curve.getTangent(start ? 0 : 1);
+                return new THREE.Vector3(-t.z, 0, t.x).normalize();
+            });
+            const dot = normals[0].dot(normals[1]);
+            if (Math.abs(dot) < 0.75) continue;
+            const shared = normals[0].clone().addScaledVector(normals[1], dot < 0 ? -1 : 1).normalize();
+            const width = Math.max(...list.map(e => e.p.input.halfWidth));
+            list.forEach(({ p, start }, i) => {
+                const normal = shared.clone().multiplyScalar(i === 1 && dot < 0 ? -1 : 1);
+                if (start) { p.startLaneCount = list[1 - i].p.input.lanes; p.startHalfWidth = width; p.startNormal = normal; }
+                else { p.endLaneCount = list[1 - i].p.input.lanes; p.endHalfWidth = width; p.endNormal = normal; }
+            });
+        }
+    }
+
+    private coupleBridgeDecks(): void {
+        const grid = new SpatialGrid<Segment>(40);
+        const bridges = this.segments.filter(s => s.road.input.kind === 'bridge');
+        for (const s of bridges) grid.insert(s, Math.min(s.a.x, s.b.x) - 20, Math.min(s.a.z, s.b.z) - 20,
+            Math.max(s.a.x, s.b.x) + 20, Math.max(s.a.z, s.b.z) + 20);
+        const pairs = new Map<string, { links: Array<[Node, Node, number]>; length: number }>();
+        for (const a of bridges) {
+            const input = a.road.input;
+            if (!input.name || this.settings.overrides[input.id]) continue;
+            const dx = a.b.x - a.a.x, dz = a.b.z - a.a.z, length = Math.hypot(dx, dz);
+            if (!length) continue;
+            const seen = new Set<RoadProfile>();
+            for (const b of grid.at(a.a.x, a.a.z)) {
+                const other = b.road.input;
+                if (other.id <= input.id || seen.has(b.road) || input.layer !== other.layer
+                    || input.name !== other.name || this.settings.overrides[other.id]) continue;
+                const bx = b.b.x - b.a.x, bz = b.b.z - b.a.z, bl = Math.hypot(bx, bz);
+                if (!bl || Math.abs((dx * bx + dz * bz) / (length * bl)) < 0.985) continue;
+                const along = ((a.a.x - b.a.x) * bx + (a.a.z - b.a.z) * bz) / (bl * bl);
+                if (along < 0 || along > 1) continue;
+                const q = closestPoint(a.a, b.a, b.b), distance = Math.hypot(q.x - a.a.x, q.z - a.a.z);
+                if (distance < 2 || distance > Math.min(20, input.halfWidth + other.halfWidth + 6)) continue;
+                seen.add(b.road);
+                const n = along < 0.5 ? b.a : b.b;
+                const longitudinal = Math.abs((n.x - a.a.x) * dx + (n.z - a.a.z) * dz) / length;
+                const key = `${input.id}|${other.id}`;
+                const pair = pairs.get(key) ?? { links: [], length: 0 };
+                pair.links.push([a.a, n, longitudinal]); pair.length += length; pairs.set(key, pair);
+            }
+        }
+        for (const pair of pairs.values()) {
+            if (pair.length < 25 || pair.links.length < 5) continue;
+            for (const [a, b, length] of pair.links) {
+                a.links.push({ node: b, length, kind: 'bridge' });
+                b.links.push({ node: a, length, kind: 'bridge' });
+            }
+        }
     }
 
     private node(x: number, z: number, road: RoadInput, groundAt: (x: number, z: number) => SurfaceSample): Node {
@@ -216,7 +354,7 @@ export class RoadProfileNetwork {
                 else if (anchors.length === 1) base = anchors[0].y;
                 else if (anchors.length === 2) base = (anchors[0].y * anchors[1].d + anchors[1].y * anchors[0].d) / (anchors[0].d + anchors[1].d);
                 const level = Math.max(1, ...node.layers.map(layer => Math.abs(layer)));
-                if (kind === 'bridge') node.height = Math.max(base, node.ground + clearance * level);
+                if (kind === 'bridge') node.height = base + clearance;
                 else {
                     const blend = smooth((distance.get(node) ?? this.settings.rampLength) / Math.min(this.settings.rampLength, maxDistance));
                     const depth = Math.min(Math.max(clearance * level, this.settings.tunnelHeadroom + this.settings.tunnelCover),

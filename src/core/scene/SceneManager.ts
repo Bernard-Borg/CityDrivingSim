@@ -266,7 +266,8 @@ export class SceneManager {
         const scenery: GeoJSON = { type: "FeatureCollection", features: [...(decorData?.features ?? []),
             ...(naturalData?.features.filter(f => f.properties.natural === "shrub") ?? [])] };
         await report("Generating street furniture", `${scenery.features.length.toLocaleString()} mapped features`);
-        this.decor.generate(scenery, project, (x, z, layer) => {
+        this.decor.generate(scenery, project, (x, z, layer, wall) => {
+            if (wall) return this.roadGenerator.getWallHeight(x, z, layer);
             const ground = heightAt(x, z);
             const road = this.roadGenerator.getRoadState(x, z, ground + layer * 5 + 0.4, true);
             return road.roadId ? road.height : ground;
