@@ -728,6 +728,7 @@ export class SceneManager {
      */
     update(elapsed: number, position?: THREE.Vector3, force = false): void {
         this.water.update(elapsed);
+        this.buildingGenerator.update(elapsed);
         if (position) this.visibility.update(position, elapsed, force);
     }
 

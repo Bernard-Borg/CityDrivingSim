@@ -102,6 +102,8 @@ export function buildingStyle(p: Tags): BuildingStyle {
         p.amenity === "place_of_worship"
     )
         return "church";
+    if (type === "toilets" || p.amenity === "toilets") return "garage";
+    if (type === "supermarket" || p.shop === "supermarket" || p.shop === "kiosk") return "commercial";
     if (type === "ruins" || p.ruins === "yes") return "ruins";
     if (type === "construction") return "construction";
     if (["roof", "carport", "tent"].includes(type) || p.amenity === "shelter") return "canopy";
@@ -176,7 +178,7 @@ export function resolveBuildingAppearance(p: Tags, seed: number, theme: Building
     const smallWoodenHouse = ["allotment_house", "cabin", "hut"].includes(String(p.building));
     const material = String(
         p["building:material"] ??
-            (smallWoodenHouse ? "wood" : undefined) ??
+            (smallWoodenHouse ? "wood" : p.building === "office" ? "glass" : undefined) ??
             (style === "church" || style === "ruins"
                 ? "stone"
                 : style === "industrial"
@@ -208,7 +210,7 @@ export function resolveBuildingAppearance(p: Tags, seed: number, theme: Building
     const levels =
         Number.isFinite(taggedLevels) && taggedLevels > 0
             ? taggedLevels
-            : smallWoodenHouse
+            : smallWoodenHouse || p.building === "kiosk" || p.shop === "kiosk" || p.building === "supermarket" || p.shop === "supermarket"
               ? 1
               : defaults[style];
     const taggedHeight = parseFloat(String(p.height ?? ""));
@@ -222,6 +224,7 @@ export function resolveBuildingAppearance(p: Tags, seed: number, theme: Building
         p["roof:shape"] ??
             (p.building === "tent"
                 ? "pyramidal"
+                : smallWoodenHouse ? "gabled"
                 : (style === "church" &&
                         ["church", "chapel", "cathedral"].includes(String(p.building))) ||
                     style === "industrial" ||
@@ -309,6 +312,7 @@ export function createBuildingMaterials() {
             if (vFinish.x > 1.5 && vFinish.x < 2.5) diffuseColor.rgb *= 0.95 + 0.05 * sin(metre.x * 24.0);
             if (vFinish.x > 3.5) diffuseColor.rgb *= 0.87 + 0.13 * sin(metre.x * 18.0 + sin(metre.y * 2.0));
             float windowMask = step(0.3,cell.x)*step(cell.x,0.7)*step(0.26,cell.y)*step(cell.y,0.78);
+            if (vFinish.x > 2.5 && vFinish.x < 3.5) windowMask = step(0.06,cell.x)*step(cell.x,0.94)*step(0.12,cell.y)*step(cell.y,0.9);
             if (style > 1.5 && style < 2.5) {
                 float arch = 0.5 + sqrt(max(0.0, 0.0484 - pow(cell.x - 0.5,2.0)));
                 windowMask = step(0.28,cell.x)*step(cell.x,0.72)*step(0.22,cell.y)*step(cell.y,arch);

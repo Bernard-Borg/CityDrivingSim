@@ -55,12 +55,13 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         centerLat: 35.8807,
         centerLon: 14.3977,
     },
-    balzan: {
-        name: "Ħal Balzan",
-        file: "balzan.json",
+    valletta: {
+        name: "Valletta",
         buildings: MALTA_BUILDINGS,
-        centerLat: 35.9005,
-        centerLon: 14.4504,
+        file: "valletta.json",
+        elevation: { file: "Valletta.hgt", south: 35, west: 14 },
+        centerLat: 35.8997,
+        centerLon: 14.5146,
     },
     qrendi: {
         name: "Il-Qrendi",

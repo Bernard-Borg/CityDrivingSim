@@ -1,15 +1,3 @@
-# Driving simulation
-
-Run with Node.js 24 or newer:
-
-```sh
-npm install
-npm run dev
-npm run build
-```
-
-`npm run typecheck` runs the Vue/TypeScript checks without creating a bundle.
-
 ## Creative mode
 
 Press **C** or the HUD **Fly** button to switch between driving and free flight.

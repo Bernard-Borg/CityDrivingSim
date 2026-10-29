@@ -3,6 +3,7 @@
  * @packageDocumentation
  */
 
+import { BuildingDetails } from "./BuildingDetails";
 import { ShipGenerator } from "./ShipGenerator";
 import { selectBuildingParts } from "./BuildingParts";
 import { BuildingSurfaceIndex } from "./BuildingSurfaceIndex";
@@ -56,6 +57,7 @@ export class BuildingGenerator {
     private buildingGroup = new THREE.Group();
     private materials = createBuildingMaterials();
     private ships = new ShipGenerator();
+    private details = new BuildingDetails();
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
      *
@@ -424,6 +426,7 @@ export class BuildingGenerator {
                     this.collisions?.addPolygon([post], h, eave);
                 }
             } else this.collisions?.addPolygon(rings, base, top);
+            this.details.add(this.buildingGroup, outer, p, base, top);
             counts[a.style] = (counts[a.style] ?? 0) + 1;
             count++;
         }
@@ -495,10 +498,15 @@ export class BuildingGenerator {
         }
         return result;
     }
+    /** Advances animated building details.
+     * @param elapsed - Scene time in seconds.
+     */
+    update(elapsed: number): void { this.details.update(elapsed); }
     /**
      * Clears generated content and cached lookup data so the instance can be reused.
      */
     clear(): void {
+        this.details.clear();
         this.buildingGroup.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
         this.buildingGroup.clear();
     }
