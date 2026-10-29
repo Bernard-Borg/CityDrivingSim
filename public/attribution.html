@@ -57,6 +57,7 @@
                 into procedural geometry for display.
             </p>
             <h2>Elevation</h2>
+            <h3>NASA SRTM (HGT tiles)</h3>
             <p>
                 Shuttle Radar Topography Mission (SRTM) elevation data from NASA/JPL, obtained
                 through <a href="https://www.earthdata.nasa.gov/">NASA Earthdata</a> and the
@@ -76,6 +77,25 @@
                     >SRTM Global 1 Arc Second product record</a
                 >. Dataset-specific notices take precedence; Earthdata is a distribution portal, not
                 a single license for every hosted dataset.
+            </p>
+            <h3>Monaco terrain (GeoTIFF)</h3>
+            <p>
+                Source: IGN, <strong>MNT LiDAR HD</strong> (Mod?le Num?rique de Terrain),
+                obtained from the
+                <a href="https://cartes.gouv.fr/telechargement/IGNF_MNT-LIDAR-HD"
+                    >cartes.gouv.fr download service</a
+                >. Produced by the Institut national de l'information g?ographique et foresti?re
+                (IGN). See the <a href="https://www.data.gouv.fr/datasets/mnt-lidar-hd"
+                    >official dataset record</a>.
+            </p>
+            <p>
+                Available under the
+                <a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence/"
+                    >Licence Ouverte / Open Licence 2.0</a
+                >. Multiple source tiles were combined into the Monaco GeoTIFF;
+                elevation samples are reprojected and resampled into Wander's local terrain mesh.
+                The resulting in-game terrain is a derived representation, not an unmodified IGN product.
+                The HGT fallback uses the NASA SRTM source credited above.
             </p>
             <h2>Vehicle models</h2>
             <p>
