@@ -126,8 +126,35 @@ export interface VehicleConfig {
         idleRPM: number;
         /** Upper engine speed limit in revolutions per minute. */
         maxRPM: number;
-        /** Base engine oscillator frequency in hertz. */
+        /** Low-frequency engine character reference in hertz; 30 leaves the pulse pitch unscaled. */
         baseFrequency: number;
+        /** Engine partials: frequency multiplier, relative gain and oscillator waveform. */
+        harmonics: Array<{
+            /** Frequency relative to the fundamental. */
+            ratio: number;
+            /** Relative output gain. */
+            gain: number;
+            /** Web Audio oscillator waveform. */
+            wave: OscillatorType;
+        }>;
+        /** Cylinder count for a four-stroke engine's combustion pulse rate. */
+        cylinders: number;
+        /** RPM-to-pitch tracking exponent; below 1 softens high-rev pitch without detuning harmonics. */
+        pitchTracking: number;
+        /** Low-pass cutoff [idle, high RPM] in hertz. */
+        filterRange: [number, number];
+        /** Exhaust saturation amount, normally 0?1. */
+        saturation: number;
+        /** Maximum synthesized RPM rise per second. */
+        rpmResponse: number;
+        /** Horn frequencies in hertz. */
+        hornFrequencies: [number, number];
+        /** Horn output gain before master volume. */
+        hornVolume: number;
+        /** Startup playback pitch/rate multiplier. */
+        ignitionPitch: number;
+        /** Impact playback pitch/rate multiplier. */
+        impactPitch: number;
         /** Engine sound gain multiplier. */
         engineVolume: number;
         /** Collision sound gain multiplier. */
@@ -190,14 +217,24 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
     bodyMotion: { rollGain: 0.0023, pitchGain: 0.0016, response: 8 },
     camera: { followRate: 7, terrainTiltRate: 9, distance: 9 },
     audio: {
-        idleRPM: 800,
-        maxRPM: 6000,
-        baseFrequency: 30,
-        engineVolume: 0.6,
+        idleRPM: 850,
+        maxRPM: 8000,
+        baseFrequency: 24,
+        engineVolume: 1.5,
         impactVolume: 0.65,
         impactThreshold: 1.5,
-        ignitionDuration: 0.95,
-        gears: [45, 80, 120, 165, 210, 250],
+        ignitionDuration: 0.8,
+        gears: [55, 95, 140, 185, 225, 270],
+        harmonics: [{"ratio": 1, "gain": 0.6, "wave": "triangle"}, {"ratio": 0.5, "gain": 0.2, "wave": "sine"}, {"ratio": 2, "gain": 0.18, "wave": "triangle"}],
+        cylinders: 6,
+        pitchTracking: 0.85,
+        filterRange: [180, 650],
+        saturation: 0.08,
+        rpmResponse: 5200,
+        hornFrequencies: [400, 500],
+        hornVolume: 0.1,
+        ignitionPitch: 1.15,
+        impactPitch: 1.05,
     },
 };
 
@@ -251,14 +288,24 @@ const JEEP_GLADIATOR: VehicleConfig = {
     bodyMotion: { rollGain: 0.0023, pitchGain: 0.0016, response: 8 },
     camera: { followRate: 7, terrainTiltRate: 9, distance: 9 },
     audio: {
-        idleRPM: 800,
-        maxRPM: 6000,
-        baseFrequency: 30,
-        engineVolume: 0.6,
-        impactVolume: 0.65,
+        idleRPM: 650,
+        maxRPM: 6500,
+        baseFrequency: 22,
+        engineVolume: 1.8,
+        impactVolume: 0.75,
         impactThreshold: 1.5,
-        ignitionDuration: 0.95,
-        gears: [45, 80, 120, 165, 210, 250],
+        ignitionDuration: 1.1,
+        gears: [30, 52, 78, 108, 138, 163, 190, 220],
+        harmonics: [{"ratio": 1, "gain": 0.6, "wave": "triangle"}, {"ratio": 0.5, "gain": 0.48, "wave": "sine"}, {"ratio": 2, "gain": 0.12, "wave": "triangle"}],
+        cylinders: 6,
+        pitchTracking: 0.8,
+        filterRange: [130, 440],
+        saturation: 0.12,
+        rpmResponse: 2800,
+        hornFrequencies: [330, 415],
+        hornVolume: 0.13,
+        ignitionPitch: 0.85,
+        impactPitch: 0.85,
     },
 };
 
@@ -312,14 +359,24 @@ const VW_GOLF_MK1: VehicleConfig = {
     bodyMotion: { rollGain: 0.0023, pitchGain: 0.0016, response: 8 },
     camera: { followRate: 7, terrainTiltRate: 9, distance: 9 },
     audio: {
-        idleRPM: 800,
-        maxRPM: 6000,
-        baseFrequency: 30,
-        engineVolume: 0.6,
-        impactVolume: 0.65,
+        idleRPM: 900,
+        maxRPM: 6500,
+        baseFrequency: 28,
+        engineVolume: 1.44,
+        impactVolume: 0.6,
         impactThreshold: 1.5,
         ignitionDuration: 0.95,
-        gears: [45, 80, 120, 165, 210, 250],
+        gears: [38, 70, 108, 145, 185],
+        harmonics: [{"ratio": 1, "gain": 0.55, "wave": "triangle"}, {"ratio": 0.5, "gain": 0.15, "wave": "sine"}, {"ratio": 2, "gain": 0.24, "wave": "triangle"}],
+        cylinders: 4,
+        pitchTracking: 0.9,
+        filterRange: [160, 560],
+        saturation: 0.16,
+        rpmResponse: 4000,
+        hornFrequencies: [440, 550],
+        hornVolume: 0.09,
+        ignitionPitch: 1.05,
+        impactPitch: 1.18,
     },
 };
 

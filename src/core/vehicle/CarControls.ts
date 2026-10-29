@@ -1,3 +1,4 @@
+import { useSettingsStore } from "@/stores/settings";
 import { useTouchStore } from "@/stores/touch";
 /**
  * CarControls types and implementation for the city driving simulator.
@@ -32,6 +33,8 @@ export class CarControls {
     private paused = false;
     private audioUnlocked = false;
     private hornPressed = false;
+    private requestedDirection = 0;
+    private directionEngaged = false;
     private soundCooldown = 0;
 
     private throttleInput: number = 0;
@@ -400,8 +403,15 @@ export class CarControls {
         // Throttle with smoother input response
         const speed = this.car.getSpeed();
         const opposingPedals = keys.forward && keys.backward;
-        const changingDirection =
-            (keys.backward && speed > 0.1) || (keys.forward && speed < -0.1);
+        const desiredDirection = opposingPedals ? 0 : keys.forward ? 1 : keys.backward ? -1 : 0;
+        if (desiredDirection !== this.requestedDirection) {
+            this.requestedDirection = desiredDirection;
+            this.directionEngaged = false;
+        }
+        // Brake genuine opposite travel, then latch the requested gear near standstill.
+        // Hill rollback must not repeatedly cancel throttle while it is building up.
+        if (desiredDirection && speed * desiredDirection >= -1) this.directionEngaged = true;
+        const changingDirection = desiredDirection !== 0 && !this.directionEngaged;
         const handbrake = keys.brake || keys.handbrake;
         let targetThrottle = 0;
         if (this.focused && !changingDirection && !opposingPedals && !handbrake) {
@@ -460,6 +470,9 @@ export class CarControls {
      * @param delta - Elapsed time in seconds.
      */
     updateAudio(delta: number): void {
+        const settings = useSettingsStore();
+        this.engineSoundGenerator.setVolume(settings.engineVolume);
+        this.roadSoundGenerator.setVolume(settings.effectsVolume);
         this.soundCooldown = Math.max(0, this.soundCooldown - delta);
         const enabled =
             this.audioUnlocked && this.soundManager.getEnabled() && this.focused && !this.paused;
@@ -488,6 +501,7 @@ export class CarControls {
     unlockTouchAudio(): void { this.unlockAudio(); }
 
     private unlockAudio(): void {
+        this.roadSoundGenerator.setVolume(useSettingsStore().effectsVolume);
         this.audioUnlocked = true;
         this.engineSoundGenerator.unlock();
         this.roadSoundGenerator.setEnabled(this.soundManager.getEnabled());
@@ -534,6 +548,8 @@ export class CarControls {
      * Clears held keys and filtered values and releases vehicle control requests.
      */
     resetInput(): void {
+        this.requestedDirection = 0;
+        this.directionEngaged = false;
         this.hornPressed = false;
         this.roadSoundGenerator.setHorn(false);
         useTouchStore().reset();

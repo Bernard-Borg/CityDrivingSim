@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { ref, onUnmounted } from "vue";
+import HudIcon from "./HudIcon.vue";
+import { SoundManager } from "@/utils/SoundManager";
 import { useSettingsStore } from "@/stores/settings";
 
+const AUDIO_CHANNELS = [
+    { key: "engineVolume", label: "Engine" },
+    { key: "musicVolume", label: "Music" },
+    { key: "effectsVolume", label: "Effects", hint: "Collisions, horn and ignition" },
+] as const;
 const settings = useSettingsStore();
 const dialog = ref<HTMLDialogElement | null>(null);
 
@@ -17,6 +24,10 @@ const open = () => {
 
 const close = () => dialog.value?.close();
 const closed = () => emit("pauseChanged", false);
+const toggleMute = () => {
+    settings.isSoundMuted = !settings.isSoundMuted;
+    SoundManager.getInstance().setEnabled(!settings.isSoundMuted);
+};
 onUnmounted(() => {
     if (dialog.value?.open) emit("pauseChanged", false);
 });
@@ -40,6 +51,25 @@ onUnmounted(() => {
             <h2>Settings</h2>
             <button autofocus aria-label="Close settings" @click="close">✕</button>
         </div>
+        <h3>Audio</h3>
+        <button class="mute-toggle" :aria-pressed="settings.isSoundMuted" @click="toggleMute">
+            <HudIcon :name="settings.isSoundMuted ? 'muted' : 'volume'" />
+            {{ settings.isSoundMuted ? "Unmute all sound" : "Mute all sound" }}
+        </button>
+        <label v-for="channel in AUDIO_CHANNELS" :key="channel.key" class="audio-channel">
+            <span
+                >{{ channel.label }}<small v-if="'hint' in channel">{{ channel.hint }}</small></span
+            >
+            <input
+                v-model.number="settings[channel.key]"
+                :aria-label="`${channel.label} volume`"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+            />
+            <output>{{ Math.round(settings[channel.key] * 100) }}%</output>
+        </label>
         <h3>Graphics</h3>
         <label>
             <span>Shadows<small>Disable to improve performance</small></span>
@@ -126,5 +156,40 @@ onUnmounted(() => {
     background: #243b33;
     padding: 8px;
     border-radius: 8px;
+}
+</style>
+
+<style scoped>
+.mute-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: #294538;
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+.mute-toggle :deep(svg) {
+    width: 22px;
+    height: 22px;
+}
+.audio-channel input[type="range"] {
+    width: 120px;
+    height: 24px;
+    accent-color: #a5d3b7;
+    flex: 1;
+    min-width: 45px;
+}
+.audio-channel > span {
+    min-width: 90px;
+}
+.audio-channel output {
+    width: 44px;
+    text-align: right;
+    font-size: 15px;
+}
+.graphics-dialog {
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
 }
 </style>

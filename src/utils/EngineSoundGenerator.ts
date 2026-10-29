@@ -20,6 +20,9 @@ export class EngineSoundGenerator {
     private engineGain: GainNode | null = null;
     private lowpassFilter: BiquadFilterNode | null = null;
     private distortion: WaveShaperNode | null = null;
+    private exhaustFilter: BiquadFilterNode | null = null;
+    private limiter: DynamicsCompressorNode | null = null;
+    private outputLimiter: DynamicsCompressorNode | null = null;
     private isPlaying: boolean = false;
     private currentRPM: number = 0;
 
@@ -91,28 +94,48 @@ export class EngineSoundGenerator {
 
             // Create master gain node for volume control
             this.masterGain = this.audioContext.createGain();
-            this.masterGain.connect(this.audioContext.destination);
+            this.outputLimiter = this.audioContext.createDynamicsCompressor();
+            this.outputLimiter.threshold.value = -3;
+            this.outputLimiter.knee.value = 0;
+            this.outputLimiter.ratio.value = 20;
+            this.outputLimiter.attack.value = 0.003;
+            this.outputLimiter.release.value = 0.08;
+            this.masterGain.connect(this.outputLimiter);
+            this.outputLimiter.connect(this.audioContext.destination);
             this.masterGain.gain.value = this.config.engineVolume;
 
             // Create engine gain node
             this.engineGain = this.audioContext.createGain();
             this.engineGain.connect(this.masterGain);
-            this.engineGain.gain.value = 0.8;
+            this.engineGain.gain.value = 0;
 
             // Low-pass filter to keep the sound deep and remove harsh highs
             this.lowpassFilter = this.audioContext.createBiquadFilter();
             this.lowpassFilter.type = "lowpass";
-            this.lowpassFilter.frequency.value = 180;
+            this.lowpassFilter.frequency.value = this.config.filterRange[0];
             this.lowpassFilter.Q.value = 0.7;
 
             // Warm saturation to make the engine sound less sterile
             this.distortion = this.audioContext.createWaveShaper();
-            this.distortion.curve = this.createWarmDistortionCurve(0.25);
+            this.distortion.curve = this.createWarmDistortionCurve(this.config.saturation);
             this.distortion.oversample = "4x";
 
             // Chain: filter -> distortion -> engine gain -> master
             this.lowpassFilter.connect(this.distortion);
-            this.distortion.connect(this.engineGain);
+            // A second muffler stage removes harmonics introduced by saturation.
+            this.exhaustFilter = this.audioContext.createBiquadFilter();
+            this.exhaustFilter.type = "lowpass";
+            this.exhaustFilter.frequency.value = 900;
+            this.exhaustFilter.Q.value = 0.5;
+            this.limiter = this.audioContext.createDynamicsCompressor();
+            this.limiter.threshold.value = -18;
+            this.limiter.knee.value = 18;
+            this.limiter.ratio.value = 6;
+            this.limiter.attack.value = 0.008;
+            this.limiter.release.value = 0.2;
+            this.distortion.connect(this.exhaustFilter);
+            this.exhaustFilter.connect(this.limiter);
+            this.limiter.connect(this.engineGain);
         } catch (error) {
             console.warn("Failed to initialize AudioContext:", error);
         }
@@ -142,6 +165,7 @@ export class EngineSoundGenerator {
             return;
         }
 
+        this.currentRPM = this.config.idleRPM;
         this.createEngineOscillators();
         this.isPlaying = true;
     }
@@ -179,16 +203,8 @@ export class EngineSoundGenerator {
         // Clear existing oscillators
         this.stop();
 
-        // Create multiple oscillators for realistic deep engine rumble
-        // Use triangle/sine to avoid harsh harmonics
-        // Main engine tone (fundamental) - this will be updated dynamically
-        this.createOscillator(this.BASE_FREQUENCY, 0.7, "triangle");
-
-        // Deep bass rumble (0.5x - sub-harmonic) - strong low-end foundation
-        this.createOscillator(this.BASE_FREQUENCY * 0.5, 0.5, "sine");
-
-        // Subtle harmonic (1.1x) - mild character without ringing
-        this.createOscillator(this.BASE_FREQUENCY * 1.1, 0.12, "triangle");
+        for (const partial of this.config.harmonics)
+            this.createOscillator(this.BASE_FREQUENCY * partial.ratio, partial.gain, partial.wave);
 
         // Start all oscillators
         this.oscillators.forEach((osc) => {
@@ -205,7 +221,14 @@ export class EngineSoundGenerator {
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
 
-        oscillator.type = type;
+        oscillator.type = type === "sawtooth" || type === "square" ? "triangle" : type;
+        // Smooth, phase-locked compression pulses instead of a piercing lead-synth waveform.
+        if (type !== "sine") {
+            const real = new Float32Array(17), imaginary = new Float32Array(17);
+            for (let harmonic = 1; harmonic < real.length; harmonic++)
+                real[harmonic] = Math.exp(-harmonic * 0.65) / harmonic;
+            oscillator.setPeriodicWave(this.audioContext.createPeriodicWave(real, imaginary));
+        }
         oscillator.frequency.value = frequency;
 
         gainNode.gain.value = volume;
@@ -251,7 +274,7 @@ export class EngineSoundGenerator {
         const targetRPM = targetEngineRPM(speed, acceleration, this.config);
 
         // Smooth RPM transition for realistic sound changes
-        const rpmChangeRate = 3200 * Math.min(delta, 0.1); // RPM change per frame (60fps = ~480 RPM/second)
+        const rpmChangeRate = this.config.rpmResponse * Math.min(delta, 0.1); // RPM change per frame (60fps = ~480 RPM/second)
         if (targetRPM > this.currentRPM) {
             this.currentRPM = Math.min(targetRPM, this.currentRPM + rpmChangeRate);
         } else if (targetRPM < this.currentRPM) {
@@ -267,32 +290,20 @@ export class EngineSoundGenerator {
         const rpmRatioRaw = rpmRange > 0 ? (this.currentRPM - this.MIN_RPM) / rpmRange : 0;
         const rpmRatio = Math.min(1, Math.max(0, Number.isFinite(rpmRatioRaw) ? rpmRatioRaw : 0)); // 0 to 1
         // Use a cubic curve (even slower growth) to keep frequencies low at all RPMs
-        const frequencyCurve = Math.pow(rpmRatio, 0.7); // Grows very slowly - stays in bass range
-        const frequencyRange = 95; // Very limited frequency range (Hz) - deep engine rumble
-        const baseFreq = this.BASE_FREQUENCY + frequencyCurve * frequencyRange; // ~30 Hz to ~55 Hz (deep, rumbly)
+        const frequencyCurve = Math.pow(rpmRatio, 0.7);
+        // Four-stroke firing order with alternating-pulse body resonance one octave below.
+        const idlePulse = this.config.idleRPM * this.config.cylinders / 240;
+        const baseFreq = idlePulse * (this.BASE_FREQUENCY / 30) *
+            Math.pow(Math.max(1, this.currentRPM / this.config.idleRPM), this.config.pitchTracking);
 
         // Update oscillator frequencies - keep everything deep and low-pitched
-        if (this.oscillators.length >= 3 && Number.isFinite(baseFreq)) {
-            this.oscillators[0].frequency.setTargetAtTime(
-                baseFreq,
-                this.audioContext.currentTime,
-                0.1,
-            ); // Main tone
-            this.oscillators[1].frequency.setTargetAtTime(
-                baseFreq * 0.5,
-                this.audioContext.currentTime,
-                0.1,
-            ); // Deep bass rumble
-            this.oscillators[2].frequency.setTargetAtTime(
-                baseFreq * 1.1,
-                this.audioContext.currentTime,
-                0.1,
-            ); // Subtle harmonic
-        }
+        this.oscillators.forEach((oscillator, index) => {
+            oscillator.frequency.setTargetAtTime(baseFreq * this.config.harmonics[index]!.ratio, this.audioContext!.currentTime, 0.06);
+        });
 
         // Dynamically open the low-pass filter slightly with RPM
         if (this.lowpassFilter) {
-            const cutoffRaw = 120 + frequencyCurve * 180; // 120 Hz to 300 Hz
+            const cutoffRaw = this.config.filterRange[0] + frequencyCurve * (this.config.filterRange[1] - this.config.filterRange[0]);
             const cutoff = Number.isFinite(cutoffRaw) ? cutoffRaw : 120;
             this.lowpassFilter.frequency.setTargetAtTime(
                 cutoff,
@@ -303,8 +314,8 @@ export class EngineSoundGenerator {
 
         // Adjust volume based on acceleration (louder when accelerating)
         if (this.engineGain) {
-            const volumeBase = 0.2;
-            const volumeBoost = acceleration * 0.5;
+            const volumeBase = 0.36;
+            const volumeBoost = Math.max(0, Math.min(1, acceleration)) * 0.66;
             const volume = Math.min(1.0, volumeBase + volumeBoost);
             this.engineGain.gain.setTargetAtTime(volume, this.audioContext.currentTime, 0.1);
         }
@@ -323,7 +334,9 @@ export class EngineSoundGenerator {
      */
     setVolume(volume: number): void {
         if (this.masterGain) {
-            this.masterGain.gain.value = Math.max(0, Math.min(1, volume));
+            const userGain = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+            const vehicleGain = Number.isFinite(this.config.engineVolume) ? this.config.engineVolume : 0.5;
+            this.masterGain.gain.setTargetAtTime(vehicleGain * userGain, this.audioContext!.currentTime, 0.025);
         }
     }
 
@@ -359,6 +372,9 @@ export class EngineSoundGenerator {
         this.engineGain = null;
         this.lowpassFilter = null;
         this.distortion = null;
+        this.exhaustFilter = null;
+        this.limiter = null;
+        this.outputLimiter = null;
     }
 
     /**

@@ -18,6 +18,7 @@ export class RoadSoundGenerator {
     private impactBuffer: AudioBuffer | null = null;
     private ignitionBuffer: AudioBuffer | null = null;
     private isEnabled = true;
+    private volume = 1;
     private horn: { tones: OscillatorNode[]; gain: GainNode; filter: BiquadFilterNode } | null = null;
 
     /**
@@ -56,7 +57,7 @@ export class RoadSoundGenerator {
                 return buffer;
             };
             this.impactBuffer = makeBuffer("impact");
-            this.ignitionBuffer = makeBuffer("ignition", config.ignitionDuration);
+            this.ignitionBuffer = makeBuffer("ignition", config.ignitionDuration * config.ignitionPitch);
         } catch (error) {
             console.warn("Failed to initialize vehicle effects:", error);
         }
@@ -79,7 +80,7 @@ export class RoadSoundGenerator {
         this.playEffect(
             this.impactBuffer,
             Math.pow(Math.max(0, Math.min(1, strength)), 0.7) * this.config.impactVolume,
-            1.04 - Math.max(0, Math.min(1, strength)) * 0.12,
+            (1.04 - Math.max(0, Math.min(1, strength)) * 0.12) * this.config.impactPitch,
         );
     }
 
@@ -88,7 +89,7 @@ export class RoadSoundGenerator {
      */
     playIgnition(): void {
         this.start();
-        this.playEffect(this.ignitionBuffer, 0.65);
+        this.playEffect(this.ignitionBuffer, 0.65, this.config.ignitionPitch);
     }
 
     /**
@@ -125,7 +126,7 @@ export class RoadSoundGenerator {
         this.isEnabled = enabled;
         if (this.masterGain && this.audioContext)
             this.masterGain.gain.setTargetAtTime(
-                enabled ? 0.6 : 0,
+                enabled ? 0.6 * this.volume : 0,
                 this.audioContext.currentTime,
                 0.02,
             );
@@ -153,16 +154,25 @@ export class RoadSoundGenerator {
         this.start();
         const gain = context.createGain(), filter = context.createBiquadFilter();
         gain.gain.value = 0;
-        gain.gain.setTargetAtTime(0.12, context.currentTime, 0.012);
+        gain.gain.setTargetAtTime(this.config.hornVolume, context.currentTime, 0.012);
         filter.type = "lowpass"; filter.frequency.value = 1800; filter.Q.value = 0.5;
         filter.connect(gain); gain.connect(this.masterGain);
-        const tones = [350, 440].map(frequency => {
+        const tones = this.config.hornFrequencies.map(frequency => {
             const tone = context.createOscillator();
             tone.type = "sawtooth"; tone.frequency.value = frequency;
             tone.connect(filter); tone.start();
             return tone;
         });
         this.horn = { tones, gain, filter };
+    }
+
+    /** Applies the user's effects volume to ignition, impacts and horn playback.
+     * @param volume - Normalized effects gain, from 0 to 1.
+     */
+    setVolume(volume: number): void {
+        this.volume = Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+        if (this.audioContext && this.masterGain)
+            this.masterGain.gain.setTargetAtTime(this.isEnabled ? 0.6 * this.volume : 0, this.audioContext.currentTime, 0.025);
     }
 
     /**

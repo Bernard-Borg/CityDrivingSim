@@ -3,7 +3,6 @@ import { ref } from "vue";
 import { useStateStore } from "@/stores/state";
 import { useSettingsStore } from "@/stores/settings";
 import { useCitiesStore } from "@/stores/cities";
-import { SoundManager } from "@/utils/SoundManager";
 import CarRadio from "./CarRadio.vue";
 import VehicleSelector from "./VehicleSelector.vue";
 import HudIcon from "./HudIcon.vue";
@@ -29,9 +28,6 @@ const emit = defineEmits<{
 const openHelp = () => emit("help");
 const togglePerformance = () => emit("performance");
 
-const toggleMute = () => {
-    settings.isSoundMuted = !SoundManager.getInstance().toggleMute();
-};
 
 const switchCity = (city: string) => {
     state.showCitySwitcher = false;
@@ -108,16 +104,6 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 @click="emit('toggleStreetNames')"
             >
                 Street names
-            </button>
-            <button
-                class="hud-button"
-                :class="{ selected: !settings.isSoundMuted }"
-                :aria-pressed="settings.isSoundMuted"
-                @click="toggleMute"
-            >
-                <HudIcon
-                    :name="settings.isSoundMuted ? 'muted' : 'volume'"
-                /><span>{{ settings.isSoundMuted ? "Unmute" : "Mute" }}</span>
             </button>
             <div class="city-switcher">
                 <button

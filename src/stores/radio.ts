@@ -1,7 +1,7 @@
 /** Shared in-car radio playlist, playback state and volume preferences. @packageDocumentation */
 import { computed, ref, watch } from "vue";
 import { defineStore } from "pinia";
-import { useLocalStorage } from "@vueuse/core";
+import { storeToRefs } from "pinia";
 import { useSettingsStore } from "./settings";
 
 export const useRadioStore = defineStore("radio", () => {
@@ -13,7 +13,7 @@ export const useRadioStore = defineStore("radio", () => {
     const index = ref(0);
     const playing = ref(false);
     const error = ref("");
-    const volume = useLocalStorage("cityDrivingSim_radioVolume", 0.35);
+    const { musicVolume: volume } = storeToRefs(settings);
     const track = computed(() => tracks[index.value]!);
     let audio: HTMLAudioElement | null = null;
     let request = 0;
