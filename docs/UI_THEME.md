@@ -119,3 +119,49 @@ Keep reusable visual rules in the shared stylesheet and component-specific layou
 in scoped styles. Follow the project's Vue script ordering and use Pinia for shared
 state and simulator commands; visual consistency should not add event-forwarding
 chains or duplicate state.
+
+
+## Standard form controls and HUD variants
+
+All reusable form styling lives in [screens.css](../src/styles/screens.css).
+Use these classes on native elements; retain native keyboard semantics, labels,
+`v-model`, `disabled` and appropriate ARIA state:
+
+| Class | Element / purpose |
+| --- | --- |
+| `wander-dialog` | Native `<dialog>` surface, backdrop, scrolling and responsive dimensions |
+| `wander-dialog-head` | Dialog heading and close-button arrangement |
+| `wander-panel` | Opaque-enough floating HUD panel |
+| `wander-section-title` | Small gold section heading |
+| `wander-field` | Form label, description and control row |
+| `wander-checkbox` | Native checkbox, including checked, focus and disabled states |
+| `wander-select` | Native select with shared chevron, options, focus and disabled styles |
+| `wander-input` | Text input |
+| `wander-range` | Native volume slider with matching Chromium/Firefox track and thumb |
+| `wander-button compact` | 44 px minimum-height in-game control |
+| `wander-button compact icon` | Square icon button; supply an accessible label |
+| `wander-menu-item` | Search result or city-switcher entry |
+
+Selected/held buttons use the active palette: warm gold in menus and sage green in-game, never neon green. Keep visual control
+rules here instead of adding component-local checkbox, select, slider or button
+palettes. Scoped styles should handle placement, widths, grids and responsive
+layout. The speedometer remains unchanged.
+
+
+## Secondary gameplay palette
+
+Keep the previous sage-green hue for in-game buttons, dialogs and form controls.
+Gold remains the primary palette for the main menu, map chooser, loading and
+error screens. Add `wander-secondary` to a gameplay surface to inherit the green
+CSS custom properties from the shared stylesheet; do not duplicate control rules.
+
+- Accent: `#a5d3b7`; hover: `#c0e4cb`; focus: `#b3dfc3`.
+- Surface: `#111e18f2`; field surface: `#1b3026`; border: `#6f897966`.
+- Text: `#e5f0e9`; supporting text: `#b9cdbf`.
+- Selected and held controls use a translucent green fill and green border.
+
+The Settings component uses gold when opened from the main menu and green when
+opened during gameplay. Shared geometry, spacing and interaction rules stay the
+same for both palettes. Use `var(--wander-accent, #d9bd87)` for component-specific
+accent details so they follow the containing palette. Instrument and graph colours
+can retain their existing meanings; this is not a speedometer redesign.

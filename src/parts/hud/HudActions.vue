@@ -27,11 +27,11 @@ const switchCity = (city: string) => {
 defineExpose({ focusHelp: () => helpButton.value?.focus() });
 </script>
 <template>
-    <div class="hud-tools">
+    <div class="wander-secondary hud-tools">
         <div class="utility-row">
             <button
                 ref="helpButton"
-                class="hud-button icon-button"
+                class="wander-button compact hud-button icon-button"
                 aria-label="Open controls help"
                 title="Controls (?)"
                 @click="openHelp"
@@ -42,7 +42,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 </svg>
             </button>
             <button
-                class="hud-button icon-button"
+                class="wander-button compact hud-button icon-button"
                 :class="{ selected: state.showPerformance }"
                 aria-label="Toggle performance graphs"
                 :aria-pressed="state.showPerformance"
@@ -55,7 +55,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
             </button>
             <button
                 v-if="!state.creativeMode"
-                class="hud-button ignition-button"
+                class="wander-button compact hud-button ignition-button"
                 :class="{ selected: state.vehicle.engine !== 'off' }"
                 :aria-label="
                     state.vehicle.engine === 'off' ? 'Start engine' : 'Switch off engine and park'
@@ -77,7 +77,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
         <CarRadio v-if="!state.creativeMode" />
         <div class="settings-tools">
             <button
-                class="hud-button"
+                class="wander-button compact hud-button"
                 :class="{ selected: state.creativeMode }"
                 :aria-pressed="state.creativeMode"
                 title="Toggle creative mode (C)"
@@ -85,11 +85,11 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
             >
                 {{ state.creativeMode ? "Drive (C)" : "Fly (C)" }}
             </button>
-            <button class="hud-button" @click="simulator.resetLocation()">
+            <button class="wander-button compact hud-button" @click="simulator.resetLocation()">
                 {{ state.creativeMode ? "Reset view" : "Reset location" }}
             </button>
             <button
-                class="hud-button"
+                class="wander-button compact hud-button"
                 :class="{ selected: settings.showStreetNames }"
                 :aria-pressed="settings.showStreetNames"
                 @click="simulator.toggleStreetNames()"
@@ -98,14 +98,15 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
             </button>
             <div class="city-switcher">
                 <button
-                    class="hud-button"
+                    class="wander-button compact hud-button"
                     :aria-expanded="state.showCitySwitcher"
                     @click="state.showCitySwitcher = !state.showCitySwitcher"
                 >
                     <HudIcon name="city" /><span>Switch city</span>
                 </button>
-                <div v-if="state.showCitySwitcher" class="city-menu">
+                <div v-if="state.showCitySwitcher" class="wander-panel city-menu">
                     <button
+                        class="wander-menu-item"
                         v-for="city in cityStore.availableCities"
                         :key="city"
                         :class="{ selected: city === state.currentCity }"
@@ -119,161 +120,15 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
     </div>
 </template>
 <style scoped>
-.hud-tools {
-    position: absolute;
-    right: 20px;
-    bottom: 24px;
-    z-index: 15;
-    width: 174px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-.utility-row {
-    display: flex;
-    gap: 6px;
-}
-.hud-button {
-    border: 1px solid #63776a66;
-    border-radius: 7px;
-    background: #0c1613d9;
-    color: #b7c9bd;
-    padding: 9px 11px;
-    font:
-        10px system-ui,
-        sans-serif;
-    letter-spacing: 0.5px;
-    cursor: pointer;
-    backdrop-filter: blur(10px);
-    transition:
-        background 0.15s,
-        border-color 0.15s;
-}
-.hud-button:hover {
-    background: #263a2fe8;
-    border-color: #a9c2ad;
-}
-.hud-button:focus-visible {
-    outline: 2px solid #d6bd8d;
-    outline-offset: 3px;
-}
-.hud-button.selected {
-    color: #e5eddc;
-    border-color: greenyellow;
-}
-.icon-button {
-    padding: 8px;
-    width: 36px;
-}
-.hud-button svg {
-    width: 18px;
-    height: 18px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-}
-.ignition-button {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-}
-.settings-tools {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 5px;
-}
-.settings-tools .hud-button {
-    width: 100%;
-    padding: 8px 5px;
-    font-size: 9px;
-}
-.city-switcher {
-    position: relative;
-}
-.city-menu {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
-    margin-bottom: 7px;
-    min-width: 160px;
-    background: #101c17f5;
-    border: 1px solid #6f897966;
-    border-radius: 8px;
-    overflow: hidden;
-}
-.city-menu button {
-    display: block;
-    width: 100%;
-    padding: 12px 16px;
-    text-align: left;
-    font-size: 12px;
-    color: #b7c9bd;
-    cursor: pointer;
-}
-.city-menu button:hover,
-.city-menu button.selected {
-    background: #344d3b;
-}
-@media (max-width: 1050px) {
-    .hud-tools {
-        width: 164px;
-    }
-}
-@media (max-width: 800px) {
-    .hud-tools {
-        right: 16px;
-        bottom: 230px;
-        width: 164px;
-    }
-}
-@media (max-width: 420px) {
-    .hud-tools {
-        bottom: 210px;
-    }
-}
-.hud-tools {
-    width: 220px;
-}
-.hud-button,
-.settings-tools .hud-button {
-    font-size: 13px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-}
-.settings-tools .hud-button {
-    padding: 10px 7px;
-}
-.icon-button {
-    width: 42px;
-}
-.city-menu button {
-    font-size: 14px;
-}
-.city-menu {
-    min-width: 185px;
-}
-@media (max-width: 800px) {
-    .hud-tools {
-        width: 210px;
-    }
-}
-@media (pointer: coarse) {
-    .hud-tools {
-        right: 12px;
-        top: 158px;
-        bottom: auto;
-        width: 135px;
-        max-height: 32vh;
-        overflow-y: auto;
-    }
-    .hud-button,
-    .settings-tools .hud-button {
-        font-size: 12px;
-        min-height: 40px;
-    }
-}
+.hud-tools { position: absolute; right: 20px; bottom: 24px; z-index: 15; width: 228px; display: flex; flex-direction: column; gap: 10px; }
+.utility-row { display: flex; gap: 7px; }
+.icon-button { width: 44px; padding: 10px; }
+.ignition-button { flex: 1; }
+.settings-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.settings-tools .hud-button { width: 100%; padding: 10px 6px; font-size: 13px; }
+.city-switcher { position: relative; }
+.city-menu { position: absolute; bottom: 100%; right: 0; margin-bottom: 9px; min-width: 190px; overflow: hidden; }
+@media (max-width: 800px) { .hud-tools { right: 16px; bottom: 230px; width: 214px; } }
+@media (max-width: 420px) { .hud-tools { bottom: 210px; } }
+@media (pointer: coarse) { .hud-tools { right: 12px; top: 158px; bottom: auto; width: 145px; max-height: 32vh; overflow-y: auto; } .settings-tools .hud-button { font-size: 12px; } }
 </style>

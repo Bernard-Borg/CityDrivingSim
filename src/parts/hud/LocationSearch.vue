@@ -45,8 +45,8 @@ onUnmounted(() => {
 });
 </script>
 <template>
-    <form class="location-search" role="search" @submit.prevent="submit" @keydown.stop>
-        <label class="search-field">
+    <form class="wander-secondary location-search" role="search" @submit.prevent="submit" @keydown.stop>
+        <label class="wander-panel search-field">
             <span aria-hidden="true" class="relative">
                 <!--!Font Awesome Free v7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2026 Fonticons, Inc.-->
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
@@ -56,6 +56,7 @@ onUnmounted(() => {
                 </svg>
             </span>
             <input
+                class="wander-input"
                 ref="input"
                 v-model="navigation.query"
                 aria-label="Search street or latitude, longitude"
@@ -68,10 +69,17 @@ onUnmounted(() => {
                 @keydown.up.prevent="move(-1)"
                 @keydown.esc="input?.blur()"
             />
-            <button type="submit" aria-label="Teleport to first result">Go</button>
-        </label>
-        <div v-if="focused && navigation.query" class="search-results">
             <button
+                class="wander-button compact"
+                type="submit"
+                aria-label="Teleport to first result"
+            >
+                Go
+            </button>
+        </label>
+        <div v-if="focused && navigation.query" class="wander-panel search-results">
+            <button
+                class="wander-menu-item"
                 v-for="(location, index) in navigation.results"
                 :key="index"
                 :class="{ active: index === active }"
@@ -82,7 +90,11 @@ onUnmounted(() => {
                 {{ location.label }}
                 <small>{{ location.lat.toFixed(5) }}, {{ location.lon.toFixed(5) }}</small>
             </button>
-            <p v-if="!navigation.results.length" :class="{ 'wander-notice': navigation.error }" role="status">
+            <p
+                v-if="!navigation.results.length"
+                :class="{ 'wander-notice': navigation.error }"
+                role="status"
+            >
                 {{ navigation.error || "No matching streets in this map." }}
             </p>
         </div>
@@ -95,55 +107,46 @@ onUnmounted(() => {
 .location-search {
     width: min(390px, calc(100vw - 32px));
     z-index: 22;
-    color: #f1f5f4;
+    color: #f4f3e9;
     font: 16px system-ui;
 }
-
 .search-field {
     display: flex;
     gap: 10px;
     align-items: center;
-    padding: 8px 12px;
-    background: #0c1412;
-    border: 1px solid #6b8977;
-    border-radius: 12px;
+    padding: 7px 10px;
 }
-
 .search-field input {
     min-width: 0;
     flex: 1;
+    width: 100%;
+    border: none;
     background: transparent;
-    outline: none;
+    padding: 6px;
 }
-
-.search-field button {
-    padding: 4px 9px;
-    border-radius: 6px;
-    background: #6b8977;
+.search-field > span {
+    width: 18px;
+    flex-shrink: 0;
+    color: var(--wander-accent, #d9bd87);
 }
-
+.search-field svg {
+    width: 18px;
+    fill: currentColor;
+}
 .search-results {
-    margin-top: 5px;
-    background: #101d20f5;
-    border-radius: 10px;
+    margin-top: 6px;
     max-height: 240px;
     overflow: auto;
 }
 .search-results button {
     display: block;
-    width: 100%;
-    text-align: left;
-    padding: 12px;
-    border-bottom: 1px solid #ffffff20;
+    border-bottom: 1px solid #dce9df18;
 }
-.search-results button.active,
-.search-results button:hover,
-.search-results button:focus-visible {
-    background: #0d1412;
-}
-small {
+.search-results small {
     display: block;
-    color: #a8bcb7;
+    color: #bdcec4;
+    margin-top: 4px;
+    font-size: 13px;
 }
 .search-results p,
 p.search-results {
@@ -151,7 +154,6 @@ p.search-results {
 }
 @media (max-width: 600px) {
     .location-search {
-        top: 104px;
         font-size: 14px;
         width: calc(100vw - 32px);
     }

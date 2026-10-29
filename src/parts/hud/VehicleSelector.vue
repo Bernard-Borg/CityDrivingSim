@@ -16,9 +16,9 @@ const select = (event: Event) => {
 </script>
 
 <template>
-    <div class="vehicle-selector" @keydown.stop>
+    <div class="wander-secondary wander-panel vehicle-selector" @keydown.stop>
         <label for="vehicle-model">Car</label>
-        <select
+        <select class="wander-select"
             id="vehicle-model"
             :value="VEHICLES[vehicles.selectedId]?.id ?? DEFAULT_VEHICLE.id"
             :disabled="vehicles.switching"
@@ -35,36 +35,8 @@ const select = (event: Event) => {
 </template>
 
 <style scoped>
-.vehicle-selector {
-    margin: 10px 0;
-    padding: 12px;
-    border: 1px solid #6f897966;
-    border-radius: 10px;
-    background: #101c17ed;
-    color: #e5f0e9;
-}
-label {
-    display: block;
-    margin-bottom: 6px;
-    font-size: 14px;
-}
-select {
-    width: 100%;
-    min-height: 40px;
-    padding: 6px;
-    border-radius: 6px;
-    background: #24382e;
-    color: inherit;
-    font: 14px system-ui;
-}
-select:disabled {
-    opacity: 0.6;
-}
-p {
-    margin-top: 8px;
-    font-size: 13px;
-}
-[role="alert"] {
-    color: #ffc2b5;
-}
+.vehicle-selector { margin: 2px 0; padding: 14px; }
+label { display: block; margin-bottom: 8px; color: #bdcec4; font-size: 13px; }
+select { width: 100%; }
+p { margin-top: 8px; font-size: 13px; color: #bdcec4; }
 </style>

@@ -1,200 +1,215 @@
-# Wander 🚗
+# Wander
 
-A virtual city driving simulator built with **Vue 3**, **TypeScript**, **Three.js**, and **Tailwind CSS**. Practice driving in virtual cities to get comfortable with new locations before your actual visit!
+Explore real places at your own pace. Wander is a browser-based driving sandbox
+built with Vue 3, TypeScript, Three.js and Pinia. OpenStreetMap data becomes
+procedural streets, buildings and scenery, with elevation-aware driving and a
+free-flight mode for exploring from above.
 
 ## Features
 
-- **3D City Environment**: Drive through procedurally generated city streets
-- **Realistic Vehicle Physics**: Smooth acceleration, braking, and steering
-- **Multiple Road Types**: Primary, secondary, residential, and tertiary roads
-- **Interactive Controls**: WASD or Arrow keys for driving, mouse for camera
-- **Modern UI**: Beautiful Tailwind CSS styling with glassmorphism effects
-- **TypeScript**: Fully typed codebase for better development experience
-- **Extensible Architecture**: Easy to add real city data from OpenStreetMap
+- **Real map data:** roads, bridges, tunnels, sidewalks, building parts, parks,
+  beaches, water, trees and street furniture generated from OSM exports.
+- **Detailed buildings:** procedural materials and features based on OSM tags,
+  including distinctive building types and floating ships/houseboats.
+- **Elevation:** NASA SRTM HGT and GeoTIFF terrain sources behind a common sampler,
+  with a configurable HGT fallback for detailed terrain.
+- **Driving:** configurable vehicles, slope-aware handling, gravity, collisions,
+  ignition, parking brake and boost.
+- **Cameras:** third-person and first-person views, plus creative free flight.
+- **Vehicles:** Honda NSX, Jeep Gladiator and VW Golf, with animated wheels and
+  steering-wheel animation where supported by the model.
+- **Audio:** vehicle-specific engine sounds, ignition, collisions, horn and radio,
+  with separate engine, music and effects volume settings.
+- **HUD:** instruments, compass, coordinates, street labels, coordinate/street
+  search and teleportation, FPS and optional performance graphs.
+- **Touch controls:** driving, horn and camera controls for mobile devices.
 
-## Tech Stack
+Map accuracy and detail depend on the source data. Terrain heightmaps cannot
+represent overhangs or multiple surfaces at the same horizontal position;
+bridges and tunnels are generated separately.
 
-- **Vue 3** - Progressive JavaScript framework
-- **TypeScript** - Type-safe JavaScript
-- **Three.js** - 3D graphics library
-- **Vite** - Next generation frontend build tool
-- **Tailwind CSS** - Utility-first CSS framework
+## Get started
 
-## Getting Started
+Use Node.js 24 or newer, npm and [Git LFS](https://git-lfs.com/).
 
-### Prerequisites
-
-- Node.js 24 or newer
-- npm or yarn or pnpm
-
-### Installation
-
-1. Clone or download this repository
-2. Install dependencies:
-
-    ```bash
-    npm install
-    ```
-
-3. Start the development server:
-
-    ```bash
-    npm run dev
-    ```
-
-4. Open your browser to the URL shown (typically `http://localhost:5173`)
-
-### Building for Production
-
-```bash
-npm run build
+```sh
+git lfs install
+git clone https://github.com/Bernard-Borg/CityDrivingSim.git
+cd CityDrivingSim
+git lfs pull
+npm ci
+npm run dev
 ```
 
-The built files will be in the `dist/` folder.
+Open the URL printed by Vite, usually `http://localhost:5173`.
 
-### Preview Production Build
+**Git LFS matters:** tracked TIFF assets must be downloaded as actual raster
+files, not left as small LFS pointer files. After changing branches or pulling
+new elevation assets, run `git lfs pull` if necessary.
 
-```bash
-npm run preview
-```
+### Commands
 
-See [Driving simulation](docs/DRIVING.md) for physics, collisions, audio, and validation details.
+| Command             | Purpose                            |
+| ------------------- | ---------------------------------- |
+| `npm run dev`       | Start the development server       |
+| `npm run typecheck` | Check Vue and TypeScript types     |
+| `npm run build`     | Type-check and build into `dist/`  |
+| `npm run preview`   | Serve the production build locally |
 
-## Controls
+## Playing
 
-- **W / ↑ Arrow**: Accelerate forward
-- **S / ↓ Arrow**: Reverse
-- **A / ← Arrow**: Steer left
-- **D / → Arrow**: Steer right
-- **Space**: Brake
-- **Mouse Drag**: Rotate camera view around the car
+The game always starts at the main menu rather than automatically loading a city.
+**Play** opens map selection. When a city is saved, **Continue** restores that
+city and **Choose Map** opens the picker. Map cards include their country.
+Settings and attribution are accessible from the menu.
 
-## Project Structure
+The selected city, vehicle and supported preferences are saved locally in your
+browser. Driving positions are saved per city. The car starts with its ignition
+off; pressing the accelerator starts the ignition automatically.
 
-```
-CityDrivingSim/
-├── src/
-│   ├── core/
-│   │   ├── DrivingSimulator.ts    # Main simulator class
-│   │   ├── scene/
-│   │   │   ├── SceneManager.ts    # Scene, lighting, buildings
-│   │   │   └── RoadGenerator.ts   # Road mesh generation
-│   │   └── vehicle/
-│   │       ├── Car.ts             # Car model & physics
-│   │       └── CarControls.ts     # Input handling
-│   ├── types/
-│   │   └── index.ts               # TypeScript type definitions
-│   ├── utils/
-│   │   └── sampleCityData.ts      # Sample city road data
-│   ├── App.vue                    # Main Vue component
-│   ├── main.ts                    # Vue app entry point
-│   └── style.css                  # Tailwind CSS imports
-├── index.html                     # HTML entry point
-├── vite.config.ts                 # Vite configuration
-├── tsconfig.json                  # TypeScript configuration
-└── tailwind.config.js             # Tailwind CSS configuration
-```
+### Driving controls
 
-## Adding Real City Data
+| Input                | Action                                                                         |
+| -------------------- | ------------------------------------------------------------------------------ |
+| W / Up               | Accelerate; start ignition if off                                              |
+| S / Down             | Brake, then reverse                                                            |
+| A / D / Left / Right | Steer                                                                          |
+| Space / E, held      | Handbrake                                                                      |
+| Shift                | Boost                                                                          |
+| I                    | Ignition / park                                                                |
+| H, held              | Horn                                                                           |
+| V                    | Switch first-person / third-person view                                        |
+| Mouse drag           | Look around; first-person horizontal look is limited to 80 degrees either side |
+| Mouse wheel          | Third-person zoom                                                              |
+| C                    | Toggle creative mode                                                           |
+| ?                    | Open controls help                                                             |
 
-To use real city data from OpenStreetMap:
+Use the on-screen buttons for car selection, radio, street labels, location reset,
+city switching and performance diagnostics. Search accepts street names or
+latitude/longitude within map bounds. The in-game help dialog is the reference
+for controls; mobile devices also expose touch controls.
 
-1. **Get OSM Data**: Visit [OpenStreetMap](https://www.openstreetmap.org) or use [Overpass API](https://overpass-turbo.eu)
+### Creative controls
 
-2. **Convert to JSON**: Process OSM data to extract roads with coordinates
+| Input             | Action              |
+| ----------------- | ------------------- |
+| WASD / Arrow keys | Fly horizontally    |
+| Space / E         | Fly up              |
+| Q                 | Fly down            |
+| Shift, held       | Fly faster          |
+| Mouse drag        | Look around         |
+| Mouse wheel       | Adjust flight speed |
+| C                 | Return to driving   |
 
-3. **Update Data Format**: Convert lat/lon to local coordinates using the helper function in `sampleCityData.ts`
+### Settings and performance
 
-4. **Load in SceneManager**: Update `SceneManager.ts` to load your city data
+Settings includes shadows, render resolution, audio channel volumes and mute.
+**Use fallback terrain** loads a GeoTIFF city's configured HGT fallback directly,
+skipping TIFF decoding. Changing it reloads the map, preserving latitude and
+longitude while resolving height against the newly selected surface. Cities
+without a configured fallback retain their normal source.
 
-Example Overpass Query:
+Fine terrain spacing increases mesh generation and clipping work substantially.
+The TIFF pixel spacing and the rendered mesh spacing are separate settings.
+Currently terrain meshes are generated at load time, and the TIFF loader reads
+the complete elevation band; preprocessing/streaming is not implemented. Use
+fallback terrain or adjust `meshSpacing` when detailed maps load too slowly.
 
-```
-[out:json];
-(
-  way["highway"~"^(primary|secondary|tertiary|residential|service)$"]({{bbox}});
-);
-out body;
->;
-out skel qt;
-```
+The performance panel includes FPS, frame/CPU timings, draw calls and scene counts.
+See [driving and diagnostics](docs/DRIVING.md) for more detail.
 
-## Customization
+## Maps and configuration
 
-### Adding More Cities
+Configured maps include Amsterdam (Netherlands), Monaco, Stockholm (Sweden), and
+Rabat, Valletta and Il-Qrendi (Malta). A map appears in the picker when its road
+file is available; availability checks use HEAD requests rather than downloading
+the full road export.
 
-1. Create a new TypeScript file in `src/utils/` with your city data
-2. Export city data in the format shown in `sampleCityData.ts`
-3. Load it in `SceneManager.loadCityMap()`
+### Add a map
 
-### Adjusting Vehicle Physics
+1. Export GeoJSON using the queries in
+   [roads](public/data/roads/osm_query.txt),
+   [buildings](public/data/buildings/osm_query.txt),
+   [natural features](public/data/natural/osm_query.txt) and
+   [decor](public/data/decor/osm_query.txt).
+2. Save matching filenames such as `example.json` under the corresponding
+   `public/data/` directories. Roads are required; other scenery is optional.
+   Keep coordinates in WGS84 longitude/latitude; the application projects them.
+3. Add a configuration to [cities.ts](src/stores/cities.ts), including `name`,
+   `country`, `file`, `centerLat` and `centerLon`, plus optional building theme and
+   elevation settings. The city centre supplies the local coordinate origin and
+   the default spawn search area; saved positions are stored separately.
+4. For HGT elevation, provide the asset filename and its southern/western tile
+   coordinates. For GeoTIFF, select `format: "geotiff"`, the supported CRS,
+   mesh spacing and optional HGT fallback. See the
+   [elevation guide](docs/ELEVATION.md) and
+   [source notes](public/data/elevation/ele_query.txt).
+5. Preserve source attribution and licences when adding or replacing data.
 
-Edit `src/core/vehicle/Car.ts`:
+The natural-feature export includes water. There is no separate legacy water-file
+fallback. Optional road-level settings live in
+[road-levels.json](public/data/roads/road-levels.json).
 
-- `maxSpeed`: Maximum vehicle speed
-- `maxAcceleration`: How quickly the car accelerates
-- `friction`: How quickly the car slows down
-- `maxSteeringAngle`: Maximum steering angle
+### Vehicles and UI
 
-### Customizing Graphics
+Vehicle models, driver-eye placement, handling, grip and engine profiles are
+configured in [VehicleConfig.ts](src/core/vehicle/VehicleConfig.ts).
 
-- Edit materials in `RoadGenerator.ts` for different road appearances
-- Modify `Car.ts` to change vehicle appearance
-- Adjust lighting in `DrivingSimulator.ts`
+The **coastal dusk** theme uses deep teal surfaces and warm gold menu accents,
+with sage green as the secondary in-game palette. Reuse the shared buttons,
+dialogs and native form-control classes in [screens.css](src/styles/screens.css).
+Read [UI_THEME.md](docs/UI_THEME.md) before changing the UI.
 
-### Styling with Tailwind
+## Project layout
 
-The UI components use Tailwind CSS utility classes. You can customize:
+| Location                                                          | Responsibility                                               |
+| ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| [src/core/](src/core/)                                            | Simulator, menu scene, cameras and world integration         |
+| [src/core/scene/](src/core/scene/)                                | Terrain, roads, tunnels, buildings, scenery and collisions   |
+| [src/core/vehicle/](src/core/vehicle/)                            | Vehicle configuration, physics and model animation           |
+| [src/stores/](src/stores/)                                        | Shared Pinia state, saved preferences and simulator commands |
+| [src/parts/](src/parts/)                                          | Menu, loading, error, map-selection and HUD components       |
+| [src/styles/screens.css](src/styles/screens.css)                  | Shared UI surfaces and controls                              |
+| [public/data/](public/data/)                                      | OSM exports, elevation sources and queries                   |
+| [public/models/](public/models/)                                  | Vehicle models and bundled asset credits                     |
+| [public/music/](public/music/) / [public/sounds/](public/sounds/) | Radio tracks and sound assets                                |
+| [docs/](docs/)                                                    | Feature and configuration guides                             |
 
-- Colors in `tailwind.config.js`
-- UI components in `App.vue`
+The [simulator store](src/stores/simulator.ts) owns the simulator lifecycle and
+exposes commands directly to components. Its `shallowRef` avoids deeply proxying
+Three.js resources. Dialogs register independent pause reasons with the store;
+closing one does not resume gameplay while another still needs it paused.
 
-## Scripts
+## Deployment and PWA
 
-- `npm run typecheck` - Check Vue and TypeScript
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run preview` - Preview production build
+Build with `npm run build` and serve `dist/` from the site root. On Vercel, use the
+Vite preset with `dist` as the output directory. Ensure the checkout resolves Git
+LFS assets before building and that the host can serve the large elevation files.
+GeoTIFF loading requires HTTP byte-range responses.
 
-## Future Enhancements
+PWA installation requires HTTPS in production. The service worker caches the app
+shell, not the large city datasets, elevation files, models or music. New service
+workers activate after existing tabs close rather than forcing a reload during a
+drive. Avoid long-lived caching of the service-worker script.
 
-- [ ] Traffic simulation with AI vehicles
-- [ ] Real OpenStreetMap integration
-- [ ] Multiple cities selection
-- [ ] GPS navigation system
-- [ ] Weather effects (rain, fog, day/night cycle)
-- [ ] Sound effects and music
-- [ ] Multiplayer support
-- [ ] VR support
-- [ ] Mobile device controls
-- [ ] City selector component
+## Documentation
 
-## TypeScript
+- [Driving, vehicles and diagnostics](docs/DRIVING.md)
+- [Elevation sources and terrain](docs/ELEVATION.md)
+- [Tunnel generation](docs/TUNNELS.md)
+- [Procedural buildings](docs/BUILDINGS.md)
+- [Natural features and street furniture](docs/SCENERY.md)
+- [Water and coastlines](docs/WATER.md)
+- [UI theme and shared controls](docs/UI_THEME.md)
+- [Project contribution instructions](AGENTS.md)
 
-This project is fully written in TypeScript for type safety. All Three.js interactions are properly typed, and custom types are defined in `src/types/index.ts`.
+## Attribution and licences
 
-## Contributing
+See [Attribution & licences](public/attribution.html), also linked from the game,
+for dataset and vehicle-model credits. Sources include OpenStreetMap contributors,
+NASA SRTM and IGN MNT LiDAR HD for Monaco's TIFF terrain.
 
-Feel free to fork this project and add your own improvements. Some areas that could use work:
-
-- Better OSM data integration
-- More realistic vehicle physics
-- Traffic AI
-- Better graphics and textures
-- Performance optimizations
-- Vue composables for game state management
-
-## License
-
-MIT License - feel free to use this project for learning or as a starting point for your own projects!
-
-## Acknowledgments
-
-- Vue.js team for the amazing framework
-- Three.js community for excellent documentation
-- OpenStreetMap for providing free map data
-- All contributors to open-source tools used in this project
-
----
-
-Enjoy practicing your driving skills! 🚦✨
+Third-party assets and datasets retain their own licences. In particular, the
+bundled vehicle credits specify **CC BY-NC-SA 4.0**, including noncommercial and
+share-alike conditions for adaptations. Do not assume those assets share the same
+licence as application code.

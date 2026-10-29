@@ -75,9 +75,9 @@ onUnmounted(() => {
 });
 </script>
 <template>
-    <div class="mobile-controls" aria-label="Touch controls">
+    <div class="wander-secondary mobile-controls" aria-label="Touch controls">
         <div class="steering">
-            <button
+            <button class="wander-button compact"
                 v-for="[key, label] in [
                     ['KeyA', '←'],
                     ['KeyD', '→'],
@@ -95,7 +95,7 @@ onUnmounted(() => {
         </div>
         <button
             v-if="!state.creativeMode"
-            class="horn-button"
+            class="wander-button compact horn-button"
             aria-label="Horn (hold)"
             :class="{ held: touch.pressed.KeyH }"
             @pointerdown="down($event, 'KeyH')"
@@ -106,7 +106,7 @@ onUnmounted(() => {
             Horn
         </button>
         <div
-            class="look-pad"
+            class="wander-panel look-pad"
             aria-label="Drag to look around"
             @pointerdown="lookDown"
             @pointermove="lookMove"
@@ -119,11 +119,11 @@ onUnmounted(() => {
         <div class="pedals">
             <button
                 v-if="!state.creativeMode"
-                class="view-button"
+                class="wander-button compact view-button"
                 @click="touch.viewRequested = true"
             >
                 View</button
-            ><button
+            ><button class="wander-button compact"
                 v-for="[key, label] in controls"
                 :key="key"
                 :class="{ held: touch.pressed[key] }"
@@ -166,21 +166,9 @@ onUnmounted(() => {
     grid-template-columns: repeat(2, 72px);
     gap: 8px;
 }
-.mobile-controls button,
-.look-pad {
-    background: #13251ee8;
-    border: 1px solid #8aafa480;
-    border-radius: 14px;
-    color: #f1fff8;
-    min-width: 64px;
-    min-height: 58px;
-    font: 600 15px system-ui;
-}
+.mobile-controls button, .look-pad { min-width: 64px; min-height: 58px; font: 600 15px system-ui; }
 .steering button {
     font-size: 30px;
-}
-.mobile-controls button.held {
-    background: #567e68;
 }
 .look-pad {
     right: 20px;
@@ -189,7 +177,7 @@ onUnmounted(() => {
     height: 65px;
     display: grid;
     place-items: center;
-    color: #b6cec2;
+    color: #bdcec4;
 }
 .horn-button {
     position: absolute;

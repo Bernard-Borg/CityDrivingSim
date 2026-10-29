@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
+import { useRadioStore } from "@/stores/radio";
 import { useStateStore } from "@/stores/state";
 import VehicleInstruments from "./hud/VehicleInstruments.vue";
 import NavigationCompass from "./hud/NavigationCompass.vue";
@@ -12,6 +13,7 @@ import { useSimulatorStore } from "@/stores/simulator";
 import PerformancePanel from "./hud/PerformancePanel.vue";
 
 const state = useStateStore();
+const radio = useRadioStore();
 const simulator = useSimulatorStore();
 
 const help = ref<InstanceType<typeof ControlsHelp> | null>(null);
@@ -35,6 +37,14 @@ const onKey = (e: KeyboardEvent) => {
     ) {
         e.preventDefault();
         simulator.setCreativeMode(!state.creativeMode);
+    }
+    if (
+        e.key.toLowerCase() === "r" && !e.repeat &&
+        !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !simulator.isPaused && !state.creativeMode
+    ) {
+        e.preventDefault();
+        radio.toggle();
     }
     if (e.key === "F3") {
         e.preventDefault();

@@ -7,12 +7,8 @@ const state = useStateStore();
 defineEmits<{ (e: "close"): void }>();
 
 const latest = computed(() => state.performanceHistory.at(-1));
-const scale = computed(() =>
-    Math.max(33.3, ...state.performanceHistory.map((p) => p.frameMs)),
-);
-const callsScale = computed(() =>
-    Math.max(1, ...state.performanceHistory.map((p) => p.calls)),
-);
+const scale = computed(() => Math.max(33.3, ...state.performanceHistory.map((p) => p.frameMs)));
+const callsScale = computed(() => Math.max(1, ...state.performanceHistory.map((p) => p.calls)));
 
 const points = (field: "frameMs" | "cpuMs" | "calls", max: number) =>
     state.performanceHistory
@@ -25,10 +21,11 @@ const points = (field: "frameMs" | "cpuMs" | "calls", max: number) =>
 const num = (n = 0) => n.toLocaleString();
 </script>
 <template>
-    <aside class="performance-panel" aria-label="Performance diagnostics">
+    <aside class="wander-secondary wander-panel performance-panel" aria-label="Performance diagnostics">
         <header>
             <strong>{{ state.fps }} <small>FPS</small></strong
             ><button
+                class="wander-button compact icon"
                 aria-label="Close performance graphs"
                 @click="$emit('close')"
             >
@@ -36,16 +33,10 @@ const num = (n = 0) => n.toLocaleString();
             </button>
         </header>
         <div class="graph-label">
-            <span
-                ><i class="frame-key"></i> Frame
-                <i class="cpu-key"></i> CPU</span
+            <span><i class="frame-key"></i> Frame <i class="cpu-key"></i> CPU</span
             ><b>{{ latest?.frameMs.toFixed(1) ?? "-" }} ms</b>
         </div>
-        <svg
-            viewBox="0 0 300 58"
-            role="img"
-            aria-label="Frame and CPU time history"
-        >
+        <svg viewBox="0 0 300 58" role="img" aria-label="Frame and CPU time history">
             <path d="M0 54H300M0 28H300" class="grid" />
             <polyline :points="points('frameMs', scale)" class="frame" />
             <polyline :points="points('cpuMs', scale)" class="cpu" />
@@ -68,15 +59,11 @@ const num = (n = 0) => n.toLocaleString();
             </div>
             <div>
                 <dt>Visible / total meshes</dt>
-                <dd>
-                    {{ num(latest?.visibleMeshes) }} / {{ num(latest?.meshes) }}
-                </dd>
+                <dd>{{ num(latest?.visibleMeshes) }} / {{ num(latest?.meshes) }}</dd>
             </div>
             <div>
                 <dt>Geometry / textures</dt>
-                <dd>
-                    {{ num(latest?.geometries) }} / {{ num(latest?.textures) }}
-                </dd>
+                <dd>{{ num(latest?.geometries) }} / {{ num(latest?.textures) }}</dd>
             </div>
         </dl>
     </aside>
@@ -92,11 +79,6 @@ const num = (n = 0) => n.toLocaleString();
     max-height: calc(100vh - 40px);
     overflow: auto;
     padding: 16px;
-    background: #0a1411f2;
-    border: 1px solid #698476;
-    border-radius: 12px;
-    backdrop-filter: blur(12px);
-    color: #dcecdf;
     font:
         13px ui-monospace,
         monospace;
@@ -114,12 +96,7 @@ header strong {
 }
 header small {
     font-size: 13px;
-    color: #a6c5ae;
-}
-button {
-    font-size: 24px;
-    cursor: pointer;
-    padding: 0 4px;
+    color: #bdcec4;
 }
 .graph-label {
     display: flex;
@@ -178,7 +155,7 @@ dl div {
     margin-top: 8px;
 }
 dt {
-    color: #adc7b5;
+    color: #bdcec4;
 }
 dd {
     font-variant-numeric: tabular-nums;

@@ -12,11 +12,11 @@ const DRIVING_CONTROLS = [
     ["Shift", "Boost"],
     ["I", "Ignition / park"],
     ["H (hold)", "Horn"],
+    ["R", "Radio on / off"],
     ["V", "First / third person"],
     ["C", "Creative mode / fly"],
     ["Mouse drag", "Look around (first person: ±80°)"],
     ["Scroll", "Third-person zoom"],
-    ["F3", "Performance graphs"],
     ["?", "Open help"],
 ];
 
@@ -28,7 +28,6 @@ const FLIGHT_CONTROLS = [
     ["Mouse drag", "Look around freely"],
     ["Scroll", "Adjust flight speed"],
     ["C", "Return to parked car"],
-    ["F3", "Performance graphs"],
     ["?", "Open help"],
 ];
 
@@ -65,7 +64,7 @@ onUnmounted(() => {
 <template>
     <dialog
         ref="helpDialog"
-        class="help-dialog"
+        class="wander-secondary wander-dialog help-dialog"
         aria-labelledby="help-title"
         @cancel.prevent="closeHelp"
         @click="
@@ -75,11 +74,15 @@ onUnmounted(() => {
         "
     >
         <div class="panel-title">
-            <span id="help-title">DRIVER'S HANDBOOK</span
-            ><button aria-label="Close controls help" @click="closeHelp">×</button>
+            <h2 id="help-title">DRIVER'S HANDBOOK</h2>
+            <button
+                class="wander-button compact icon"
+                aria-label="Close controls help"
+                @click="closeHelp"
+            >
+                ×
+            </button>
         </div>
-        <h2>Make yourself at home.</h2>
-        <p class="help-intro">The simulation is paused while this guide is open.</p>
         <dl class="controls-list">
             <div v-for="[key, action] in controls" :key="key">
                 <dt>
@@ -90,164 +93,79 @@ onUnmounted(() => {
         </dl>
         <p class="help-note">
             Switching off the engine applies the parking brake and holds the car on hills. Starting
-            releases it after ignition. First-person looking stays horizontal.
+            releases it after ignition.
         </p>
-        <button class="hud-button resume-button" @click="closeHelp">
+        <button class="wander-button primary resume-button" @click="closeHelp">
             Back to driving <small>ESC</small>
         </button>
     </dialog>
 </template>
 <style scoped>
-.hud-button {
-    border: 1px solid #63776a66;
-    border-radius: 7px;
-    background: #0c1613d9;
-    color: #b7c9bd;
-    padding: 9px 11px;
-    font:
-        10px system-ui,
-        sans-serif;
-    letter-spacing: 0.5px;
-    cursor: pointer;
-    backdrop-filter: blur(10px);
-    transition:
-        background 0.15s,
-        border-color 0.15s;
-}
-.hud-button:hover {
-    background: #263a2fe8;
-    border-color: #a9c2ad;
-}
-.hud-button:focus-visible {
-    outline: 2px solid #d6bd8d;
-    outline-offset: 3px;
-}
-.hud-button.selected {
-    color: #e5eddc;
-    border-color: greenyellow;
-}
-.hud-button svg {
-    width: 18px;
-    height: 18px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-}
-.settings-tools .hud-button {
-    width: 100%;
-    padding: 8px 5px;
-    font-size: 9px;
+.help-dialog {
+    width: min(600px, calc(100vw - 32px));
 }
 .panel-title {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    letter-spacing: 2px;
-    font-size: 10px;
-    color: #9ab7a4;
-}
-.panel-title small {
-    font-size: 7px;
-    color: #678775;
-    margin-left: 6px;
-    letter-spacing: 1px;
-}
-.panel-title button {
-    font-size: 20px;
-    cursor: pointer;
-    padding: 0 3px;
-    color: #9ab7a4;
-}
-.help-dialog {
-    overflow: auto;
-    color: #d4e2d8;
-    background: #111e18f7;
-    border: 1px solid #779b8188;
-    border-radius: 20px;
-    padding: 26px;
-    width: min(560px, calc(100vw - 32px));
-    max-height: 85vh;
-    box-shadow: 0 25px 90px #0009;
-}
-.help-dialog::backdrop {
-    background: #030806b3;
-    backdrop-filter: blur(8px);
+    gap: 16px;
+    letter-spacing: 0.14em;
+    font-size: 12px;
+    color: var(--wander-accent, #d9bd87);
 }
 .help-dialog h2 {
-    font-size: 26px;
-    font-weight: 400;
-    letter-spacing: -0.5px;
-    margin-top: 18px;
+    font-size: 30px;
+    font-weight: 650;
+    letter-spacing: -0.04em;
+    margin-top: 20px;
 }
-.help-intro {
-    font-size: 12px;
-    color: #92aa9a;
-    margin-top: 6px;
+.help-intro,
+.help-note {
+    font-size: 15px;
+    line-height: 1.6;
+    color: #bdcec4;
+    margin-top: 10px;
 }
 .controls-list {
-    margin-top: 18px;
+    margin-top: 22px;
 }
 .controls-list div {
     display: grid;
-    grid-template-columns: 155px 1fr;
+    grid-template-columns: 170px 1fr;
     align-items: center;
-    padding: 7px 0;
-    border-bottom: 1px solid #6f8c7722;
+    gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid #dce9df18;
 }
 .controls-list kbd {
     font:
-        10px ui-monospace,
+        13px ui-monospace,
         monospace;
-    color: #e0c69b;
-    border: 1px solid #8c795644;
-    border-radius: 4px;
-    padding: 3px 6px;
-    background: #9d7d4211;
+    color: var(--wander-accent-text, #e8cfa5);
+    border: 1px solid var(--wander-accent-subtle, #d9bd8745);
+    border-radius: 5px;
+    padding: 5px 8px;
+    background: var(--wander-accent-soft, #d9bd8710);
 }
 .controls-list dd {
-    font-size: 12px;
-    color: #b9cdbf;
-}
-.help-note {
-    font-size: 11px;
-    line-height: 1.8;
-    color: #91aa98;
-    margin-top: 18px;
+    font-size: 15px;
+    color: #bdcec4;
 }
 .resume-button {
     width: 100%;
-    margin-top: 20px;
-    padding: 12px;
+    margin-top: 24px;
 }
 .resume-button small {
-    margin-left: 14px;
-    opacity: 0.5;
-    font-size: 8px;
+    font-size: 12px;
+    opacity: 0.7;
 }
 @media (max-width: 420px) {
     .controls-list div {
         grid-template-columns: 125px 1fr;
+        gap: 10px;
     }
-}
-.panel-title {
-    font-size: 14px;
-}
-.controls-list kbd,
-.controls-list dd,
-.help-intro,
-.help-note {
-    font-size: 14px;
-}
-.hud-button {
-    font-size: 14px;
-}
-.resume-button small {
-    font-size: 11px;
-}
-.controls-list div {
-    padding: 9px 0;
-}
-.help-dialog {
-    width: min(620px, calc(100vw - 32px));
+    .controls-list dd {
+        font-size: 14px;
+    }
 }
 </style>

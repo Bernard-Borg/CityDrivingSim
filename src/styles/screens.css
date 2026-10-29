@@ -1,3 +1,22 @@
+/* Gold is the primary menu accent; sage green is the secondary in-game palette. */
+.wander-secondary {
+    --wander-accent: #a5d3b7;
+    --wander-accent-hover: #c0e4cb;
+    --wander-accent-border: #9bc4a6;
+    --wander-accent-soft: #a5d3b722;
+    --wander-accent-subtle: #a5d3b745;
+    --wander-accent-border-hover: #a5d3b780;
+    --wander-accent-text: #d6eddb;
+    --wander-on-accent: #193225;
+    --wander-focus: #b3dfc3;
+    --wander-surface: #111e18f2;
+    --wander-field-surface: #1b3026;
+    --wander-border: #6f897966;
+    --wander-hover: #263a2fe8;
+    --wander-text: #e5f0e9;
+    --wander-muted: #b9cdbf;
+}
+
 /* Shared menu surfaces and feedback, matching the main-menu palette. */
 .wander-screen {
     position: absolute;
@@ -7,7 +26,7 @@
     place-items: center;
     padding: max(28px, env(safe-area-inset-top)) 24px 54px;
     overflow-y: auto;
-    color: #f4f3e9;
+    color: var(--wander-text, #f4f3e9);
     font-family: system-ui, sans-serif;
     background:
         radial-gradient(ellipse at 85% 10%, #38584c45, transparent 55%),
@@ -17,13 +36,13 @@
 .wander-card {
     width: min(680px, 100%);
     padding: clamp(24px, 4vw, 46px);
-    border: 1px solid #dce9df35;
+    border: 1px solid var(--wander-border, #dce9df35);
     border-radius: 12px;
     background: #eff7f005;
     box-shadow: 0 22px 90px #0003;
 }
 .wander-eyebrow {
-    color: #d9bd87;
+    color: var(--wander-accent, #d9bd87);
     font-size: 12px;
     font-weight: 650;
     letter-spacing: 0.2em;
@@ -38,7 +57,7 @@
     margin: 0;
 }
 .wander-description {
-    color: #bdcec4;
+    color: var(--wander-muted, #bdcec4);
     font-size: 17px;
     line-height: 1.6;
     margin: 16px 0 28px;
@@ -51,10 +70,10 @@
     gap: 12px;
     min-height: 54px;
     padding: 13px 22px;
-    border: 1px solid #dce9df35;
+    border: 1px solid var(--wander-border, #dce9df35);
     border-radius: 7px;
     background: #eff7f00b;
-    color: #f4f3e9;
+    color: var(--wander-text, #f4f3e9);
     font: 550 18px system-ui;
     text-align: left;
     cursor: pointer;
@@ -64,28 +83,28 @@
         transform 0.18s;
 }
 .wander-button:hover {
-    background: #ecf5ed20;
+    background: var(--wander-hover, #ecf5ed20);
     border-color: #e0eee4a0;
     transform: translateY(-2px);
 }
 .wander-button:focus-visible,
 .wander-back:focus-visible {
-    outline: 3px solid #f0d49c;
+    outline: 3px solid var(--wander-focus, #f0d49c);
     outline-offset: 4px;
 }
 .wander-button.primary {
-    background: #d9bd87;
-    border-color: #ead1a2;
-    color: #24312e;
+    background: var(--wander-accent, #d9bd87);
+    border-color: var(--wander-accent-border, #ead1a2);
+    color: var(--wander-on-accent, #24312e);
 }
 .wander-button.primary:hover {
-    background: #edd2a0;
+    background: var(--wander-accent-hover, #edd2a0);
 }
 .wander-back {
     display: inline-flex;
     align-items: center;
     gap: 12px;
-    color: #bdcec4;
+    color: var(--wander-muted, #bdcec4);
     font: 500 16px system-ui;
     background: none;
     border: 0;
@@ -94,7 +113,7 @@
     margin-bottom: 26px;
 }
 .wander-back:hover {
-    color: #f4f3e9;
+    color: var(--wander-text, #f4f3e9);
 }
 .wander-actions {
     display: flex;
@@ -103,8 +122,8 @@
 }
 .wander-notice[role] {
     padding: 12px 14px;
-    border: 1px solid #d9bd8745;
-    border-left: 3px solid #d9bd87;
+    border: 1px solid var(--wander-accent-subtle, #d9bd8745);
+    border-left: 3px solid var(--wander-accent, #d9bd87);
     border-radius: 6px;
     background: #18292bf5;
     color: #e8cfa5;
@@ -130,3 +149,42 @@
         transform: none;
     }
 }
+
+
+/* Shared in-game surfaces and native form controls. Component styles own layout only. */
+.wander-panel { background: var(--wander-surface, #101e23ed); color: var(--wander-text, #f4f3e9); border: 1px solid var(--wander-border, #dce9df35); border-radius: 10px; backdrop-filter: blur(12px); font-family: system-ui, sans-serif; }
+.wander-dialog { margin: auto; width: min(580px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; padding: clamp(22px, 4vw, 34px); border: 1px solid var(--wander-border, #dce9df35); border-radius: 12px; color: var(--wander-text, #f4f3e9); background: linear-gradient(135deg, #101e23, #14262b); box-shadow: 0 24px 90px #0006; font: 17px/1.5 system-ui, sans-serif; color-scheme: dark; }
+.wander-dialog::backdrop { background: #0c191dc9; backdrop-filter: blur(8px); }
+.wander-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 26px; }
+.wander-dialog-head h2 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: -.045em; line-height: 1.2; }
+.wander-section-title { margin: 28px 0 12px; color: var(--wander-accent, #d9bd87); font: 650 12px system-ui; letter-spacing: .17em; text-transform: uppercase; }
+.wander-field { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 0; border-bottom: 1px solid #dce9df18; color: var(--wander-text, #f4f3e9); font-size: 16px; line-height: 1.4; }
+.wander-field > span { min-width: 0; }
+.wander-field small { display: block; color: var(--wander-muted, #bdcec4); font-size: 13px; line-height: 1.5; margin-top: 4px; }
+.wander-button.compact { min-height: 44px; padding: 9px 13px; gap: 8px; font-size: 14px; background: var(--wander-surface, #101e23ed); backdrop-filter: blur(12px); }
+.wander-button.icon { width: 44px; min-width: 44px; padding: 10px; flex-shrink: 0; }
+.wander-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; flex-shrink: 0; }
+.wander-button.selected, .wander-button[aria-pressed="true"], .wander-button.held { background: var(--wander-accent-soft, #d9bd8722); border-color: var(--wander-accent, #d9bd87); color: var(--wander-accent-hover, #edd2a0); }
+.wander-button:hover:not(:disabled) { background: var(--wander-hover, #ecf5ed20); }
+.wander-button.primary:hover:not(:disabled) { background: var(--wander-accent-hover, #edd2a0); }
+.wander-button:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+.wander-select, .wander-input { min-height: 44px; min-width: 0; border: 1px solid var(--wander-border, #dce9df35); border-radius: 7px; background-color: var(--wander-field-surface, #14262b); color: var(--wander-text, #f4f3e9); padding: 10px 12px; font: 15px system-ui; color-scheme: dark; }
+.wander-select { appearance: none; padding-right: 36px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23bdcec4' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+.wander-select option { background: var(--wander-field-surface, #14262b); color: var(--wander-text, #f4f3e9); }
+.wander-select:hover, .wander-input:hover { border-color: var(--wander-accent-border-hover, #d9bd8780); }
+.wander-checkbox { appearance: none; display: inline-grid; place-content: center; flex-shrink: 0; width: 24px; height: 24px; margin: 0; border: 1px solid #dce9df65; border-radius: 5px; background: var(--wander-field-surface, #14262b); cursor: pointer; }
+.wander-checkbox:checked { background: var(--wander-accent, #d9bd87); border-color: var(--wander-accent, #d9bd87); }
+.wander-checkbox:checked::before { content: ""; width: 11px; height: 7px; border-left: 2px solid var(--wander-on-accent, #24312e); border-bottom: 2px solid var(--wander-on-accent, #24312e); transform: translateY(-1px) rotate(-45deg); }
+.wander-range { appearance: none; background: transparent; height: 28px; min-width: 60px; padding: 0; cursor: pointer; accent-color: var(--wander-accent, #d9bd87); }
+.wander-range::-webkit-slider-runnable-track { height: 4px; background: var(--wander-border, #dce9df35); border-radius: 4px; }
+.wander-range::-webkit-slider-thumb { appearance: none; width: 17px; height: 17px; border-radius: 50%; background: var(--wander-accent, #d9bd87); border: 2px solid var(--wander-accent-hover, #edd2a0); margin-top: -6.5px; }
+.wander-range::-moz-range-track { height: 4px; background: var(--wander-border, #dce9df35); border-radius: 4px; }
+.wander-range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--wander-accent, #d9bd87); border: 2px solid var(--wander-accent-hover, #edd2a0); }
+.wander-select:focus-visible, .wander-input:focus-visible, .wander-checkbox:focus-visible, .wander-range:focus-visible { outline: 2px solid var(--wander-focus, #f0d49c); outline-offset: 4px; }
+.wander-select:disabled, .wander-input:disabled, .wander-checkbox:disabled, .wander-range:disabled { opacity: .45; cursor: not-allowed; }
+.wander-menu-item { display: flex; width: 100%; min-height: 44px; padding: 12px 16px; text-align: left; font: 15px system-ui; color: var(--wander-text, #f4f3e9); background: transparent; border: 0; cursor: pointer; }
+.wander-menu-item:hover, .wander-menu-item.selected, .wander-menu-item.active { background: var(--wander-accent-soft, #d9bd8722); color: var(--wander-accent-hover, #edd2a0); }
+.wander-menu-item:focus-visible { outline: 2px solid var(--wander-focus, #f0d49c); outline-offset: -3px; }
+@media (max-width: 480px) { .wander-field { gap: 12px; } .wander-dialog { max-height: calc(100dvh - 24px); } }
+@media (prefers-reduced-motion: reduce) { .wander-button:hover { transform: none; } }
+@media (forced-colors: active) { .wander-checkbox { appearance: auto; } }
