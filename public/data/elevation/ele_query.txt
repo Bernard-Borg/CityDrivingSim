@@ -1,0 +1,6 @@
+Rabat.tiff (2018 LIDAR coverage): https://malta.coverage.wetransform.eu/dtm_1m_2018/ows?SERVICE=WCS&VERSION=2.0.1&REQUEST=GetCoverage&COVERAGEID=dtm_1m_2018&SUBSET=E(443702,447513)&SUBSET=N(3969472,3972745)&SCALESIZE=E(3811),N(3273)&FORMAT=image/tiff
+Monaco.tiff (combined multiple tiles from): https://cartes.gouv.fr/telechargement/IGNF_MNT-LIDAR-HD
+Stockholm.tiff (WIP): https://geotorget.lantmateriet.se/geodataprodukter?filter=markhojdmodell-nedladdning
+
+All HGT files are sourced from NASA SRTM Global 1 ARC Second V003 via:
+https://search.earthdata.nasa.gov/search
