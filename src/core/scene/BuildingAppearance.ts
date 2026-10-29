@@ -65,6 +65,20 @@ export const AMSTERDAM_BUILDINGS: BuildingTheme = {
     wallMaterial: "brick",
     residentialRoofShape: "gabled",
 };
+/** Alpine plaster facades and pitched roofs for Vaduz; explicit OSM tags take priority. */
+export const VADUZ_BUILDINGS: BuildingTheme = {
+    wallColors: ["#eee9dc", "#ded8c9", "#e7d7bd", "#d4c9ba", "#f1ede4"],
+    roofColors: ["#795349", "#925f48", "#545858", "#68635b"],
+    shutterColors: ["#385347", "#655044", "#5b6264"],
+    floorHeight: 3,
+    windowSpacing: 2.7,
+    weathering: 0.14,
+    balconyChance: 0.3,
+    residentialLevels: [2, 3],
+    wallMaterial: "plaster",
+    residentialRoofShape: "gabled",
+};
+
 export type BuildingStyle =
     | "home"
     | "apartments"

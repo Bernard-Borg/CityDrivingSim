@@ -72,21 +72,38 @@ export class BuildingDetails {
             box(0, Math.min(height * 0.55, 1.4), 0.12, Math.min(length * 0.75, 3), 1, 0.14);
             box(0, Math.min(height * 0.55, 1.4) + 0.6, 0.5, Math.min(length, 3.6), 0.16, 1.2);
         }
-        const text = hospital
-            ? "+"
-            : toilets
-              ? "WC  •  ♂ / ♀"
-              : String(tags.name ?? tags.brand ?? "");
+        if (hospital) {
+            // One solid, extruded cross silhouette; no font glyph or textured plane.
+            const width = Math.max(0.1, Math.min(3, length * 0.6, height * 0.5));
+            const outer = width / 2, arm = width / 6;
+            const outline = new THREE.Shape();
+            outline.moveTo(-arm, outer);
+            for (const [x, y] of [[arm, outer], [arm, arm], [outer, arm],
+                [outer, -arm], [arm, -arm], [arm, -outer], [-arm, -outer],
+                [-arm, -arm], [-outer, -arm], [-outer, arm], [-arm, arm]])
+                outline.lineTo(x!, y!);
+            outline.closePath();
+            const red = new THREE.MeshStandardMaterial({ color: 0xdf2424, roughness: 0.65 });
+            this.resources.push(red);
+            const cross = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, {
+                depth: Math.min(0.18, width * 0.06), bevelEnabled: false, steps: 1,
+            }), red);
+            cross.name = "Hospital red cross";
+            cross.position.set(0, Math.min(height - outer, Math.max(outer, height * 0.7)), 0.12);
+            cross.castShadow = cross.receiveShadow = true;
+            group.add(cross);
+        }
+        const text = hospital ? "" : toilets ? "WC  ?  ? / ?" : String(tags.name ?? tags.brand ?? "");
         if (text) {
             const canvas = document.createElement("canvas");
             canvas.width = 1024;
             canvas.height = 256;
             const ctx = canvas.getContext("2d")!;
-            ctx.fillStyle = hospital ? "#fffdf4" : kiosk ? "#28634d" : "#1b343f";
+            ctx.fillStyle = kiosk ? "#28634d" : "#1b343f";
             ctx.fillRect(0, 0, 1024, 256);
-            ctx.fillStyle = hospital ? "#df2424" : "#fff6dd";
+            ctx.fillStyle = "#fff6dd";
             const font = kiosk ? '"Trebuchet MS", cursive' : "Arial, sans-serif";
-            let size = hospital ? 240 : 120;
+            let size = 120;
             ctx.font = `bold ${size}px ${font}`;
             while (ctx.measureText(text).width > 960 && size > 24) {
                 size -= 2;
@@ -102,14 +119,14 @@ export class BuildingDetails {
                 side: THREE.DoubleSide,
             });
             this.resources.push(signMaterial);
-            const width = hospital ? Math.min(3, length * 0.6) : Math.min(6, length * 0.85);
+            const width = Math.min(6, length * 0.85);
             const sign = new THREE.Mesh(
-                new THREE.PlaneGeometry(width, hospital ? width : width / 4),
+                new THREE.PlaneGeometry(width, width / 4),
                 signMaterial,
             );
             sign.position.set(
                 0,
-                Math.max(0.5, Math.min(height - 0.5, hospital ? height * 0.7 : 2.7)),
+                Math.max(0.5, Math.min(height - 0.5, 2.7)),
                 0.22,
             );
             group.add(sign);

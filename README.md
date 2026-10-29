@@ -123,8 +123,9 @@ See [driving and diagnostics](docs/DRIVING.md) for more detail.
 
 ## Maps and configuration
 
-Configured maps include Amsterdam (Netherlands), Monaco, Stockholm (Sweden), and
-Rabat, Valletta and Il-Qrendi (Malta). A map appears in the picker when its road
+Configured maps include Amsterdam (Netherlands), Monaco, Stockholm (Sweden),
+Vaduz (Liechtenstein), and
+Rabat, Valletta and Vaduz (Liechtenstein). A map appears in the picker when its road
 file is available; availability checks use HEAD requests rather than downloading
 the full road export.
 

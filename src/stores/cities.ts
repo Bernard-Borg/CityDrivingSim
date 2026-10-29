@@ -11,6 +11,7 @@ import {
     MALTA_BUILDINGS,
     MONACO_BUILDINGS,
     STOCKHOLM_BUILDINGS,
+    VADUZ_BUILDINGS,
 } from "@/core/scene/BuildingAppearance";
 import type { BuildingTheme } from "@/core/scene/BuildingAppearance";
 
@@ -68,6 +69,15 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         centerLat: 35.8807,
         centerLon: 14.3977,
     },
+    vaduz: {
+        name: "Vaduz",
+        country: "Liechtenstein",
+        file: "vaduz.json",
+        buildings: VADUZ_BUILDINGS,
+        elevation: { file: "Vaduz.hgt", south: 47, west: 9 },
+        centerLat: 47.141,
+        centerLon: 9.5215,
+    },
     valletta: {
         name: "Valletta",
         country: "Malta",
@@ -76,14 +86,6 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         elevation: { file: "Valletta.hgt", south: 35, west: 14 },
         centerLat: 35.8997,
         centerLon: 14.5146,
-    },
-    qrendi: {
-        name: "Il-Qrendi",
-        country: "Malta",
-        file: "qrendi.json",
-        buildings: MALTA_BUILDINGS,
-        centerLat: 35.8343,
-        centerLon: 14.4579,
     },
     stockholm: {
         name: "Stockholm",
