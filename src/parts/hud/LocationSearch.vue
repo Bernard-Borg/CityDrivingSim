@@ -1,43 +1,47 @@
 <script setup lang="ts">
+import { useSimulatorStore } from "@/stores/simulator";
 import { ref, onUnmounted } from "vue";
 import { useNavigationStore } from "@/stores/navigation";
 import type { MapLocation } from "@/core/LocationSearch";
 
+const simulator = useSimulatorStore();
 const navigation = useNavigationStore();
 const input = ref<HTMLInputElement | null>(null);
 const focused = ref(false);
 const active = ref(0);
-const emit = defineEmits<{
-    (e: "search", query: string): void;
-    (e: "teleport", location: MapLocation): void;
-    (e: "pauseChanged", paused: boolean): void;
-}>();
+
 const focus = () => {
     focused.value = true;
-    emit("pauseChanged", true);
+    simulator.setPauseReason("search", true);
 };
+
 const blur = () => {
     focused.value = false;
-    emit("pauseChanged", false);
+    simulator.setPauseReason("search", false);
 };
+
 const choose = (location: MapLocation) => {
-    emit("teleport", location);
+    simulator.teleport(location);
     input.value?.blur();
 };
+
 const submit = () => {
-    emit("search", navigation.query);
+    simulator.searchLocations(navigation.query);
     const location = navigation.results[active.value] ?? navigation.results[0];
     if (location) choose(location);
 };
+
 const search = () => {
     active.value = 0;
-    emit("search", navigation.query);
+    simulator.searchLocations(navigation.query);
 };
+
 const move = (step: number) => {
     active.value = Math.max(0, Math.min(navigation.results.length - 1, active.value + step));
 };
+
 onUnmounted(() => {
-    if (focused.value) emit("pauseChanged", false);
+    simulator.setPauseReason("search", false);
 });
 </script>
 <template>

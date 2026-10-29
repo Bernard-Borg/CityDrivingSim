@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, nextTick, onUnmounted } from "vue";
 
+import { useSimulatorStore } from "@/stores/simulator";
 import { useStateStore } from "@/stores/state";
 
 const DRIVING_CONTROLS = [
@@ -31,25 +32,25 @@ const FLIGHT_CONTROLS = [
     ["?", "Open help"],
 ];
 
+const simulator = useSimulatorStore();
 const state = useStateStore();
 const helpDialog = ref<HTMLDialogElement | null>(null);
 
 const controls = computed(() => (state.creativeMode ? FLIGHT_CONTROLS : DRIVING_CONTROLS));
 
 const emit = defineEmits<{
-    (e: "pauseChanged", paused: boolean): void;
     (e: "closed"): void;
 }>();
 
 const open = async () => {
-    emit("pauseChanged", true);
+    simulator.setPauseReason("help", true);
     await nextTick();
     helpDialog.value?.showModal();
 };
 
 const closeHelp = () => {
     helpDialog.value?.close();
-    emit("pauseChanged", false);
+    simulator.setPauseReason("help", false);
     emit("closed");
 };
 
@@ -58,7 +59,7 @@ const isOpen = () => helpDialog.value?.open ?? false;
 defineExpose({ open, isOpen });
 
 onUnmounted(() => {
-    if (isOpen()) emit("pauseChanged", false);
+    simulator.setPauseReason("help", false);
 });
 </script>
 <template>

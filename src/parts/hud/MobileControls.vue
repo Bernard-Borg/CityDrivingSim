@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useSimulatorStore } from "@/stores/simulator";
 import { computed, onMounted, onUnmounted } from "vue";
 import { useTouchStore } from "@/stores/touch";
 import { useStateStore } from "@/stores/state";
 
+const simulator = useSimulatorStore();
 const touch = useTouchStore();
 const state = useStateStore();
 const pointers = new Map<number, string>();
@@ -24,10 +26,9 @@ const controls = computed(() =>
               ["ShiftLeft", "Boost"],
           ],
 );
-const emit = defineEmits<{ (e: "gesture"): void }>();
 
 const down = (e: PointerEvent, key: string) => {
-    emit("gesture");
+    simulator.unlockTouchAudio();
     e.preventDefault();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, key);

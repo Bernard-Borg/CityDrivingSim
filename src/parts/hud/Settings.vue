@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSimulatorStore } from "@/stores/simulator";
 import { ref, onUnmounted } from "vue";
 import HudIcon from "./HudIcon.vue";
 import { SoundManager } from "@/utils/SoundManager";
@@ -9,34 +10,31 @@ const AUDIO_CHANNELS = [
     { key: "musicVolume", label: "Music" },
     { key: "effectsVolume", label: "Effects", hint: "Collisions, horn and ignition" },
 ] as const;
+
+const simulator = useSimulatorStore();
 const settings = useSettingsStore();
 const dialog = ref<HTMLDialogElement | null>(null);
 
-const emit = defineEmits<{
-    (e: "pauseChanged", paused: boolean): void;
-    (e: "graphicsChanged"): void;
-    (e: "terrainChanged"): void;
-}>();
-
 const open = () => {
-    emit("pauseChanged", true);
+    simulator.setPauseReason("settings", true);
     dialog.value?.showModal();
 };
 
 const close = () => dialog.value?.close();
-const closed = () => emit("pauseChanged", false);
+const closed = () => simulator.setPauseReason("settings", false);
 const toggleMute = () => {
     settings.isSoundMuted = !settings.isSoundMuted;
     SoundManager.getInstance().setEnabled(!settings.isSoundMuted);
 };
+
 const changeTerrain = () => {
     close();
-    emit("pauseChanged", false);
-    emit("terrainChanged");
+    simulator.setPauseReason("settings", false);
+    simulator.applyTerrain();
 };
 
 onUnmounted(() => {
-    if (dialog.value?.open) emit("pauseChanged", false);
+    simulator.setPauseReason("settings", false);
 });
 </script>
 
@@ -79,8 +77,17 @@ onUnmounted(() => {
         </label>
         <h3>Terrain</h3>
         <label>
-            <span>Use fallback terrain<small>Use HGT instead of detailed terrain when available. Reloads the current map.</small></span>
-            <input v-model="settings.forceFallbackTerrain" type="checkbox" @change="changeTerrain" />
+            <span
+                >Use fallback terrain<small
+                    >Use HGT instead of detailed terrain when available. Reloads the current
+                    map.</small
+                ></span
+            >
+            <input
+                v-model="settings.forceFallbackTerrain"
+                type="checkbox"
+                @change="changeTerrain"
+            />
         </label>
         <h3>Graphics</h3>
         <label>
@@ -88,12 +95,12 @@ onUnmounted(() => {
             <input
                 v-model="settings.shadowsEnabled"
                 type="checkbox"
-                @change="emit('graphicsChanged')"
+                @change="simulator.applyGraphics()"
             />
         </label>
         <label>
             <span>Render resolution</span>
-            <select v-model.number="settings.renderScale" @change="emit('graphicsChanged')">
+            <select v-model.number="settings.renderScale" @change="simulator.applyGraphics()">
                 <option :value="0.75">Low</option>
                 <option :value="1">Standard</option>
                 <option :value="2">High</option>

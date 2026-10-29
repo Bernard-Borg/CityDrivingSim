@@ -8,51 +8,16 @@ import ControlsHelp from "./hud/ControlsHelp.vue";
 import LocationSearch from "./hud/LocationSearch.vue";
 import Settings from "./hud/Settings.vue";
 import MobileControls from "./hud/MobileControls.vue";
-import type { MapLocation } from "@/core/LocationSearch";
+import { useSimulatorStore } from "@/stores/simulator";
 import PerformancePanel from "./hud/PerformancePanel.vue";
 
 const state = useStateStore();
+const simulator = useSimulatorStore();
 
 const help = ref<InstanceType<typeof ControlsHelp> | null>(null);
-const helpPaused = ref(false),
-    searchPaused = ref(false),
-    settingsPaused = ref(false);
 const actions = ref<InstanceType<typeof HudActions> | null>(null);
 
 const playing = computed(() => !state.showCityMenu && !state.isLoading && !state.loadError);
-
-const controlsPaused = computed(
-    () => helpPaused.value || searchPaused.value || settingsPaused.value,
-);
-
-const emit = defineEmits<{
-    (e: "vehicleSelected", id: string): void;
-    (e: "search", query: string): void;
-    (e: "teleport", location: MapLocation): void;
-    (e: "graphicsChanged"): void;
-    (e: "terrainChanged"): void;
-    (e: "touchGesture"): void;
-    (e: "toggleStreetNames"): void;
-    (e: "resetLocation"): void;
-    (e: "citySelected", city: string): void;
-    (e: "toggleIgnition"): void;
-    (e: "creativeChanged", enabled: boolean): void;
-    (e: "pauseChanged", paused: boolean): void;
-    (e: "performanceChanged", enabled: boolean): void;
-}>();
-
-const setPause = (kind: "help" | "search" | "settings", paused: boolean) => {
-    if (kind === "help") helpPaused.value = paused;
-    if (kind === "search") searchPaused.value = paused;
-    if (kind === "settings") settingsPaused.value = paused;
-    emit("pauseChanged", controlsPaused.value);
-};
-
-const togglePerformance = () => {
-    state.showPerformance = !state.showPerformance;
-    if (state.showPerformance) state.performanceHistory = [];
-    emit("performanceChanged", state.showPerformance);
-};
 
 const onKey = (e: KeyboardEvent) => {
     if (
@@ -69,11 +34,11 @@ const onKey = (e: KeyboardEvent) => {
         !e.altKey
     ) {
         e.preventDefault();
-        emit("creativeChanged", !state.creativeMode);
+        simulator.setCreativeMode(!state.creativeMode);
     }
     if (e.key === "F3") {
         e.preventDefault();
-        if (!e.repeat) togglePerformance();
+        if (!e.repeat) simulator.togglePerformance();
     }
     if (e.key === "?" && !help.value?.isOpen()) {
         e.preventDefault();
@@ -88,32 +53,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <template>
     <template v-if="playing">
         <NavigationCompass />
-        <Settings
-            @terrain-changed="emit('terrainChanged')"
-            @graphics-changed="emit('graphicsChanged')"
-            @pause-changed="setPause('settings', $event)"
-        />
-        <MobileControls v-if="!controlsPaused" @gesture="emit('touchGesture')" />
+        <Settings />
+        <MobileControls v-if="!simulator.isPaused" />
         <VehicleInstruments v-if="!state.creativeMode" />
-        <HudActions
-            ref="actions"
-            @vehicle-selected="emit('vehicleSelected', $event)"
-            @creative-changed="emit('creativeChanged', $event)"
-            @help="help?.open()"
-            @performance="togglePerformance"
-            @toggle-ignition="emit('toggleIgnition')"
-            @reset-location="emit('resetLocation')"
-            @toggle-street-names="emit('toggleStreetNames')"
-            @city-selected="emit('citySelected', $event)"
-        />
-        <PerformancePanel v-if="state.showPerformance" @close="togglePerformance" />
+        <HudActions ref="actions" @help="help?.open()" />
+        <PerformancePanel v-if="state.showPerformance" @close="simulator.togglePerformance" />
     </template>
     <div v-if="!playing || !state.showPerformance" class="absolute flex gap-3 top-5 right-5 z-10">
-        <LocationSearch
-            @search="emit('search', $event)"
-            @teleport="emit('teleport', $event)"
-            @pause-changed="setPause('search', $event)"
-        />
+        <LocationSearch />
         <div
             class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border flex items-center max-h-12 border-white/20"
         >
@@ -122,9 +69,5 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
             </div>
         </div>
     </div>
-    <ControlsHelp
-        ref="help"
-        @pause-changed="setPause('help', $event)"
-        @closed="actions?.focusHelp()"
-    />
+    <ControlsHelp ref="help" @closed="actions?.focusHelp()" />
 </template>

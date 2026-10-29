@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useSimulatorStore } from "@/stores/simulator";
 import { ref } from "vue";
 import { useStateStore } from "@/stores/state";
 import { useSettingsStore } from "@/stores/settings";
@@ -7,31 +8,20 @@ import CarRadio from "./CarRadio.vue";
 import VehicleSelector from "./VehicleSelector.vue";
 import HudIcon from "./HudIcon.vue";
 
+const simulator = useSimulatorStore();
 const state = useStateStore();
 const settings = useSettingsStore();
 const cityStore = useCitiesStore();
 
 const helpButton = ref<HTMLButtonElement | null>(null);
 
-const emit = defineEmits<{
-    (e: "vehicleSelected", id: string): void;
-    (e: "help"): void;
-    (e: "performance"): void;
-    (e: "toggleIgnition"): void;
-    (e: "creativeChanged", enabled: boolean): void;
-    (e: "resetLocation"): void;
-    (e: "toggleStreetNames"): void;
-    (e: "citySelected", city: string): void;
-}>();
-
+const emit = defineEmits<{ (e: "help"): void }>();
 
 const openHelp = () => emit("help");
-const togglePerformance = () => emit("performance");
-
 
 const switchCity = (city: string) => {
     state.showCitySwitcher = false;
-    if (city !== state.currentCity) emit("citySelected", city);
+    if (city !== state.currentCity) void simulator.selectCity(city);
 };
 
 defineExpose({ focusHelp: () => helpButton.value?.focus() });
@@ -48,9 +38,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
             >
                 <svg viewBox="0 0 24 24">
                     <circle cx="12" cy="12" r="9" />
-                    <path
-                        d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"
-                    />
+                    <path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01" />
                 </svg>
             </button>
             <button
@@ -59,7 +47,7 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 aria-label="Toggle performance graphs"
                 :aria-pressed="state.showPerformance"
                 title="Performance (F3)"
-                @click="togglePerformance"
+                @click="simulator.togglePerformance"
             >
                 <svg viewBox="0 0 24 24">
                     <path d="M4 4v16h17M6 15l4-5 4 3 6-8" />
@@ -70,11 +58,9 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 class="hud-button ignition-button"
                 :class="{ selected: state.vehicle.engine !== 'off' }"
                 :aria-label="
-                    state.vehicle.engine === 'off'
-                        ? 'Start engine'
-                        : 'Switch off engine and park'
+                    state.vehicle.engine === 'off' ? 'Start engine' : 'Switch off engine and park'
                 "
-                @click="emit('toggleIgnition')"
+                @click="simulator.toggleIgnition()"
             >
                 <svg viewBox="0 0 24 24">
                     <path d="M12 2v10M6.3 5.3a9 9 0 1 0 11.4 0" /></svg
@@ -87,21 +73,26 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
                 }}</span>
             </button>
         </div>
-        <VehicleSelector @select="emit('vehicleSelected', $event)" />
+        <VehicleSelector />
         <CarRadio v-if="!state.creativeMode" />
         <div class="settings-tools">
-            <button class="hud-button" :class="{ selected: state.creativeMode }" :aria-pressed="state.creativeMode"
-                title="Toggle creative mode (C)" @click="emit('creativeChanged', !state.creativeMode)">
-                {{ state.creativeMode ? 'Drive (C)' : 'Fly (C)' }}
+            <button
+                class="hud-button"
+                :class="{ selected: state.creativeMode }"
+                :aria-pressed="state.creativeMode"
+                title="Toggle creative mode (C)"
+                @click="simulator.setCreativeMode(!state.creativeMode)"
+            >
+                {{ state.creativeMode ? "Drive (C)" : "Fly (C)" }}
             </button>
-            <button class="hud-button" @click="emit('resetLocation')">
+            <button class="hud-button" @click="simulator.resetLocation()">
                 {{ state.creativeMode ? "Reset view" : "Reset location" }}
             </button>
             <button
                 class="hud-button"
                 :class="{ selected: settings.showStreetNames }"
                 :aria-pressed="settings.showStreetNames"
-                @click="emit('toggleStreetNames')"
+                @click="simulator.toggleStreetNames()"
             >
                 Street names
             </button>
@@ -271,7 +262,18 @@ defineExpose({ focusHelp: () => helpButton.value?.focus() });
     }
 }
 @media (pointer: coarse) {
-    .hud-tools { right: 12px; top: 158px; bottom: auto; width: 135px; max-height: 32vh; overflow-y: auto; }
-    .hud-button, .settings-tools .hud-button { font-size: 12px; min-height: 40px; }
+    .hud-tools {
+        right: 12px;
+        top: 158px;
+        bottom: auto;
+        width: 135px;
+        max-height: 32vh;
+        overflow-y: auto;
+    }
+    .hud-button,
+    .settings-tools .hud-button {
+        font-size: 12px;
+        min-height: 40px;
+    }
 }
 </style>
