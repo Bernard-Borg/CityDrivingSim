@@ -14,14 +14,59 @@ export interface TerrainBounds {
     maxX: number;
     maxZ: number;
 }
-export interface ElevationSource {
-    file: string;
+/** Geographic coverage in WGS84 decimal degrees. */
+export interface ElevationBounds {
+    /** Southern latitude. */
     south: number;
+    /** Western longitude. */
+    west: number;
+    /** Northern latitude. */
+    north: number;
+    /** Eastern longitude. */
+    east: number;
+}
+
+/** Synchronous sampling contract shared by decoded HGT and GeoTIFF sources. */
+export interface ElevationSampler {
+    /** Reports whether the source can provide elevation at a WGS84 position. */
+    covers(lat: number, lon: number): boolean;
+    /** Returns elevation in source-datum metres at a WGS84 position. */
+    sample(lat: number, lon: number): number;
+    /** Returns geographic bounds used to limit terrain generation. */
+    getBounds(): ElevationBounds;
+}
+
+/** Existing HGT configuration; omitting format preserves legacy city settings. */
+export interface HgtElevationConfig {
+    /** Optional explicit format selector. */
+    format?: "hgt";
+    /** Asset filename under public/data/elevation. */
+    file: string;
+    /** Latitude of the southern tile edge. */
+    south: number;
+    /** Longitude of the western tile edge. */
     west: number;
 }
 
+/** GeoTIFF configuration, including explicit projection and missing-data policy. */
+export interface TiffElevationConfig {
+    /** Selects the GeoTIFF loader. */
+    format: "geotiff";
+    /** Asset filename under public/data/elevation. */
+    file: string;
+    /** Optional CRS override for exports lacking a standard EPSG GeoKey. */
+    crs?: "EPSG:2154" | "EPSG:4326";
+    /** Terrain triangle spacing in metres; does not change the source raster. */
+    meshSpacing?: number;
+    /** Optional HGT coverage for missing or out-of-bounds raster samples. */
+    fallback?: HgtElevationConfig;
+}
+
+/** Discriminated source configuration shared by city loading. */
+export type ElevationSource = HgtElevationConfig | TiffElevationConfig;
+
 /** NASA HGT: signed big-endian metres, rows from north to south, one degree per tile. */
-export class HgtTile {
+export class HgtTile implements ElevationSampler {
     readonly size: number;
     private data: DataView;
     /**
@@ -40,6 +85,11 @@ export class HgtTile {
         if (![1201, 3601].includes(this.size))
             throw new Error("Unsupported HGT size: expected 1201 or 3601 square samples.");
         this.data = new DataView(buffer);
+    }
+
+    /** Returns the exact one-degree HGT coverage without changing legacy sampling. */
+    getBounds(): ElevationBounds {
+        return { south: this.south, west: this.west, north: this.south + 1, east: this.west + 1 };
     }
 
     /**
@@ -114,38 +164,42 @@ export class ElevationTerrain {
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
      *
-     * @param tile - HGT elevation source, or null for a flat terrain grid.
+     * @param tile - Decoded elevation source, or null for a flat terrain grid.
      * @param centerLat - City origin latitude in decimal degrees.
      * @param centerLon - City origin longitude in decimal degrees.
      * @param bounds - Local horizontal bounds in metres.
+     * @param spacingMetres - Optional mesh spacing; omitted HGT settings retain the original 20 m grid.
      */
     constructor(
-        tile: HgtTile | null,
+        tile: ElevationSampler | null,
         readonly centerLat: number,
         readonly centerLon: number,
         bounds: TerrainBounds,
+        spacingMetres?: number,
     ) {
         this.lonScale = this.latScale * Math.cos((centerLat * Math.PI) / 180);
         this.referenceHeight = tile?.sample(centerLat, centerLon) ?? 0;
+        const coverage = tile?.getBounds();
         // Keep all vertices inside the real tile, including the scenery margin.
-        this.bounds = tile
+        this.bounds = coverage
             ? {
-                  minX: Math.max(bounds.minX - 600, (tile.west - centerLon) * this.lonScale + 0.01),
+                  minX: Math.max(bounds.minX - 600, (coverage.west - centerLon) * this.lonScale + 0.01),
                   maxX: Math.min(
                       bounds.maxX + 600,
-                      (tile.west + 1 - centerLon) * this.lonScale - 0.01,
+                      (coverage.east - centerLon) * this.lonScale - 0.01,
                   ),
                   minZ: Math.max(
                       bounds.minZ - 600,
-                      -(tile.south + 1 - centerLat) * this.latScale + 0.01,
+                      -(coverage.north - centerLat) * this.latScale + 0.01,
                   ),
                   maxZ: Math.min(
                       bounds.maxZ + 600,
-                      -(tile.south - centerLat) * this.latScale - 0.01,
+                      -(coverage.south - centerLat) * this.latScale - 0.01,
                   ),
               }
             : { ...bounds };
-        const spacing = tile ? 20 : 40;
+        const spacing = spacingMetres !== undefined && Number.isFinite(spacingMetres) && spacingMetres > 0
+            ? Math.max(1, spacingMetres) : tile ? 20 : 40;
         this.columns = Math.max(2, Math.ceil((this.bounds.maxX - this.bounds.minX) / spacing) + 1);
         this.rows = Math.max(2, Math.ceil((this.bounds.maxZ - this.bounds.minZ) / spacing) + 1);
         this.stepX = (this.bounds.maxX - this.bounds.minX) / (this.columns - 1);

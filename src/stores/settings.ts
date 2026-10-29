@@ -1,5 +1,5 @@
 /**
- * Persistent sound and street-label preferences.
+ * Persistent audio, graphics, terrain and street-label preferences.
  * @packageDocumentation
  */
 
@@ -13,6 +13,9 @@ export const useSettingsStore = defineStore("settings", () => {
     const musicVolume = useLocalStorage<number>("cityDrivingSim_radioVolume", 0.35);
     const showStreetNames = useLocalStorage<boolean>("cityDrivingSim_showStreetNames", true);
 
+    /** Bypasses detailed GeoTIFF terrain in favour of its configured HGT fallback. */
+    const forceFallbackTerrain = useLocalStorage<boolean>("cityDrivingSim_forceFallbackTerrain", false);
+
     const shadowsEnabled = useLocalStorage<boolean>("cityDrivingSim_shadows", true);
     const renderScale = useLocalStorage<number>("cityDrivingSim_renderScale", 2);
     return {
@@ -21,6 +24,7 @@ export const useSettingsStore = defineStore("settings", () => {
         musicVolume,
         isSoundMuted,
         showStreetNames,
+        forceFallbackTerrain,
         shadowsEnabled,
         renderScale,
     };

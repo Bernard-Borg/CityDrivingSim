@@ -6,7 +6,7 @@ import NavigationCompass from "./hud/NavigationCompass.vue";
 import HudActions from "./hud/HudActions.vue";
 import ControlsHelp from "./hud/ControlsHelp.vue";
 import LocationSearch from "./hud/LocationSearch.vue";
-import GraphicsSettings from "./hud/GraphicsSettings.vue";
+import Settings from "./hud/Settings.vue";
 import MobileControls from "./hud/MobileControls.vue";
 import type { MapLocation } from "@/core/LocationSearch";
 import PerformancePanel from "./hud/PerformancePanel.vue";
@@ -30,6 +30,7 @@ const emit = defineEmits<{
     (e: "search", query: string): void;
     (e: "teleport", location: MapLocation): void;
     (e: "graphicsChanged"): void;
+    (e: "terrainChanged"): void;
     (e: "touchGesture"): void;
     (e: "toggleStreetNames"): void;
     (e: "resetLocation"): void;
@@ -87,7 +88,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <template>
     <template v-if="playing">
         <NavigationCompass />
-        <GraphicsSettings
+        <Settings
+            @terrain-changed="emit('terrainChanged')"
             @graphics-changed="emit('graphicsChanged')"
             @pause-changed="setPause('settings', $event)"
         />

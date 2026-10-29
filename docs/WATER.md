@@ -29,7 +29,7 @@ outer boundary. This fallback is an estimate; add a measured `ele` in metres
 above sea level to the feature properties to correct it.
 
 [WaterGenerator](../src/core/scene/WaterGenerator.ts) triangulates these areas
-with their holes, removes covered terrain using the shared polygon clipping
+with their holes, preserves source terrain elevations, removes covered terrain using the shared polygon clipping
 utility, and seals shoreline gaps with simple bank faces. Water has subtle
 animated colour ripples with a shared material. The shoreline stays fixed;
 there is no bathymetry or wave displacement. Coarse SRTM and newer coastal

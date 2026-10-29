@@ -29,7 +29,7 @@ const vehicles = useVehiclesStore();
 let simulator: DrivingSimulator | null = null;
 let unmounted = false;
 
-const selectCity = async (city: string) => {
+const selectCity = async (city: string, resetElevation = false) => {
     if (state.isLoading && simulator) return;
     state.loadError = "";
     state.showCitySwitcher = false;
@@ -116,7 +116,7 @@ const selectCity = async (city: string) => {
 
         await simulator.init(
             city,
-            savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined,
+            savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: resetElevation ? undefined : savedPos.y } : undefined,
         );
         loading.finish();
         if (!unmounted) {
@@ -173,6 +173,9 @@ const switchVehicle = async (id: string) => {
         vehicles.switching = false;
     }
 };
+const applyTerrain = () => {
+    if (state.currentCity && !state.isLoading) void selectCity(state.currentCity, true);
+};
 const applyGraphics = () => simulator?.setGraphics(settings.shadowsEnabled, settings.renderScale);
 
 onMounted(async () => {
@@ -216,6 +219,7 @@ onUnmounted(() => {
             @search="searchLocations"
             @teleport="teleport"
             @graphicsChanged="applyGraphics"
+            @terrainChanged="applyTerrain"
             @touchGesture="simulator?.unlockTouchAudio()"
             @citySelected="selectCity"
             @toggleStreetNames="toggleStreetNames"

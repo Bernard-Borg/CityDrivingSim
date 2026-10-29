@@ -11,7 +11,7 @@ import { CollisionWorld } from "./CollisionWorld";
 import { RoadGenerator, ROAD_HEIGHT } from "./RoadGenerator";
 import { TreeGenerator } from "./TreeGenerator";
 import { BuildingGenerator } from "./BuildingGenerator";
-import type { TerrainBounds } from "./ElevationTerrain";
+import type { TerrainBounds, ElevationSampler } from "./ElevationTerrain";
 import { ElevationTerrain, HgtTile } from "./ElevationTerrain";
 import { WaterGenerator } from "./WaterGenerator";
 import { NaturalGenerator } from "./NaturalGenerator";
@@ -19,6 +19,7 @@ import { DecorGenerator } from "./DecorGenerator";
 import type { GeoJSON, GeoJSONFeature } from "@/types";
 import type { RoadLevelSettings } from "./RoadProfiles";
 import { useCitiesStore } from "@/stores/cities";
+import { useSettingsStore } from "@/stores/settings";
 
 /**
  * Loads city data and coordinates terrain, road, water, scenery, collision and visibility generation.
@@ -39,7 +40,7 @@ export class SceneManager {
     private groundMaterial: THREE.MeshStandardMaterial | null = null;
     private terrain: ElevationTerrain | null = null;
     private flatBounds: TerrainBounds | null = null;
-    private elevationTile: HgtTile | null = null;
+    private elevationTile: ElevationSampler | null = null;
     private water: WaterGenerator;
     private natural: NaturalGenerator;
     private decor: DecorGenerator;
@@ -159,17 +160,29 @@ export class SceneManager {
         this.terrain = null;
         this.flatBounds = null;
         this.elevationTile = null;
-        if (config.elevation) {
-            await report("Loading elevation data", config.elevation.file);
-            const elevationResponse = await fetch(`/data/elevation/${config.elevation.file}`, {
-                signal: AbortSignal.timeout(60000),
-            });
-            if (!elevationResponse.ok)
-                throw new Error(`Failed to load elevation: ${elevationResponse.status}`);
-            const buffer = await elevationResponse.arrayBuffer();
+        const configuredElevation = config.elevation;
+        const elevation = useSettingsStore().forceFallbackTerrain && configuredElevation?.format === "geotiff"
+            ? configuredElevation.fallback ?? configuredElevation
+            : configuredElevation;
+        if (elevation) {
+            await report("Loading elevation data", elevation.file);
+            /** Loads a legacy HGT asset without changing its decoding or interpolation. */
+            const loadHgt = async (source: { file: string; south: number; west: number }) => {
+                const response = await fetch(`/data/elevation/${source.file}`, { signal: AbortSignal.timeout(60000) });
+                if (!response.ok) throw new Error(`Failed to load elevation ${source.file}: ${response.status}`);
+                return new HgtTile(await response.arrayBuffer(), source.south, source.west);
+            };
+            if (elevation.format === "geotiff") {
+                const { GeoTiffTile } = await import("./GeoTiffTile");
+                const fallback = elevation.fallback ? await loadHgt(elevation.fallback) : undefined;
+                await report("Decoding GeoTIFF terrain", elevation.file);
+                this.elevationTile = await GeoTiffTile.load(`/data/elevation/${elevation.file}`, elevation,
+                    fallback, AbortSignal.timeout(180000));
+            } else {
+                this.elevationTile = await loadHgt(elevation);
+            }
             if (this.disposed) return;
             await report("Preparing terrain heights");
-            this.elevationTile = new HgtTile(buffer, config.elevation.south, config.elevation.west);
             data = this.coveredData(data, "road");
             const bounds = {
                 minX: Infinity,
@@ -186,12 +199,13 @@ export class SceneManager {
                     bounds.maxZ = Math.max(bounds.maxZ, p.z);
                 }
             if (!Number.isFinite(bounds.minX))
-                throw new Error("No city roads overlap the supplied HGT tile.");
+                throw new Error("No city roads overlap the supplied elevation source.");
             this.terrain = new ElevationTerrain(
                 this.elevationTile,
                 this.centerLat,
                 this.centerLon,
                 bounds,
+                elevation.format === "geotiff" ? elevation.meshSpacing : undefined,
             );
             console.log(
                 `Elevation enabled: ${this.terrain.columns} x ${this.terrain.rows} terrain grid; reference ${this.terrain.referenceHeight.toFixed(1)} m AMSL`,
@@ -270,16 +284,6 @@ export class SceneManager {
                     },
                 sample,
                 this.terrain?.referenceHeight ?? 0,
-                (minimumAt) => {
-                    let flatHeight = 0.15;
-                    this.terrain?.raiseMinimum((x, z) => {
-                        const floor = minimumAt(x, z);
-                        flatHeight = Math.max(flatHeight, floor);
-                        return floor;
-                    });
-                    // Without elevation data, retain a level map above its highest mapped water.
-                    if (!this.elevationTile) this.terrain?.raiseMinimum(() => flatHeight);
-                },
             );
         await report("Loading road-level settings");
         let roadLevels: Partial<RoadLevelSettings> = {};

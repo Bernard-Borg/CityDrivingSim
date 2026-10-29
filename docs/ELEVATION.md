@@ -166,22 +166,81 @@ openings cut into intersecting building geometry; they are not architectural rep
   alternative 30/90 m global surface data, with buildings/vegetation and attribution
   requirements to account for.
 
-## Land clearance above water
+## Terrain and water elevations
 
-Water levels are resolved before road profiles, scenery, collision heights and
-spawns. The shared height field has a minimum of 0.15 metres above sea level and
-is raised above nearby inland water levels along shorelines, including island
-holes. An 80 metre sampling buffer covers the terrain triangles touching each
-shore, keeping their interpolated land height above the rendered water plane.
-Other terrain elevations are preserved; an elevated pond does not raise an entire
-mountain/city to its level. Water footprints remain cut out of visible ground.
+Water generation does not raise or flatten the shared terrain height field.
+HGT and GeoTIFF elevations remain as sampled, and maps without elevation retain
+their flat grid. Water surfaces retain their independently resolved elevations;
+visible terrain is clipped within water footprints and shoreline gaps use bank
+faces. The former global sea-level clamp and 80 m shoreline minimum-height buffer
+were removed because elevated fountains and ponds created artificial circular
+plateaus across lower surrounding terrain. Roads, scenery and vehicle contact
+use the unraised terrain. Bridge and tunnel profiles keep their own levels.
 
-Maps without HGT use a 40 metre shared flat grid, raised uniformly above the
-highest mapped shoreline level in coverage. Their outer backdrop uses the same
-height. Roads, markings, trees, buildings and car contact use this corrected grid.
-Bridge/tunnel profiles retain their own levels, including underwater tunnels.
-No supplied HGT file is modified.
+## GeoTIFF elevation sources
 
-Inspections of Stockholm, Monaco and Rabat checked 1,212, 635 and 550 shoreline
-samples respectively with no terrain below the corresponding water surface. All
-five cities loaded with finite terrain heights and clean disposal.
+HGT and GeoTIFF now implement `ElevationSampler`: `covers(lat, lon)`,
+`sample(lat, lon)` (absolute elevation in source-datum metres), and `getBounds()`
+(WGS84 geographic bounds). `ElevationTerrain` remains the shared triangulated
+surface for rendering, scenery placement and vehicle contact.
+
+Existing HGT configurations need no changes. Their decoding, bilinear interpolation,
+NoData search, coverage clipping and default 20 m terrain spacing are unchanged.
+
+Monaco now uses this configuration in `src/stores/cities.ts`:
+
+```ts
+elevation: {
+    format: "geotiff",
+    file: "Monaco.tiff",
+    crs: "EPSG:2154",
+    meshSpacing: 2,
+    fallback: { file: "Monaco.hgt", south: 43, west: 7 },
+}
+```
+
+The TIFF loader supports single-band, north-up GeoTIFFs in WGS84 (EPSG:4326)
+or Lambert-93 (EPSG:2154), with compressed formats decoded by geotiff.js.
+An explicit `crs` handles exports whose EPSG identifier is embedded only in a
+citation rather than a standard GeoKey. Rotated rasters and RGB images are rejected.
+Pixel-is-area and pixel-is-point alignment are respected. Valid neighbouring
+samples are bilinearly interpolated; NoData never becomes a deep negative pit.
+When all interpolation samples are missing, the explicitly configured fallback
+is sampled. Without one, missing coverage raises a descriptive error.
+
+The current 1 m choice limits transfer and decoded-memory
+cost: approximately 192 MB rather than 768 MB for these uncompressed files.
+HTTP range requests are grouped into 1 MB blocks with a bounded cache; decoding
+uses 256-row batches to avoid an additional full-size raster allocation. This is
+not terrain streaming: the entire first elevation band is still transferred and
+retained. The hosting server must support HTTP byte-range responses. Offline
+compression/tiling and selective loading remain future performance improvements.
+
+`meshSpacing` is independent of source pixel spacing. Monaco now uses a 2 m
+terrain grid, sampling the 1 m TIFF at half the resolution along each axis. The minimum permitted spacing is
+1 m. Compared with the previous 10 m setting, the same area has approximately
+25 times as many terrain cells, increasing generation, clipping and rendering
+cost. HGT cities retain their original grid by omitting this option. Selecting
+the 50 cm TIFF does not automatically change the mesh to 50 cm. This change does
+not add cliff overhangs or stacked terrain.
+
+No automatic vertical-datum adjustment is applied between TIFF and fallback.
+Use matching datums where possible; discrepancies can produce transitions near
+missing-data boundaries. Water generation does not raise terrain to match water levels. Switching elevation sources also changes the local reference height,
+so previously saved local vehicle elevations may need repositioning.
+
+Validation covered actual Monaco TIFF HTTP decoding, all 13,798 road-coordinate
+entries, HGT fallback outside the raster, unchanged 20 m HGT mesh spacing, and
+synthetic 1 m/50 cm pixel alignment and NoData interpolation. Production build
+passes. Full visual inspection of Monaco has not yet been performed.
+
+
+## Forcing fallback terrain
+
+Settings ? Terrain ? **Use fallback terrain** persists a global preference in
+Pinia/local storage. Enabling it loads a GeoTIFF city's explicitly configured
+HGT fallback directly, without downloading or decoding the TIFF. Disabling it
+restores the configured detailed source and its mesh spacing. HGT-only cities,
+flat cities and GeoTIFF cities without a configured fallback keep their normal
+source. Changing the preference reloads the active map, preserving latitude and
+longitude but resolving vehicle height against the newly selected terrain.

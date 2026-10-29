@@ -14,6 +14,8 @@ import {
 } from "@/core/scene/BuildingAppearance";
 import type { BuildingTheme } from "@/core/scene/BuildingAppearance";
 
+import type { ElevationSource } from "@/core/scene/ElevationTerrain";
+
 export interface SavedPosition {
     lat: number;
     lon: number;
@@ -25,7 +27,7 @@ export interface CityConfig {
     file: string;
     centerLat: number;
     centerLon: number;
-    elevation?: { file: string; south: number; west: number };
+    elevation?: ElevationSource;
     buildings?: BuildingTheme;
 }
 
@@ -43,7 +45,13 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
         name: "Monaco",
         buildings: MONACO_BUILDINGS,
         file: "monaco.json",
-        elevation: { file: "Monaco.hgt", south: 43, west: 7 },
+        elevation: {
+            format: "geotiff",
+            file: "Monaco.tiff",
+            crs: "EPSG:2154",
+            meshSpacing: 2,
+            fallback: { file: "Monaco.hgt", south: 43, west: 7 },
+        },
         centerLat: 43.7384,
         centerLon: 7.4246,
     },

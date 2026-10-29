@@ -15,6 +15,7 @@ const dialog = ref<HTMLDialogElement | null>(null);
 const emit = defineEmits<{
     (e: "pauseChanged", paused: boolean): void;
     (e: "graphicsChanged"): void;
+    (e: "terrainChanged"): void;
 }>();
 
 const open = () => {
@@ -28,6 +29,12 @@ const toggleMute = () => {
     settings.isSoundMuted = !settings.isSoundMuted;
     SoundManager.getInstance().setEnabled(!settings.isSoundMuted);
 };
+const changeTerrain = () => {
+    close();
+    emit("pauseChanged", false);
+    emit("terrainChanged");
+};
+
 onUnmounted(() => {
     if (dialog.value?.open) emit("pauseChanged", false);
 });
@@ -42,7 +49,7 @@ onUnmounted(() => {
     </button>
     <dialog
         ref="dialog"
-        class="graphics-dialog"
+        class="settings-dialog"
         @close="closed"
         @click="$event.target === dialog && close()"
         @keydown.stop
@@ -69,6 +76,11 @@ onUnmounted(() => {
                 step="0.01"
             />
             <output>{{ Math.round(settings[channel.key] * 100) }}%</output>
+        </label>
+        <h3>Terrain</h3>
+        <label>
+            <span>Use fallback terrain<small>Use HGT instead of detailed terrain when available. Reloads the current map.</small></span>
+            <input v-model="settings.forceFallbackTerrain" type="checkbox" @change="changeTerrain" />
         </label>
         <h3>Graphics</h3>
         <label>
@@ -111,7 +123,7 @@ onUnmounted(() => {
     stroke: currentColor;
     stroke-width: 1.5;
 }
-.graphics-dialog {
+.settings-dialog {
     margin: auto;
     width: min(420px, calc(100vw - 32px));
     padding: 24px;
@@ -121,7 +133,7 @@ onUnmounted(() => {
     border-radius: 18px;
     font: 18px system-ui;
 }
-.graphics-dialog::backdrop {
+.settings-dialog::backdrop {
     background: #0009;
     backdrop-filter: blur(4px);
 }
@@ -132,27 +144,27 @@ onUnmounted(() => {
     font-size: 24px;
     margin-bottom: 20px;
 }
-.graphics-dialog h3 {
+.settings-dialog h3 {
     color: #9cc6b6;
     margin-bottom: 12px;
 }
-.graphics-dialog label {
+.settings-dialog label {
     display: flex;
     justify-content: space-between;
     gap: 16px;
     align-items: center;
     padding: 14px 0;
 }
-.graphics-dialog small {
+.settings-dialog small {
     display: block;
     font-size: 14px;
     color: #aebeb8;
 }
-.graphics-dialog input {
+.settings-dialog input {
     width: 24px;
     height: 24px;
 }
-.graphics-dialog select {
+.settings-dialog select {
     background: #243b33;
     padding: 8px;
     border-radius: 8px;
@@ -188,7 +200,7 @@ onUnmounted(() => {
     text-align: right;
     font-size: 15px;
 }
-.graphics-dialog {
+.settings-dialog {
     max-height: calc(100dvh - 32px);
     overflow-y: auto;
 }

@@ -5,7 +5,7 @@
 
 import * as THREE from "three";
 import { RoadCutouts } from "./RoadCutouts";
-import { SpatialGrid, closestPoint } from "./CollisionWorld";
+import { SpatialGrid } from "./CollisionWorld";
 import type { Point } from "./CollisionWorld";
 import type { SurfaceSample, TerrainBounds } from "./ElevationTerrain";
 
@@ -113,7 +113,6 @@ export class WaterGenerator {
      * @param bounds - Local horizontal bounds in metres.
      * @param sample - Terrain height and slope sampler in local metre coordinates.
      * @param referenceHeight - Source elevation datum offset in metres.
-     * @param prepareTerrain - Optional callback receiving the shoreline minimum-height sampler.
      */
     generate(
         data: WaterData,
@@ -121,7 +120,6 @@ export class WaterGenerator {
         bounds: TerrainBounds,
         sample: (x: number, z: number) => SurfaceSample,
         referenceHeight: number,
-        prepareTerrain?: (minimumAt: (x: number, z: number) => number) => void,
     ): void {
         this.clear();
         const lines: Point[][] = [],
@@ -273,42 +271,6 @@ export class WaterGenerator {
         for (const area of [...seas, ...inland]) this.coverage.insert(area,
             Math.min(...area.outer.map(p => p.x)), Math.min(...area.outer.map(p => p.z)),
             Math.max(...area.outer.map(p => p.x)), Math.max(...area.outer.map(p => p.z)));
-        if (prepareTerrain) {
-            // Buffer both sides of every shore (including island holes). Raising the
-            // shared height field before roads/scenery keeps land and contact aligned.
-            const shores = new SpatialGrid<{
-                a: Point;
-                b: Point;
-                height: number;
-            }>(80);
-            const radius = 80;
-            for (const area of [...seas, ...inland])
-                for (const ring of [area.outer, ...area.holes]) {
-                    for (const line of this.clipLine([...ring, ring[0]], bounds))
-                        for (let i = 1; i < line.length; i++) {
-                            const a = line[i - 1],
-                                b = line[i],
-                                height = area.height + 0.15;
-                            if (this.isInternalBoundary(a, b)) continue;
-                            shores.insert(
-                                { a, b, height },
-                                Math.min(a.x, b.x) - radius,
-                                Math.min(a.z, b.z) - radius,
-                                Math.max(a.x, b.x) + radius,
-                                Math.max(a.z, b.z) + radius,
-                            );
-                        }
-                }
-            prepareTerrain((x, z) => {
-                let floor = -referenceHeight + 0.15;
-                for (const shore of shores.at(x, z)) {
-                    const p = closestPoint({ x, z }, shore.a, shore.b);
-                    if (Math.hypot(p.x - x, p.z - z) <= radius)
-                        floor = Math.max(floor, shore.height);
-                }
-                return floor;
-            });
-        }
         let count = 0;
         for (const area of [...seas, ...inland])
             count += this.addArea(area, bounds, sample) ? 1 : 0;
