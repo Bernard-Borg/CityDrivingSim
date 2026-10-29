@@ -701,17 +701,9 @@ export class DrivingSimulator {
     getCarHeading(): number {
         if (!this.car) return 0;
         const direction = this.car.getDirection();
-        // Convert direction vector to heading angle in degrees
-        // Direction is in car's local space: +Z is forward (North)
-        // Math.atan2(x, z) gives: 0° = +Z (North), 90° = +X (East), -90° = -X (West), 180°/-180° = -Z (South)
-        // However, compass convention: 0° = North, 90° = East, 180° = South, 270° = West
-        // The compass arrow should rotate opposite to show where North is relative to the car
-        // So we negate the angle so turning right (positive angle) shows the arrow rotating correctly
+        // Raw simulation yaw: +Z is south and +X is east. The HUD converts to north bearings.
         let angle = Math.atan2(direction.x, direction.z) * (180 / Math.PI);
-        // Normalize to 0-360 range (make negative angles positive)
         if (angle < 0) angle += 360;
-        // Compass arrow rotates opposite - when car turns right (heading 90°), arrow should point right (rotate -90°)
-        // So we negate: compass arrow rotation = -heading
         return angle;
     }
 

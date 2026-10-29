@@ -3,7 +3,10 @@
  * @packageDocumentation
  */
 
-/** The strip follows the original needle convention, opposite the simulation yaw. */
+/** Converts simulation yaw (+Z south, +X east) to a geographic compass bearing.
+ * @param simulationHeading - Degrees measured from +Z toward +X.
+ * @returns Clockwise degrees from north in the range [0, 360).
+ */
 export function compassHeading(simulationHeading: number): number {
-    return ((-simulationHeading % 360) + 360) % 360;
+    return (((180 - simulationHeading) % 360) + 360) % 360;
 }

@@ -15,6 +15,8 @@ import { useCitiesStore } from "./stores/cities.ts";
 import { useSettingsStore } from "./stores/settings.ts";
 import { useStateStore } from "./stores/state.ts";
 
+const attributionUrl = `${import.meta.env.BASE_URL}attribution.html`;
+
 const canvasContainer: Ref<HTMLElement | null> = ref(null);
 
 const cityStore = useCitiesStore();
@@ -32,7 +34,9 @@ const selectCity = async (city: string) => {
     state.loadError = "";
     state.showCitySwitcher = false;
     try {
-        navigation.query = ""; navigation.results = []; navigation.error = "";
+        navigation.query = "";
+        navigation.results = [];
+        navigation.error = "";
         state.currentCity = city;
         state.showCityMenu = false;
         state.isLoading = true;
@@ -44,14 +48,23 @@ const selectCity = async (city: string) => {
         }
 
         const savedPos = cityStore.getSavedPosition(city);
-        simulator = new DrivingSimulator(canvasContainer.value!, VEHICLES[vehicles.selectedId] ?? DEFAULT_VEHICLE);
+        simulator = new DrivingSimulator(
+            canvasContainer.value!,
+            VEHICLES[vehicles.selectedId] ?? DEFAULT_VEHICLE,
+        );
         simulator.setPerformanceEnabled(state.showPerformance);
         simulator.setGraphics(settings.shadowsEnabled, settings.renderScale);
         state.performanceHistory = [];
-        simulator.onVehicleUpdate(data => { Object.assign(state.vehicle, data); });
-        simulator.onPerformanceUpdate(data => {
+        simulator.onVehicleUpdate((data) => {
+            Object.assign(state.vehicle, data);
+        });
+        simulator.onPerformanceUpdate((data) => {
             state.performanceHistory.push(data);
-            while (state.performanceHistory.length && state.performanceHistory[0].timeMs < data.timeMs - 12000) state.performanceHistory.shift();
+            while (
+                state.performanceHistory.length &&
+                state.performanceHistory[0].timeMs < data.timeMs - 12000
+            )
+                state.performanceHistory.shift();
         });
 
         // Subscribe to all callbacks
@@ -103,9 +116,7 @@ const selectCity = async (city: string) => {
 
         await simulator.init(
             city,
-            savedPos
-                ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y }
-                : undefined,
+            savedPos ? { lat: savedPos.lat, lon: savedPos.lon, y: savedPos.y } : undefined,
         );
         loading.finish();
         if (!unmounted) {
@@ -134,13 +145,21 @@ const toggleStreetNames = () => {
 };
 
 const searchLocations = (query: string) => {
-    navigation.error = '';
-    try { navigation.results = simulator?.searchLocations(query) ?? []; }
-    catch (error) { navigation.results = []; navigation.error = error instanceof Error ? error.message : 'Unable to search this map.'; }
+    navigation.error = "";
+    try {
+        navigation.results = simulator?.searchLocations(query) ?? [];
+    } catch (error) {
+        navigation.results = [];
+        navigation.error = error instanceof Error ? error.message : "Unable to search this map.";
+    }
 };
 const teleport = (location: MapLocation) => {
-    try { simulator?.teleportTo(location); navigation.error = ''; }
-    catch (error) { navigation.error = error instanceof Error ? error.message : 'Unable to teleport.'; }
+    try {
+        simulator?.teleportTo(location);
+        navigation.error = "";
+    } catch (error) {
+        navigation.error = error instanceof Error ? error.message : "Unable to teleport.";
+    }
 };
 const switchVehicle = async (id: string) => {
     if (!simulator || vehicles.switching || !VEHICLES[id]) return;
@@ -166,10 +185,7 @@ onMounted(async () => {
     await loading.stage("Finding available cities");
     await cityStore.loadCities();
 
-    if (
-        cityStore.selectedCity &&
-        cityStore.availableCities.includes(cityStore.selectedCity)
-    ) {
+    if (cityStore.selectedCity && cityStore.availableCities.includes(cityStore.selectedCity)) {
         // Load saved city
         await selectCity(cityStore.selectedCity);
     } else {
@@ -215,9 +231,7 @@ onUnmounted(() => {
             role="alert"
             class="absolute inset-0 z-50 flex items-center justify-center bg-black/90"
         >
-            <div
-                class="max-w-md rounded-xl bg-gray-900 p-8 text-center text-white"
-            >
+            <div class="max-w-md rounded-xl bg-gray-900 p-8 text-center text-white">
                 <h2 class="mb-3 text-2xl font-bold">Unable to start driving</h2>
                 <p class="mb-6 text-gray-300">{{ state.loadError }}</p>
                 <button
@@ -239,5 +253,35 @@ onUnmounted(() => {
         </div>
 
         <LoadingScreen v-if="state.isLoading" />
+        <footer class="attribution-links">
+            <a :href="attributionUrl" target="_blank" rel="noopener noreferrer"
+                >Attribution &amp; licenses</a
+            >
+        </footer>
     </div>
 </template>
+
+<style scoped>
+.attribution-links {
+    position: absolute;
+    bottom: max(2px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 60;
+    padding: 3px 9px;
+    border-radius: 5px;
+    background: #101d20ed;
+    color: #dce8e1;
+    font: 12px/1.5 system-ui;
+    white-space: nowrap;
+}
+.attribution-links a {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+@media (max-width: 420px) {
+    .attribution-links {
+        font-size: 10px;
+    }
+}
+</style>
