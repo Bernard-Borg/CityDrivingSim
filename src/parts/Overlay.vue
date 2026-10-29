@@ -17,7 +17,7 @@ const simulator = useSimulatorStore();
 const help = ref<InstanceType<typeof ControlsHelp> | null>(null);
 const actions = ref<InstanceType<typeof HudActions> | null>(null);
 
-const playing = computed(() => !state.showCityMenu && !state.isLoading && !state.loadError);
+const playing = computed(() => !state.showMainMenu && !state.showCityMenu && !state.isLoading && !state.loadError);
 
 const onKey = (e: KeyboardEvent) => {
     if (

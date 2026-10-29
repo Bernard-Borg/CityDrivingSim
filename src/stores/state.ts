@@ -10,6 +10,7 @@ import { DEFAULT_VEHICLE } from "@/core/vehicle/VehicleConfig";
 
 export const useStateStore = defineStore("state", () => {
     /* UI State */
+    const showMainMenu = ref(true);
     const showCitySwitcher = ref<boolean>(false);
     const showCityMenu = ref<boolean>(false);
     const isLoading = ref<boolean>(true);
@@ -38,6 +39,7 @@ export const useStateStore = defineStore("state", () => {
     const performanceHistory = ref<PerformanceSample[]>([]);
 
     return {
+        showMainMenu,
         showCitySwitcher,
         showCityMenu,
         isLoading,

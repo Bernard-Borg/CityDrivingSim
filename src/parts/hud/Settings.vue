@@ -5,6 +5,8 @@ import HudIcon from "./HudIcon.vue";
 import { SoundManager } from "@/utils/SoundManager";
 import { useSettingsStore } from "@/stores/settings";
 
+const props = defineProps<{ hideTrigger?: boolean }>();
+
 const AUDIO_CHANNELS = [
     { key: "engineVolume", label: "Engine" },
     { key: "musicVolume", label: "Music" },
@@ -33,13 +35,15 @@ const changeTerrain = () => {
     simulator.applyTerrain();
 };
 
+defineExpose({ open });
+
 onUnmounted(() => {
     simulator.setPauseReason("settings", false);
 });
 </script>
 
 <template>
-    <button class="settings-button" aria-label="Open settings" title="Settings" @click="open">
+    <button v-if="!props.hideTrigger" class="settings-button" aria-label="Open settings" title="Settings" @click="open">
         <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 3 3-1 1-3 3-1 2-3-2-2 1-3-3-2-3 1-2-3Z" />
             <circle cx="12" cy="11" r="3" />

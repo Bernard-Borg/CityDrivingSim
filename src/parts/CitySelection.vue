@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { useSimulatorStore } from "@/stores/simulator";
+import { useStateStore } from "@/stores/state";
 import { useCitiesStore } from "@/stores/cities";
 
+const state = useStateStore();
 const store = useCitiesStore();
 
 const simulator = useSimulatorStore();
@@ -13,6 +15,7 @@ const simulator = useSimulatorStore();
         <div
             class="bg-gray-900/95 backdrop-blur-md p-8 rounded-2xl border border-white/20 max-w-2xl w-full mx-4"
         >
+            <button v-if="state.showMainMenu" class="mb-4 text-lg text-gray-300 hover:text-white" @click="state.showCityMenu = false">? Main menu</button>
             <h2 class="text-3xl font-bold text-white mb-6 text-center">Select a City</h2>
             <div v-if="store.availableCities.length === 0" class="text-center text-gray-400">
                 Loading cities...

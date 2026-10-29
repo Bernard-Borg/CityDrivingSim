@@ -46,6 +46,7 @@ export const useSimulatorStore = defineStore("simulator", () => {
         state.loadError = "";
         state.showCitySwitcher = false;
         state.currentCity = city;
+        state.showMainMenu = false;
         state.showCityMenu = false;
         state.isLoading = true;
         navigation.query = "";
@@ -122,23 +123,40 @@ export const useSimulatorStore = defineStore("simulator", () => {
         }
     };
 
-    /** Attaches the canvas host and restores the previously selected city, if available. */
+    /** Attaches the host and discovers maps without automatically starting a saved city. */
     const mount = async (container: HTMLElement): Promise<void> => {
         if (host) return;
         host = container;
         const operation = ++revision;
+        state.showMainMenu = true;
+        state.showCityMenu = false;
+        state.isLoading = false;
         SoundManager.getInstance().setEnabled(!settings.isSoundMuted);
-        loading.begin();
-        await loading.stage("Finding available cities");
         await cities.loadCities();
         if (operation !== revision || host !== container) return;
-        if (cities.selectedCity && cities.availableCities.includes(cities.selectedCity)) {
+    };
+
+    /** Opens map selection from the main menu. */
+    const chooseMap = (): void => { state.showCityMenu = true; };
+
+    /** Starts the saved city only when it is still available. */
+    const continueGame = async (): Promise<void> => {
+        if (cities.selectedCity && cities.availableCities.includes(cities.selectedCity))
             await selectCity(cities.selectedCity);
-        } else {
-            loading.finish();
-            state.showCityMenu = true;
-            state.isLoading = false;
-        }
+    };
+
+    /** Returns to the main menu and releases the active city's resources. */
+    const returnToMenu = (): void => {
+        revision++;
+        selecting = false;
+        instance.value?.dispose();
+        instance.value = null;
+        pauseReasons.value.clear();
+        state.loadError = "";
+        state.isLoading = false;
+        state.showCityMenu = false;
+        state.showMainMenu = true;
+        loading.finish();
     };
 
     /** Invalidates pending work and releases the renderer, input handlers and simulation resources. */
@@ -206,7 +224,7 @@ export const useSimulatorStore = defineStore("simulator", () => {
         active()?.setGraphics(settings.shadowsEnabled, settings.renderScale);
     /** Reloads the current city after an elevation-source preference changes. */
     const applyTerrain = async (): Promise<void> => {
-        if (state.currentCity && !state.isLoading) await selectCity(state.currentCity, true);
+        if (state.currentCity && !state.isLoading && !state.showMainMenu) await selectCity(state.currentCity, true);
     };
     /** Unlocks audio synchronously from a touch gesture. */
     const unlockTouchAudio = (): void => active()?.unlockTouchAudio();
@@ -239,6 +257,9 @@ export const useSimulatorStore = defineStore("simulator", () => {
         pauseReasons,
         isPaused,
         mount,
+        chooseMap,
+        continueGame,
+        returnToMenu,
         dispose,
         selectCity,
         toggleStreetNames,

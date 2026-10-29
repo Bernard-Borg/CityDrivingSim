@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
+import MainMenu from "./parts/MainMenu.vue";
 import Overlay from "./parts/Overlay.vue";
 import CitySelection from "./parts/CitySelection.vue";
 import LoadingScreen from "./parts/LoadingScreen.vue";
@@ -24,9 +25,11 @@ onUnmounted(() => simulator.dispose());
         <!-- Three.js Canvas Container -->
         <div ref="canvasContainer" class="absolute inset-0"></div>
 
+        <MainMenu v-if="state.showMainMenu && !state.isLoading" />
+
         <CitySelection v-if="state.showCityMenu" />
 
-        <Overlay />
+        <Overlay v-if="!state.showMainMenu" />
 
         <div
             v-if="state.loadError"
