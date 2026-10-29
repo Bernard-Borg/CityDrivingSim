@@ -11,3 +11,11 @@ Rules:
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 - A committed graphify-out/graph.json is rewritten whole on every build, so a large diff to it in a pull request is expected. Do not flag it as churn or suggest skipping the graph rebuild or its hooks.
+
+
+## UI theme
+
+For UI changes, read [docs/UI_THEME.md](docs/UI_THEME.md) and follow the established
+coastal dusk theme. Reuse `src/styles/screens.css` for screen/card/button/notice
+styles and use the main menu as the visual reference. Preserve the existing
+speedometer unless explicitly asked to redesign it.

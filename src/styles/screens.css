@@ -1,0 +1,132 @@
+/* Shared menu surfaces and feedback, matching the main-menu palette. */
+.wander-screen {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    display: grid;
+    place-items: center;
+    padding: max(28px, env(safe-area-inset-top)) 24px 54px;
+    overflow-y: auto;
+    color: #f4f3e9;
+    font-family: system-ui, sans-serif;
+    background:
+        radial-gradient(ellipse at 85% 10%, #38584c45, transparent 55%),
+        linear-gradient(125deg, #101e23f5, #14262bf5);
+    backdrop-filter: blur(16px);
+}
+.wander-card {
+    width: min(680px, 100%);
+    padding: clamp(24px, 4vw, 46px);
+    border: 1px solid #dce9df35;
+    border-radius: 12px;
+    background: #eff7f005;
+    box-shadow: 0 22px 90px #0003;
+}
+.wander-eyebrow {
+    color: #d9bd87;
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+}
+.wander-title {
+    font-size: clamp(32px, 4vw, 48px);
+    font-weight: 700;
+    line-height: 1.12;
+    letter-spacing: -0.045em;
+    margin: 0;
+}
+.wander-description {
+    color: #bdcec4;
+    font-size: 17px;
+    line-height: 1.6;
+    margin: 16px 0 28px;
+    overflow-wrap: anywhere;
+}
+.wander-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 54px;
+    padding: 13px 22px;
+    border: 1px solid #dce9df35;
+    border-radius: 7px;
+    background: #eff7f00b;
+    color: #f4f3e9;
+    font: 550 18px system-ui;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background 0.18s,
+        border-color 0.18s,
+        transform 0.18s;
+}
+.wander-button:hover {
+    background: #ecf5ed20;
+    border-color: #e0eee4a0;
+    transform: translateY(-2px);
+}
+.wander-button:focus-visible,
+.wander-back:focus-visible {
+    outline: 3px solid #f0d49c;
+    outline-offset: 4px;
+}
+.wander-button.primary {
+    background: #d9bd87;
+    border-color: #ead1a2;
+    color: #24312e;
+}
+.wander-button.primary:hover {
+    background: #edd2a0;
+}
+.wander-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: #bdcec4;
+    font: 500 16px system-ui;
+    background: none;
+    border: 0;
+    cursor: pointer;
+    padding: 8px 0;
+    margin-bottom: 26px;
+}
+.wander-back:hover {
+    color: #f4f3e9;
+}
+.wander-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.wander-notice[role] {
+    padding: 12px 14px;
+    border: 1px solid #d9bd8745;
+    border-left: 3px solid #d9bd87;
+    border-radius: 6px;
+    background: #18292bf5;
+    color: #e8cfa5;
+    font: 14px/1.5 system-ui;
+    overflow-wrap: anywhere;
+}
+@media (max-width: 480px) {
+    .wander-screen {
+        padding: 18px 16px 50px;
+    }
+    .wander-actions {
+        flex-direction: column;
+    }
+    .wander-actions .wander-button {
+        width: 100%;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .wander-button {
+        transition: none;
+    }
+    .wander-button:hover {
+        transform: none;
+    }
+}

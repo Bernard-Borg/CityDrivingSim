@@ -82,11 +82,11 @@ onUnmounted(() => {
                 {{ location.label }}
                 <small>{{ location.lat.toFixed(5) }}, {{ location.lon.toFixed(5) }}</small>
             </button>
-            <p v-if="!navigation.results.length">
+            <p v-if="!navigation.results.length" :class="{ 'wander-notice': navigation.error }" role="status">
                 {{ navigation.error || "No matching streets in this map." }}
             </p>
         </div>
-        <p v-if="navigation.error && !focused" role="status" class="search-results">
+        <p v-if="navigation.error && !focused" role="status" class="search-results wander-notice">
             {{ navigation.error }}
         </p>
     </form>

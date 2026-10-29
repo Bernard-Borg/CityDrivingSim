@@ -24,6 +24,8 @@ export interface SavedPosition {
 
 export interface CityConfig {
     name: string;
+    /** Country displayed beneath the city name in map selection. */
+    country: string;
     file: string;
     centerLat: number;
     centerLon: number;
@@ -35,6 +37,7 @@ export interface CityConfig {
 export const CITY_CONFIGS: Record<string, CityConfig> = {
     amsterdam: {
         name: "Amsterdam",
+        country: "Netherlands",
         file: "amsterdam.json",
         buildings: AMSTERDAM_BUILDINGS,
         elevation: { file: "Amsterdam.hgt", south: 52, west: 4 },
@@ -43,6 +46,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     },
     monaco: {
         name: "Monaco",
+        country: "Monaco",
         buildings: MONACO_BUILDINGS,
         file: "monaco.json",
         elevation: {
@@ -57,6 +61,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     },
     rabat: {
         name: "Rabat",
+        country: "Malta",
         buildings: MALTA_BUILDINGS,
         file: "rabat.json",
         elevation: { file: "Rabat.hgt", south: 35, west: 14 },
@@ -65,6 +70,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     },
     valletta: {
         name: "Valletta",
+        country: "Malta",
         buildings: MALTA_BUILDINGS,
         file: "valletta.json",
         elevation: { file: "Valletta.hgt", south: 35, west: 14 },
@@ -73,6 +79,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     },
     qrendi: {
         name: "Il-Qrendi",
+        country: "Malta",
         file: "qrendi.json",
         buildings: MALTA_BUILDINGS,
         centerLat: 35.8343,
@@ -80,6 +87,7 @@ export const CITY_CONFIGS: Record<string, CityConfig> = {
     },
     stockholm: {
         name: "Stockholm",
+        country: "Sweden",
         buildings: STOCKHOLM_BUILDINGS,
         file: "stockholm.json",
         elevation: { file: "Stockholm.hgt", south: 59, west: 18 },

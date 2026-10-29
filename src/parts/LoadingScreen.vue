@@ -19,33 +19,37 @@ onUnmounted(() => { clearInterval(timer); });
 </script>
 
 <template>
-    <div class="loading-screen" role="status" aria-live="polite">
-        <section class="loading-card">
-            <p class="loading-caption">Loading {{ cityName }}</p>
-            <h2>{{ loading.label }}</h2>
+    <section class="wander-screen loading-screen" role="status" aria-live="polite" aria-labelledby="loading-city">
+        <div class="wander-card loading-card">
+            <p class="wander-eyebrow">Wander / Preparing your drive</p>
+            <h2 id="loading-city" class="wander-title">{{ cityName }}<span class="loading-dot">.</span></h2>
+            <div class="loading-stage">
+                <span class="stage-marker" aria-hidden="true"></span>
+                <h3>{{ loading.label }}</h3>
+            </div>
             <p v-if="loading.detail" class="loading-detail">{{ loading.detail }}</p>
             <div class="loading-track" aria-hidden="true"><span /></div>
-            <p class="loading-time">{{ elapsed }}s elapsed</p>
-            <ol v-if="recentStages.length" class="loading-history">
-                <li v-for="(item, index) in recentStages" :key="index">
-                    <span>{{ item.stage }}</span><span>{{ item.seconds.toFixed(1) }}s</span>
-                </li>
+            <div class="loading-meta" aria-hidden="true"><span>Getting everything ready</span><span>{{ elapsed }}s</span></div>
+            <ol v-if="recentStages.length" class="loading-history" aria-label="Completed loading stages">
+                <li v-for="(item, index) in recentStages" :key="index"><span>{{ item.stage }}</span><span>{{ item.seconds.toFixed(1) }}s</span></li>
             </ol>
-        </section>
-    </div>
+        </div>
+    </section>
 </template>
 
 <style scoped>
-.loading-screen { position: absolute; inset: 0; z-index: 50; display: grid; place-items: center; background: rgb(5 12 18 / 94%); color: #f4f7fa; }
-.loading-card { width: min(540px, calc(100vw - 40px)); padding: 28px; border: 1px solid #526a7a; border-radius: 16px; background: #101d28; }
-.loading-caption { color: #b4cad9; font-size: 18px; margin: 0 0 14px; }
-h2 { font-size: 25px; line-height: 1.3; margin: 0; }
-.loading-detail { color: #b4cad9; font-size: 17px; margin: 12px 0 0; }
-.loading-track { overflow: hidden; height: 4px; border-radius: 4px; background: #293d4c; margin-top: 24px; }
-.loading-track span { display: block; width: 35%; height: 100%; background: #8dccea; animation: loading-slide 1.5s ease-in-out infinite alternate; }
-.loading-time { color: #b4cad9; font-size: 16px; font-variant-numeric: tabular-nums; }
-.loading-history { padding: 16px 0 0; margin: 16px 0 0; border-top: 1px solid #344b5b; list-style: none; }
-.loading-history li { display: flex; justify-content: space-between; gap: 20px; margin: 9px 0; font-size: 15px; color: #adc0cd; }
+.loading-card { width: min(620px, 100%); }
+.loading-dot { color: #d9bd87; }
+.loading-stage { display: flex; align-items: center; gap: 12px; margin-top: 32px; }
+.stage-marker { width: 7px; height: 7px; border-radius: 50%; background: #d9bd87; box-shadow: 0 0 16px #d9bd8750; flex-shrink: 0; }
+h3 { font-size: 22px; font-weight: 500; line-height: 1.4; margin: 0; }
+.loading-detail { color: #bdcec4; font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; margin: 10px 0 0 19px; }
+.loading-track { overflow: hidden; height: 3px; border-radius: 4px; background: #dce9df1a; margin-top: 30px; }
+.loading-track span { display: block; width: 35%; height: 100%; background: #d9bd87; animation: loading-slide 1.5s ease-in-out infinite alternate; }
+.loading-meta { display: flex; justify-content: space-between; gap: 16px; color: #bdcec4; font-size: 14px; margin-top: 12px; font-variant-numeric: tabular-nums; }
+.loading-history { padding: 18px 0 0; margin: 26px 0 0; border-top: 1px solid #dce9df26; list-style: none; }
+.loading-history li { display: flex; justify-content: space-between; gap: 20px; margin: 11px 0; font-size: 14px; line-height: 1.4; color: #aabeb4; }
+.loading-history li > span:last-child { flex-shrink: 0; color: #d9bd87b3; font-variant-numeric: tabular-nums; }
 @keyframes loading-slide { from { transform: translateX(-100%); } to { transform: translateX(285%); } }
 @media (prefers-reduced-motion: reduce) { .loading-track span { animation: none; width: 100%; opacity: .6; } }
 </style>

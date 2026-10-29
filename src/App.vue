@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
+import "./styles/screens.css";
+import LoadError from "./parts/LoadError.vue";
 import MainMenu from "./parts/MainMenu.vue";
 import Overlay from "./parts/Overlay.vue";
 import CitySelection from "./parts/CitySelection.vue";
@@ -31,31 +33,7 @@ onUnmounted(() => simulator.dispose());
 
         <Overlay v-if="!state.showMainMenu" />
 
-        <div
-            v-if="state.loadError"
-            role="alert"
-            class="absolute inset-0 z-50 flex items-center justify-center bg-black/90"
-        >
-            <div class="max-w-md rounded-xl bg-gray-900 p-8 text-center text-white">
-                <h2 class="mb-3 text-2xl font-bold">Unable to start driving</h2>
-                <p class="mb-6 text-gray-300">{{ state.loadError }}</p>
-                <button
-                    class="mr-3 rounded-lg bg-blue-600 px-5 py-3"
-                    @click="simulator.selectCity(state.currentCity!)"
-                >
-                    Retry
-                </button>
-                <button
-                    class="rounded-lg bg-gray-700 px-5 py-3"
-                    @click="
-                        state.loadError = '';
-                        state.showCityMenu = true;
-                    "
-                >
-                    Choose city
-                </button>
-            </div>
-        </div>
+        <LoadError v-if="state.loadError" />
 
         <LoadingScreen v-if="state.isLoading" />
         <footer class="attribution-links">

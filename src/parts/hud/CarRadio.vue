@@ -18,7 +18,7 @@ onUnmounted(() => radio.stop());
             <button aria-label="Next radio track" title="Next track" @click="radio.changeTrack(1)">▶▶</button>
         </div>
         <label>Volume <input v-model.number="radio.volume" aria-label="Radio volume" type="range" min="0" max="1" step="0.01" /></label>
-        <p v-if="radio.error" role="status">{{ radio.error }}</p>
+        <p v-if="radio.error" role="status" class="wander-notice">{{ radio.error }}</p>
     </section>
 </template>
 

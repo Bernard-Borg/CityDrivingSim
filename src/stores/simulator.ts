@@ -137,7 +137,7 @@ export const useSimulatorStore = defineStore("simulator", () => {
     };
 
     /** Opens map selection from the main menu. */
-    const chooseMap = (): void => { state.showCityMenu = true; };
+    const chooseMap = (): void => { state.loadError = ""; state.showCityMenu = true; };
 
     /** Starts the saved city only when it is still available. */
     const continueGame = async (): Promise<void> => {

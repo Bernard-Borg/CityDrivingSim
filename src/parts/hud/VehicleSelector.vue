@@ -30,7 +30,7 @@ const select = (event: Event) => {
             </option>
         </select>
         <p v-if="vehicles.switching" role="status">Loading car…</p>
-        <p v-if="vehicles.error" role="alert">{{ vehicles.error }}</p>
+        <p v-if="vehicles.error" role="alert" class="wander-notice">{{ vehicles.error }}</p>
     </div>
 </template>
 
