@@ -22,6 +22,8 @@ export interface RoadLevelSettings {
     tunnelCover: number;
     tunnelHeadroom: number;
     rampLength: number;
+    /** Target tunnel entrance transition length in metres, separate from bridge approaches. */
+    tunnelRampLength: number;
     maxGrade: number;
     deckThickness: number;
     overrides: Record<string, RoadLevelOverride>;
@@ -31,6 +33,7 @@ export const DEFAULT_ROAD_LEVELS: RoadLevelSettings = {
     tunnelCover: 2,
     tunnelHeadroom: 3.5,
     rampLength: 35,
+    tunnelRampLength: 12,
     maxGrade: 0.22,
     deckThickness: 0.5,
     overrides: {},
@@ -326,6 +329,7 @@ export class RoadProfileNetwork {
             "tunnelCover",
             "tunnelHeadroom",
             "rampLength",
+            "tunnelRampLength",
             "maxGrade",
             "deckThickness",
         ] as const) {
@@ -683,7 +687,7 @@ export class RoadProfileNetwork {
                 else {
                     const blend = smooth(
                         (distance.get(node) ?? this.settings.rampLength) /
-                            Math.min(this.settings.rampLength, maxDistance),
+                            Math.min(this.settings.tunnelRampLength, maxDistance),
                     );
                     const depth = Math.min(
                         Math.max(
@@ -807,7 +811,7 @@ export class RoadProfileNetwork {
     private smoothTunnelApproaches(): void {
         const portals = [...this.nodes.values()].filter(node => node.kinds.has("ground") && node.kinds.has("tunnel"));
         if (!portals.length) return;
-        const reach = Math.max(80, this.settings.rampLength * 2);
+        const reach = this.settings.tunnelRampLength * 2;
         const nearby = this.distances(portals, "ground", reach);
         const protectedNodes = new Set<Node>();
         for (const profile of this.profiles) {
@@ -843,10 +847,9 @@ export class RoadProfileNetwork {
         for (const node of this.nodes.values()) {
             if (!node.kinds.has("ground") || node.kinds.size < 2) continue;
             const offset = node.height - node.ground;
-            const length = Math.max(
-                this.settings.rampLength,
-                (Math.abs(offset) * 1.5) / this.settings.maxGrade,
-            );
+            const length = node.kinds.has("tunnel") && !node.kinds.has("bridge")
+                ? this.settings.tunnelRampLength
+                : Math.max(this.settings.rampLength, (Math.abs(offset) * 1.5) / this.settings.maxGrade);
             for (const [neighbor, distance] of this.distances([node], "ground", length)) {
                 if (neighbor.kinds.size > 1) continue;
                 const change = offset * (1 - smooth(distance / length));

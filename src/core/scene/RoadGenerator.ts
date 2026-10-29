@@ -629,12 +629,17 @@ export class RoadGenerator {
             // Tunnel excavation is height-aware and follows its arch; never erase
             // the entire horizontal footprint of a shallow but covered tunnel.
             if (profile.input.kind !== "tunnel" && lowered) {
-                const half = width / 2 + 0.2 + Math.max(profile.input.sidewalks?.left ?? 0, profile.input.sidewalks?.right ?? 0);
+                // Excavate exactly to the retaining faces, including join tapers and
+                // asymmetric sidewalks. A wider hole exposes the sky beside the wall.
+                const right = profile.input.sidewalks?.right ?? 0;
+                const left = profile.input.sidewalks?.left ?? 0;
+                const halfA = profile.halfWidthAt(i / segments);
+                const halfB = profile.halfWidthAt((i + 1) / segments);
                 this.cutouts.add([
-                    a.clone().addScaledVector(pa, half),
-                    b.clone().addScaledVector(pb, half),
-                    b.clone().addScaledVector(pb, -half),
-                    a.clone().addScaledVector(pa, -half),
+                    a.clone().addScaledVector(pa, halfA + right),
+                    b.clone().addScaledVector(pb, halfB + right),
+                    b.clone().addScaledVector(pb, -(halfB + left)),
+                    a.clone().addScaledVector(pa, -(halfA + left)),
                 ]);
             }
             // Tunnel lining supplies the side walls; extending a second wall to the surface
@@ -1122,6 +1127,15 @@ export class RoadGenerator {
             if (node.links.filter(link => link.kind === "tunnel").length > 1) continue;
             const inner = section(t, 0), outer = section(t, TUNNEL_THICKNESS);
             for (let j = 0; j < inner.length - 1; j++) face(inner[j]!, inner[j + 1]!, outer[j]!, outer[j + 1]!);
+            // The open approach removes terrain all the way to this section. Close
+            // the exposed soil above the arch without covering the tunnel opening.
+            for (let j = 1; j < outer.length - 2; j++) {
+                const a = outer[j]!, b = outer[j + 1]!;
+                const topA = a.clone(), topB = b.clone();
+                topA.y = Math.max(a.y, this.groundSample(a.x, a.z).height);
+                topB.y = Math.max(b.y, this.groundSample(b.x, b.z).height);
+                if (topA.y > a.y || topB.y > b.y) face(a, b, topA, topB);
+            }
         }
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
