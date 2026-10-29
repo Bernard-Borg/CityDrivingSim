@@ -114,13 +114,17 @@ Procedural engine audio follows throttle and approximate automatic gearing.
 Continuous speed-dependent road/wind noise and the engine's filtered white-noise
 texture are removed, including their loop sources and noise-gain nodes. The engine
 keeps its tonal harmonics; ignition and crash effects remain one-shot buffers.
-Collisions use
-a broadband crush transient, a low filtered body thump and irregular debris/panel
-rattles, with short damped metallic detail. Higher impact speeds increase loudness
-and slightly lower pitch; a 0.4 second cooldown avoids repeated crash chatter
-while resting against an obstacle. Collision response removes inward velocity
-without restitution, dissipates tangential energy through contact friction, and
-clears stored yaw rate on contact. Positional overlap correction never adds velocity.
+Collision audio uses a low body thump, filtered crushing noise and short panel
+chatter, with no sharp broadband crack or sustained metallic ringing. Intensity
+uses the horizontal speed lost immediately across collision resolution (m/s), not
+remaining speed or positional overlap. Gains rise with normalized speed loss to
+the power 1.5; a 45 m/s loss reaches full intensity. Tiny contacts below the vehicle's
+configured threshold are silent. Larger losses add some filtered detail and a
+longer retrigger cooldown (0.25?0.55 s). Effects volume and mute still apply.
+Collision response removes inward velocity without restitution and dissipates
+some tangential energy, but no longer clears yaw rate on every contact: that
+previously suppressed steering away from walls during repeated light scrapes.
+Positional overlap correction never adds velocity.
 Starter audio combines a short mechanical key transient,
 starter motor/compression pulses and a textured combustion catch, without the
 previous sustained rev-up tone.
@@ -242,3 +246,18 @@ same horizon colour. The sky follows driving and creative cameras, uses one draw
 call and four noise octaves, and requires no image downloads. Clouds are a distant
 visual layer without volumetric shadows or weather simulation. Sky geometry and
 material are released when the simulator is disposed.
+
+
+## HUD visibility and manual recovery
+
+Settings has General and HUD pages. HUD independently persists instrument-cluster,
+compass/coordinates and search visibility. The settings button and recovery controls
+remain available. Hiding these elements does not disable telemetry or simulation.
+Delete and the dedicated touch Reset button perform the same recovery as Reset
+location; water recovery occurs only when the vehicle body touches/crosses the surface,
+not merely when its coordinates fall within a water polygon. Typing, modifier-key
+shortcuts and paused dialogs do not trigger keyboard recovery.
+
+When returning from creative flight, the car keeps the camera position/elevation
+and takes its yaw from the camera's horizontal viewing direction. Pitch is ignored;
+for an exactly vertical view, the last car heading is retained.

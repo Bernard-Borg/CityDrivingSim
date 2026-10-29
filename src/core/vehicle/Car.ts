@@ -201,13 +201,17 @@ export class Car {
             contact.slopeX,
             contact.slopeZ,
         );
+        const speedBeforeContact = Math.hypot(this.physics.vx, this.physics.vz);
         const impact =
             this.engineState === "running" || !grounded
                 ? (this.world?.resolve(this.physics, this.position.y, this.config.collision) ?? 0)
                 : 0;
-        this.impact = Math.max(this.impact, impact);
-        // Cancel stored steering rotation on contact rather than sweeping the body into the wall again.
-        if (impact > 0) this.physics.yawRate = 0;
+        // Audio follows speed dissipated by contact, not the car's remaining speed.
+        // Glancing scrapes lose little speed; head-on crashes lose most of it.
+        if (impact > 0) this.impact = Math.max(this.impact,
+            Math.max(0, speedBeforeContact - Math.hypot(this.physics.vx, this.physics.vz)));
+        // Preserve steering response during wall contact. Resetting yaw rate on
+        // every small scrape prevents the low-speed steering response from building.
         const road = this.surface(this.physics.x, this.physics.z, this.position.y);
         const floor =
             road.height + this.groundOffset * Math.sqrt(1 + road.slopeX ** 2 + road.slopeZ ** 2);

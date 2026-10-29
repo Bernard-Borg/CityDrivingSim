@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
+import { useSettingsStore } from "@/stores/settings";
 import { useRadioStore } from "@/stores/radio";
 import { useStateStore } from "@/stores/state";
 import VehicleInstruments from "./hud/VehicleInstruments.vue";
@@ -14,6 +15,7 @@ import PerformancePanel from "./hud/PerformancePanel.vue";
 
 const state = useStateStore();
 const radio = useRadioStore();
+const settings = useSettingsStore();
 const simulator = useSimulatorStore();
 
 const help = ref<InstanceType<typeof ControlsHelp> | null>(null);
@@ -46,6 +48,10 @@ const onKey = (e: KeyboardEvent) => {
         e.preventDefault();
         radio.toggle();
     }
+    if (e.key === "Delete" && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !simulator.isPaused) {
+        e.preventDefault();
+        simulator.resetLocation();
+    }
     if (e.key === "F3") {
         e.preventDefault();
         if (!e.repeat) simulator.togglePerformance();
@@ -62,15 +68,15 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 
 <template>
     <template v-if="playing">
-        <NavigationCompass />
+        <NavigationCompass v-if="settings.showCompass" />
         <Settings />
         <MobileControls v-if="!simulator.isPaused" />
-        <VehicleInstruments v-if="!state.creativeMode" />
+        <VehicleInstruments v-if="settings.showSpeedometer && !state.creativeMode" />
         <HudActions ref="actions" @help="help?.open()" />
         <PerformancePanel v-if="state.showPerformance" @close="simulator.togglePerformance" />
     </template>
     <div v-if="!playing || !state.showPerformance" class="absolute flex gap-3 top-5 right-5 z-10">
-        <LocationSearch />
+        <LocationSearch v-if="settings.showSearch" />
         <div
             class="bg-black/60 backdrop-blur-md px-4 py-2 rounded-lg border flex items-center max-h-12 border-white/20"
         >

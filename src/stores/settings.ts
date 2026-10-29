@@ -13,6 +13,13 @@ export const useSettingsStore = defineStore("settings", () => {
     const musicVolume = useLocalStorage<number>("cityDrivingSim_radioVolume", 0.35);
     const showStreetNames = useLocalStorage<boolean>("cityDrivingSim_showStreetNames", true);
 
+    /** Visibility of the driving instrument cluster. */
+    const showSpeedometer = useLocalStorage<boolean>("cityDrivingSim_showSpeedometer", true);
+    /** Visibility of the compass and coordinates. */
+    const showCompass = useLocalStorage<boolean>("cityDrivingSim_showCompass", true);
+    /** Visibility of the location search control. */
+    const showSearch = useLocalStorage<boolean>("cityDrivingSim_showSearch", true);
+
     /** Bypasses detailed GeoTIFF terrain in favour of its configured HGT fallback. */
     const forceFallbackTerrain = useLocalStorage<boolean>("cityDrivingSim_forceFallbackTerrain", false);
 
@@ -24,6 +31,9 @@ export const useSettingsStore = defineStore("settings", () => {
         musicVolume,
         isSoundMuted,
         showStreetNames,
+        showSpeedometer,
+        showCompass,
+        showSearch,
         forceFallbackTerrain,
         shadowsEnabled,
         renderScale,

@@ -7,7 +7,7 @@
 export function vehicleSound(
     kind: "impact" | "ignition",
     sampleRate: number,
-    duration = kind === "impact" ? 0.9 : 0.95,
+    duration = kind === "impact" ? 0.65 : 0.95,
 ): Float32Array {
     const samples = new Float32Array(Math.ceil(sampleRate * duration));
     let seed = 17029,
@@ -28,29 +28,15 @@ export function vehicleSound(
         low = low * 0.92 + white * 0.08;
         const fade = Math.min(1, t / 0.003, (duration - t) / 0.025);
         if (kind === "impact") {
-            // Broad, damped crushing energy rather than a pitched rubber-like boing.
-            const high = white - low;
-            const onset = Math.exp(-t * 85);
-            const crush = Math.exp(-t * 12) * (0.65 + 0.35 * Math.sin(t * 173) ** 2);
-            const rattle =
-                Math.max(0, 1 - Math.abs(t - 0.095) / 0.035) +
-                0.55 * Math.max(0, 1 - Math.abs(t - 0.19) / 0.05) +
-                0.25 * Math.max(0, 1 - Math.abs(t - 0.31) / 0.07);
-            previousLow = previousLow * 0.985 + white * 0.015;
-            const panel =
-                (Math.sin(2 * Math.PI * 193 * t) * 0.045 +
-                    Math.sin(2 * Math.PI * 431 * t) * 0.025) *
-                Math.exp(-t * 30);
-            const rumble = previousLow * 5 * Math.exp(-t * 16);
-            samples[i] =
-                Math.tanh(
-                    (high * onset * 0.6 +
-                        low * crush * 2.8 +
-                        high * rattle * 0.18 +
-                        panel +
-                        rumble) *
-                        1.3,
-                ) * fade;
+            // Low body thump, irregular crushing and loose panel chatter. Two
+            // low-pass noise stages avoid the old sharp broadband crack/ringing.
+            const bodyBlend = 1 - Math.exp(-2 * Math.PI * 260 / sampleRate);
+            previousLow += (low - previousLow) * bodyBlend;
+            const thump = Math.sin(2 * Math.PI * 64 * t) * Math.exp(-t * 32) * 0.32;
+            const crush = previousLow * 3.2 * Math.exp(-t * 13);
+            const chatter = low * Math.exp(-t * 15) *
+                (Math.exp(-(((t - 0.06) / 0.018) ** 2)) + 0.5 * Math.exp(-(((t - 0.13) / 0.025) ** 2)));
+            samples[i] = Math.tanh(thump + crush + chatter * 0.6) * fade;
         } else {
             // Starter motor and compression pulses, followed by combustion catch.
             const crankRate = 10 + u * 7;

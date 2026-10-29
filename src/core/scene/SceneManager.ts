@@ -448,8 +448,6 @@ export class SceneManager {
             this.getRoadState(spawn.x, spawn.z, this.startPosition.y).height + 0.4,
             spawn.z,
         );
-        if (this.isInWater(this.startPosition))
-            this.startPosition.copy(this.roadGenerator.getSpawnPosition());
         await report("Preparing nearby scenery");
         this.visibility.build([
             ...this.sceneryRoots,
@@ -709,18 +707,34 @@ export class SceneManager {
     }
 
     /**
-     * Checks whether a local position intersects mapped water at its elevation.
-     *
-     * @param position - Local position or saved geographic position, as indicated by the parameter type.
+     * Checks the vehicle footprint against actual water-surface elevation.
+     * @param position - Current vehicle centre in local metres.
+     * @param shape - Collision footprint and vertical half-height; omitted for a point query.
+     * @param yaw - Vehicle heading in radians.
+     * @param previousPosition - Previous fixed-step centre, used to detect crossing the surface.
      */
-    isInWater(position: THREE.Vector3): boolean {
-        const waterHeight = this.water.heightAt(position.x, position.z);
-        if (waterHeight === null) return false;
-        const road = this.getRoadState(position.x, position.z, position.y);
-        // Bridges and enclosed tunnels retain their own contact even over/under water.
-        if (road.roadId && (road.structure === "tunnel" || road.height > waterHeight + 0.15))
-            return false;
-        return true;
+    isInWater(
+        position: THREE.Vector3,
+        shape = { radius: 0, halfLength: 0, halfHeight: 0 },
+        yaw = 0,
+        previousPosition = position,
+    ): boolean {
+        const low = Math.min(position.y, previousPosition.y) - shape.halfHeight;
+        const high = Math.max(position.y, previousPosition.y) + shape.halfHeight;
+        const sin = Math.sin(yaw), cos = Math.cos(yaw);
+        for (const along of [-shape.halfLength, 0, shape.halfLength]) {
+            for (const side of [-shape.radius, 0, shape.radius]) {
+                const x = position.x + sin * along + cos * side;
+                const z = position.z + cos * along - sin * side;
+                const height = this.water.heightAt(x, z);
+                if (height === null) continue;
+                // Water meshes render 2.5 cm above their source level. A small
+                // tolerance catches contact without treating the entire column as water.
+                const surface = height + 0.025;
+                if (low <= surface + 0.01 && high >= surface - 0.01) return true;
+            }
+        }
+        return false;
     }
 
     /**

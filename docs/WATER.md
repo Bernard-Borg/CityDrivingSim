@@ -37,10 +37,16 @@ reclamation can still differ from the mapped shoreline.
 
 ## Vehicle contact
 
-Entering a water footprint outside a supported road resets the car to its
-normal city spawn and clears motion/input. An enclosed tunnel or a reachable
-road surface above the water remains drivable, including bridge crossings.
-Saved locations in open water fall back to the city spawn when loading.
+During driving, recovery occurs only when the vehicle's collision body intersects
+the mapped water surface. The footprint is sampled across its length and width,
+and its vertical extent must overlap the rendered surface (source level + 2.5 cm,
+with a 1 cm contact tolerance). The previous fixed-step height catches a fast
+crossing between updates. Merely being over the polygon, or already entirely
+below the surface, does not trigger recovery. Bridges, underwater tunnels and
+creative flight therefore do not reset merely for sharing water coordinates.
+Saved positions are not automatically relocated based on water footprint alone.
+Delete, the mobile Reset button and Reset location remain available for manual
+recovery. Recovery restores the city spawn and clears motion/input.
 
 ## Exporting another city
 

@@ -489,8 +489,8 @@ export class CarControls {
             this.engineSoundGenerator.update(speed, throttle, throttle > 0.1, delta);
         }
         if (impact > this.car.config.audio.impactThreshold && this.soundCooldown === 0) {
-            this.roadSoundGenerator.playImpact(Math.min(1, impact / 15));
-            this.soundCooldown = 0.4;
+            this.roadSoundGenerator.playImpact(Math.min(1, impact / 45));
+            this.soundCooldown = 0.25 + Math.min(0.3, impact / 120);
         }
     }
 

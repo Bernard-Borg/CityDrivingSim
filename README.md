@@ -104,6 +104,9 @@ for controls; mobile devices also expose touch controls.
 ### Settings and performance
 
 Settings includes shadows, render resolution, audio channel volumes and mute.
+The HUD page independently hides the speedometer/instruments, compass/coordinates
+and search. Water-surface contact resets the car; simply being above or below water does not.
+Use Delete or the touch Reset button for manual recovery.
 **Use fallback terrain** loads a GeoTIFF city's configured HGT fallback directly,
 skipping TIFF decoding. Changing it reloads the map, preserving latitude and
 longitude while resolving height against the newly selected surface. Cities

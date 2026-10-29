@@ -105,6 +105,7 @@ onUnmounted(() => {
         >
             Horn
         </button>
+        <button class="wander-button compact recovery-button" aria-label="Reset position when stuck" @click="simulator.resetLocation()">Reset</button>
         <div
             class="wander-panel look-pad"
             aria-label="Drag to look around"
@@ -186,6 +187,7 @@ onUnmounted(() => {
     pointer-events: auto;
     touch-action: none;
 }
+.recovery-button { position: absolute; left: 16px; bottom: 155px; pointer-events: auto; touch-action: manipulation; }
 .view-button {
     grid-column: 1/-1;
     min-height: 40px;

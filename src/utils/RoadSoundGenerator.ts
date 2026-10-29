@@ -77,11 +77,10 @@ export class RoadSoundGenerator {
      * @param strength - Normalized collision intensity.
      */
     playImpact(strength: number): void {
-        this.playEffect(
-            this.impactBuffer,
-            Math.pow(Math.max(0, Math.min(1, strength)), 0.7) * this.config.impactVolume,
-            (1.04 - Math.max(0, Math.min(1, strength)) * 0.12) * this.config.impactPitch,
-        );
+        const intensity = Number.isFinite(strength) ? Math.max(0, Math.min(1, strength)) : 0;
+        if (intensity <= 0) return;
+        this.playEffect(this.impactBuffer, Math.pow(intensity, 1.5) * this.config.impactVolume,
+            (1.02 - intensity * 0.12) * this.config.impactPitch, 650 + intensity * 1500);
     }
 
     /**
@@ -98,19 +97,28 @@ export class RoadSoundGenerator {
      * @param buffer - Raw signed big-endian HGT elevation bytes.
      * @param volume - Playback gain, normally zero through one.
      * @param rate - Audio playback-rate multiplier.
+     * @param cutoff - Optional low-pass frequency for impact softness.
      */
-    private playEffect(buffer: AudioBuffer | null, volume: number, rate = 1): void {
+    private playEffect(buffer: AudioBuffer | null, volume: number, rate = 1, cutoff?: number): void {
         if (!this.isEnabled || !this.audioContext || !buffer || !this.masterGain) return;
         const source = this.audioContext.createBufferSource();
         const gain = this.audioContext.createGain();
         source.buffer = buffer;
         source.playbackRate.value = rate;
         gain.gain.value = volume;
-        source.connect(gain);
+        const filter = cutoff ? this.audioContext.createBiquadFilter() : null;
+        if (filter) {
+            filter.type = "lowpass";
+            filter.frequency.value = cutoff!;
+            filter.Q.value = 0.5;
+            source.connect(filter);
+            filter.connect(gain);
+        } else source.connect(gain);
         gain.connect(this.masterGain);
         this.effects.add(source);
         source.onended = () => {
             source.disconnect();
+            filter?.disconnect();
             gain.disconnect();
             this.effects.delete(source);
         };

@@ -13,6 +13,13 @@ const AUDIO_CHANNELS = [
     { key: "effectsVolume", label: "Effects", hint: "Collisions, horn and ignition" },
 ] as const;
 
+const HUD_ELEMENTS = [
+    { key: "showSpeedometer", label: "Speedometer", hint: "Speed, engine and boost instruments" },
+    { key: "showCompass", label: "Compass", hint: "Heading and coordinates" },
+    { key: "showSearch", label: "Search", hint: "Street and coordinate search" },
+] as const;
+
+const page = ref<"general" | "hud">("general");
 const simulator = useSimulatorStore();
 const settings = useSettingsStore();
 const dialog = ref<HTMLDialogElement | null>(null);
@@ -60,6 +67,11 @@ onUnmounted(() => {
             <div><p class="wander-eyebrow">Wander / Preferences</p><h2 id="settings-title">Settings</h2></div>
             <button class="wander-button compact icon" autofocus aria-label="Close settings" @click="close">&#215;</button>
         </div>
+        <nav class="settings-pages" aria-label="Settings pages">
+            <button class="wander-button compact" :aria-pressed="page === 'general'" @click="page = 'general'">General</button>
+            <button class="wander-button compact" :aria-pressed="page === 'hud'" @click="page = 'hud'">HUD</button>
+        </nav>
+        <section v-if="page === 'general'" aria-label="General settings">
         <h3 class="wander-section-title">Audio</h3>
         <button class="wander-button compact mute-toggle" :aria-pressed="settings.isSoundMuted" @click="toggleMute">
             <HudIcon :name="settings.isSoundMuted ? 'muted' : 'volume'" />
@@ -113,10 +125,20 @@ onUnmounted(() => {
                 <option :value="2">High</option>
             </select>
         </label>
+        </section>
+        <section v-else aria-label="HUD settings">
+            <h3 class="wander-section-title">Visible elements</h3>
+            <label v-for="element in HUD_ELEMENTS" :key="element.key" class="wander-field">
+                <span>{{ element.label }}<small>{{ element.hint }}</small></span>
+                <input v-model="settings[element.key]" class="wander-checkbox" type="checkbox" />
+            </label>
+        </section>
     </dialog>
 </template>
 
 <style scoped>
+.settings-pages { display: flex; gap: 10px; }
+.settings-pages button { flex: 1; }
 .settings-button { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; z-index: 23; }
 .mute-toggle { width: 100%; justify-content: flex-start; }
 .audio-channel { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(60px, 140px) 42px; gap: 12px; }

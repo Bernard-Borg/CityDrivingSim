@@ -13,6 +13,7 @@ const DRIVING_CONTROLS = [
     ["I", "Ignition / park"],
     ["H (hold)", "Horn"],
     ["R", "Radio on / off"],
+    ["Delete", "Reset position when stuck"],
     ["V", "First / third person"],
     ["C", "Creative mode / fly"],
     ["Mouse drag", "Look around (first person: ±80°)"],

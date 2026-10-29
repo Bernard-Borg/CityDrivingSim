@@ -348,14 +348,16 @@ export class DrivingSimulator {
             } else {
                 if (!document.hidden && !this.paused) {
                     if (elapsed > 0.25) this.car.resetInterpolation();
-                    let enteredWater = false;
+                    let touchedWater = false;
                     this.physicsClock.advance(elapsed, (dt) => {
-                        if (enteredWater) return;
+                        if (touchedWater) return;
+                        const previousPosition = this.car!.getPosition();
                         this.carControls!.update(dt);
                         this.car!.update(dt);
-                        enteredWater = this.sceneManager.isInWater(this.car!.getPosition());
+                        touchedWater = this.sceneManager.isInWater(this.car!.getPosition(),
+                            this.car!.config.collision, this.car!.physics.yaw, previousPosition);
                     });
-                    if (enteredWater) this.resetCarPosition();
+                    if (touchedWater) this.resetCarPosition();
                     this.carControls.updateAudio(delta);
                 } else {
                     this.physicsClock.reset();
@@ -611,13 +613,17 @@ export class DrivingSimulator {
         if (!this.car || !this.carControls || !this.flight || this.paused) return;
         if (enabled === this.flight.enabled) return;
         if (enabled) this.camera.position.copy(this.car.getPosition());
-        else
+        else {
+            const direction = this.camera.getWorldDirection(new THREE.Vector3());
+            if (Math.hypot(direction.x, direction.z) > 1e-6)
+                this.car.setRotation(Math.atan2(direction.x, direction.z));
             this.car.setPosition(
                 this.camera.position.x,
                 this.camera.position.y,
                 this.camera.position.z,
                 true,
             );
+        }
         useStateStore().creativeMode = enabled;
         if (enabled && this.car.getEngineState() !== "off") this.car.toggleIgnition();
         this.car.resetPhysics();
