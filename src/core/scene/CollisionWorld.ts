@@ -15,6 +15,7 @@ interface Obstacle {
     maxY: number;
     category: "scenery" | "road";
     owner?: string;
+    tunnelOpeningsOnly?: boolean;
 }
 
 /**
@@ -105,14 +106,14 @@ export class CollisionWorld {
     private grid = new SpatialGrid<Obstacle>();
     private bounds: TerrainBounds | null = null;
     private inTunnel: ((x: number, z: number, y: number) => boolean) | null = null;
-    private roadOpening: ((x: number, z: number, y: number, owner: string) => boolean) | null =
+    private roadOpening: ((x: number, z: number, y: number, owner: string, tunnelsOnly?: boolean) => boolean) | null =
         null;
     /**
      * Installs a predicate identifying openings between intersecting road corridors.
      *
      * @param query - World-space classification predicate.
      */
-    setRoadOpeningQuery(query: (x: number, z: number, y: number, owner: string) => boolean): void {
+    setRoadOpeningQuery(query: (x: number, z: number, y: number, owner: string, tunnelsOnly?: boolean) => boolean): void {
         this.roadOpening = query;
     }
     /**
@@ -148,6 +149,7 @@ export class CollisionWorld {
      * @param maxY - Upper collision elevation in metres.
      * @param category - Obstacle category controlling collision filtering.
      * @param owner - Owning road identifier.
+     * @param tunnelOpeningsOnly - Whether only tunnel bores can open this structural collider.
      */
     addPolygon(
         rings: Point[][],
@@ -155,12 +157,13 @@ export class CollisionWorld {
         maxY = 100,
         category: "scenery" | "road" = "scenery",
         owner?: string,
+        tunnelOpeningsOnly = false,
     ): void {
         if (!rings[0] || rings[0].length < 3) return;
         const xs = rings[0].map((p) => p.x),
             zs = rings[0].map((p) => p.z);
         this.grid.insert(
-            { rings, minY, maxY, category, owner },
+            { rings, minY, maxY, category, owner, tunnelOpeningsOnly },
             Math.min(...xs) - 2,
             Math.min(...zs) - 2,
             Math.max(...xs) + 2,
@@ -218,7 +221,7 @@ export class CollisionWorld {
                     )
                         continue;
                     if (obstacle.category === "scenery" && this.inTunnel?.(p.x, p.z, y)) continue;
-                    if (obstacle.owner && this.roadOpening?.(p.x, p.z, y, obstacle.owner)) continue;
+                    if (obstacle.owner && this.roadOpening?.(p.x, p.z, y, obstacle.owner, obstacle.tunnelOpeningsOnly)) continue;
                     const solid =
                         inside(p, obstacle.rings[0]) &&
                         !obstacle.rings.slice(1).some((r) => inside(p, r));

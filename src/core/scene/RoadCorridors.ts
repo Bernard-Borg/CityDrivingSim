@@ -1,3 +1,4 @@
+import { tunnelSection } from "./TunnelSection";
 /**
  * RoadCorridors types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -78,6 +79,17 @@ export class RoadCorridors {
                     { x: -sx, y: 1, z: -sz, w: -base + 0.12 },
                     { x: sx, y: -1, z: sz, w: base + profile.headroom - 0.025 },
                 );
+                if (profile.input.kind === "tunnel") {
+                    // Intersect the rectangular prism with the same arch facets used by the lining.
+                    const section = tunnelSection(half + (profile.input.sidewalks?.left ?? 0), half + (profile.input.sidewalks?.right ?? 0), profile.headroom);
+                    for (let j = 1; j < section.length - 2; j++) {
+                        const p = section[j]!, q = section[j + 1]!;
+                        const slope = (q.h - p.h) / (q.u - p.u);
+                        const intercept = p.h - slope * p.u;
+                        planes.push({ x: sx + slope * nx, y: -1, z: sz + slope * nz,
+                            w: base + intercept - slope * (nx * a.x + nz * a.z) - 0.015 });
+                    }
+                }
                 const v = {
                     owner: profile.input.id,
                     tunnel: profile.input.kind === "tunnel",

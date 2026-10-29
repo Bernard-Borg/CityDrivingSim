@@ -1,3 +1,4 @@
+import { tunnelSection, TUNNEL_THICKNESS } from "./TunnelSection";
 /**
  * RoadGenerator types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -59,8 +60,8 @@ export class RoadGenerator {
      * @param owner - Road identifier excluded from the opening query.
      * @returns True when another corridor covers the point.
      */
-    isTunnelOpening(x: number, z: number, y: number, owner: string): boolean {
-        return this.corridors.contains(x, z, y, owner, false);
+    isTunnelOpening(x: number, z: number, y: number, owner: string, tunnelsOnly = false): boolean {
+        return this.corridors.contains(x, z, y, owner, tunnelsOnly);
     }
     /**
      * Subtracts tunnel corridor volumes from scenery geometry in place, preserving interpolated vertex attributes.
@@ -625,10 +626,9 @@ export class RoadGenerator {
             const ga = this.groundSample(a.x, a.z).height,
                 gb = this.groundSample(b.x, b.z).height;
             const lowered = Math.min(a.y - ga, b.y - gb) < -0.02;
-            const portal =
-                profile.input.kind === "tunnel" &&
-                Math.min(ga - a.y, gb - b.y) < profile.headroom + this.settings.tunnelCover;
-            if (portal || (profile.input.kind !== "tunnel" && lowered)) {
+            // Tunnel excavation is height-aware and follows its arch; never erase
+            // the entire horizontal footprint of a shallow but covered tunnel.
+            if (profile.input.kind !== "tunnel" && lowered) {
                 const half = width / 2 + 0.2 + Math.max(profile.input.sidewalks?.left ?? 0, profile.input.sidewalks?.right ?? 0);
                 this.cutouts.add([
                     a.clone().addScaledVector(pa, half),
@@ -675,7 +675,7 @@ export class RoadGenerator {
                         "road",
                         profile.input.id,
                     );
-                } else if (lowered || portal) {
+                } else if (lowered) {
                     const topA = Math.max(ea.y, this.groundSample(ea.x, ea.z).height),
                         topB = Math.max(eb.y, this.groundSample(eb.x, eb.z).height);
                     face(ea, eb, ea.y - 0.1, eb.y - 0.1, topA, topB);
@@ -920,6 +920,7 @@ export class RoadGenerator {
                 sample: () => ({ height: 0, slopeX: 0, slopeZ: 0 }),
             },
         );
+        this.corridors.cut(geometry);
     }
 
     /**
@@ -1077,49 +1078,58 @@ export class RoadGenerator {
         curveLength: number,
     ): void {
         const profile = this.activeProfile!;
-        const vertices: number[] = [],
-            height = profile.headroom;
-        /** Appends two triangles for a four-corner tunnel face in the shared vertex buffer. */
+        const vertices: number[] = [];
+        /** Appends a structural quad to the lining triangle buffer. */
         const face = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3) => {
             for (const p of [a, b, c, c, b, d]) vertices.push(p.x, p.y, p.z);
         };
+        /** Samples a complete inner or outer section in world coordinates. */
+        const section = (t: number, thickness: number) => {
+            const centre = curve.getPoint(t), normal = profile.perpendicularAt(t);
+            return tunnelSection(profile.halfWidthAt(t) + (profile.input.sidewalks?.left ?? 0),
+                profile.halfWidthAt(t) + (profile.input.sidewalks?.right ?? 0), profile.headroom, thickness)
+                .map(p => {
+                    const point = centre.clone().addScaledVector(normal, p.u);
+                    point.y = profile.sample(point.x, point.z).height + p.h;
+                    return point;
+                });
+        };
         for (let i = 0; i < numSegments; i++) {
-            const a = curve.getPoint(i / numSegments),
-                b = curve.getPoint((i + 1) / numSegments);
-            const na = profile.perpendicularAt(i / numSegments);
-            const nb = profile.perpendicularAt((i + 1) / numSegments);
-            const edges: THREE.Vector3[] = [];
-            for (const side of [-1, 1]) {
-                const ea = a
-                        .clone()
-                        .addScaledVector(na, (profile.halfWidthAt(i / numSegments) + (profile.input.sidewalks?.[side === 1 ? "right" : "left"] ?? 0)) * side),
-                    eb = b
-                        .clone()
-                        .addScaledVector(nb, (profile.halfWidthAt((i + 1) / numSegments) + (profile.input.sidewalks?.[side === 1 ? "right" : "left"] ?? 0)) * side);
-                ea.y = profile.sample(ea.x, ea.z).height;
-                eb.y = profile.sample(eb.x, eb.z).height;
-                const ta = ea.clone().add(new THREE.Vector3(0, height, 0)),
-                    tb = eb.clone().add(new THREE.Vector3(0, height, 0));
-                face(ea, eb, ta, tb);
-                edges.push(ta, tb);
-                const oa = ea.clone().addScaledVector(na, side * 0.25),
-                    ob = eb.clone().addScaledVector(nb, side * 0.25);
-                this.collisions?.addPolygon(
-                    [[ea, eb, ob, oa]],
-                    Math.min(ea.y, eb.y) - 0.1,
-                    Math.max(ea.y, eb.y) + height,
-                    "road",
-                    profile.input.id,
-                );
+            const innerA = section(i / numSegments, 0), innerB = section((i + 1) / numSegments, 0);
+            const outerA = section(i / numSegments, TUNNEL_THICKNESS), outerB = section((i + 1) / numSegments, TUNNEL_THICKNESS);
+            for (let j = 0; j < innerA.length - 1; j++) {
+                face(innerA[j]!, innerB[j]!, innerA[j + 1]!, innerB[j + 1]!);
+                face(outerA[j + 1]!, outerB[j + 1]!, outerA[j]!, outerB[j]!);
+                // Register each facet's shell footprint at its own elevation, including
+                // curved shoulders. The central roadway remains open at driving height.
+                const normalA = profile.perpendicularAt(i / numSegments), normalB = profile.perpendicularAt((i + 1) / numSegments);
+                const centreA = curve.getPoint(i / numSegments), centreB = curve.getPoint((i + 1) / numSegments);
+                const offsetsA = [innerA[j]!, innerA[j + 1]!, outerA[j]!, outerA[j + 1]!].map(p => p.clone().sub(centreA).dot(normalA));
+                const offsetsB = [innerB[j]!, innerB[j + 1]!, outerB[j]!, outerB[j + 1]!].map(p => p.clone().sub(centreB).dot(normalB));
+                const footprint = [centreA.clone().addScaledVector(normalA, Math.min(...offsetsA)),
+                    centreB.clone().addScaledVector(normalB, Math.min(...offsetsB)),
+                    centreB.clone().addScaledVector(normalB, Math.max(...offsetsB)),
+                    centreA.clone().addScaledVector(normalA, Math.max(...offsetsA))];
+                this.collisions?.addPolygon([footprint],
+                    Math.min(innerA[j]!.y, innerB[j]!.y, innerA[j + 1]!.y, innerB[j + 1]!.y) - 0.05,
+                    Math.max(outerA[j]!.y, outerB[j]!.y, outerA[j + 1]!.y, outerB[j + 1]!.y),
+                    "road", profile.input.id, true);
             }
-            // Full-width headroom, with no end caps across entrances or shared nodes.
-            face(edges[0], edges[1], edges[2], edges[3]);
+        }
+        // End faces close only the lining thickness, never the drive-through opening.
+        for (const t of [0, 1]) {
+            const node = profile.nodes[t === 0 ? 0 : profile.nodes.length - 1]!;
+            if (node.links.filter(link => link.kind === "tunnel").length > 1) continue;
+            const inner = section(t, 0), outer = section(t, TUNNEL_THICKNESS);
+            for (let j = 0; j < inner.length - 1; j++) face(inner[j]!, inner[j + 1]!, outer[j]!, outer[j + 1]!);
         }
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-        this.corridors.cut(geometry, profile.input.id, false, false);
+        // Only other tunnel bores open this lining. Surface roads must not slice its roof.
+        this.corridors.cut(geometry, profile.input.id);
+        geometry.computeVertexNormals(); geometry.computeBoundingSphere();
         const mesh = new THREE.Mesh(geometry, this.sharedMaterials.ceilingMaterial);
-        mesh.name = `Tunnel lining ${profile.input.id}`;
+        mesh.name = `Tunnel arch ${profile.input.id}`;
         mesh.castShadow = mesh.receiveShadow = true;
         this.tunnelGroup.add(mesh);
     }

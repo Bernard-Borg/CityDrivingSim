@@ -307,8 +307,8 @@ export class SceneManager {
             (message, detail) => report(message, detail),
         );
         this.collisions.setTunnelQuery((x, z, y) => this.roadGenerator.isInTunnel(x, z, y));
-        this.collisions.setRoadOpeningQuery((x, z, y, owner) =>
-            this.roadGenerator.isTunnelOpening(x, z, y, owner),
+        this.collisions.setRoadOpeningQuery((x, z, y, owner, tunnelsOnly) =>
+            this.roadGenerator.isTunnelOpening(x, z, y, owner, tunnelsOnly),
         );
         this.collisions.setBounds(this.elevationTile ? (this.terrain?.bounds ?? null) : null);
         if (!this.roadGenerator.getRoads().length)

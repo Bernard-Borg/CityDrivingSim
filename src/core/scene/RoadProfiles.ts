@@ -53,6 +53,7 @@ interface Node extends Point {
     links: Array<{ node: Node; length: number; kind: RoadKind }>;
     kinds: Set<RoadKind>;
     layers: number[];
+    engineeredApproach?: boolean;
 }
 interface Segment {
     a: Node;
@@ -232,7 +233,7 @@ export class RoadProfile {
                 dx = b.x - a.x,
                 dz = b.z - a.z,
                 length2 = dx * dx + dz * dz || 1;
-            if (this.input.kind === "ground") {
+            if (this.input.kind === "ground" && !a.engineeredApproach && !b.engineeredApproach) {
                 const oa = a.height - a.ground,
                     ob = b.height - b.ground;
                 height += oa + (ob - oa) * along;
@@ -254,7 +255,13 @@ export class RoadProfile {
             const direction = start ? 1 : -1;
             const along = ((x - end.x) * normal.z - (z - end.z) * normal.x) * direction;
             const span = Math.min(15, this.horizontalLength / 3);
-            if (along < -0.01 || along >= span) continue;
+            // A join plane is local to its endpoint. On switchbacks, projecting
+            // onto its infinite plane can capture a remote leg and teleport its height.
+            const lateral = (x - end.x) * normal.x + (z - end.z) * normal.z;
+            const endWidth = (start ? this.startHalfWidth : this.endHalfWidth) +
+                Math.max(this.input.sidewalks?.left ?? 0, this.input.sidewalks?.right ?? 0) + 0.5;
+            if (along < -0.01 || along >= span || Math.abs(lateral) > endWidth ||
+                Math.hypot(x - end.x, z - end.z) > Math.hypot(span, endWidth)) continue;
             const blend = 1 - smooth(Math.max(0, along) / Math.max(span, 0.001));
             const grade =
                 (neighbor.height - end.height) /
@@ -409,6 +416,8 @@ export class RoadProfileNetwork {
             node.height += values.reduce((a, b) => a + b, 0) / values.length;
         this.straightenBridgeSpans();
         this.blendApproaches();
+        this.smoothTunnelApproaches();
+        this.limitGrades("all");
         this.configureJoins();
     }
 
@@ -789,6 +798,41 @@ export class RoadProfileNetwork {
                 }
             }
         }
+    }
+
+    /** Engineers short surface approaches as connected road profiles instead of terrain drapes.
+     * Reduces steep elevation-sample bumps near tunnel portals without moving bridge decks
+     * or explicit road-height overrides. Corrections lower high samples rather than invent hills.
+     */
+    private smoothTunnelApproaches(): void {
+        const portals = [...this.nodes.values()].filter(node => node.kinds.has("ground") && node.kinds.has("tunnel"));
+        if (!portals.length) return;
+        const reach = Math.max(80, this.settings.rampLength * 2);
+        const nearby = this.distances(portals, "ground", reach);
+        const protectedNodes = new Set<Node>();
+        for (const profile of this.profiles) {
+            const override = this.settings.overrides[profile.input.id];
+            if (profile.input.kind === "bridge" || override &&
+                [override.startHeight, override.endHeight, override.heightOffset].some(Number.isFinite))
+                for (const node of profile.nodes) protectedNodes.add(node);
+        }
+        const eligible = new Set([...nearby.keys()].filter(node => !protectedNodes.has(node)));
+        // Keep the outer boundary tied to its existing surface profile.
+        const boundary = new Set([...eligible].filter(node => node.links.some(link =>
+            link.kind === "ground" && !eligible.has(link.node))));
+        const queue = [...eligible];
+        for (let i = 0; i < queue.length; i++) {
+            const node = queue[i]!;
+            for (const link of node.links) {
+                if (link.kind !== "ground" || !eligible.has(link.node) || boundary.has(link.node)) continue;
+                const maximum = node.height + link.length * this.settings.maxGrade;
+                if (link.node.height > maximum + 1e-6) {
+                    link.node.height = maximum;
+                    queue.push(link.node);
+                }
+            }
+        }
+        for (const node of eligible) node.engineeredApproach = true;
     }
 
     /**
