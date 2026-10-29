@@ -8,6 +8,9 @@ export const useRadioStore = defineStore("radio", () => {
     const tracks = [
         { title: "Relaxed 1", url: `${import.meta.env.BASE_URL}music/Radio_1.mp3` },
         { title: "Relaxed 2", url: `${import.meta.env.BASE_URL}music/Radio_2.mp3` },
+        { title: "Vaporwave 1", url: `${import.meta.env.BASE_URL}music/Radio_3.mp3` },
+        { title: "Vaporwave 2", url: `${import.meta.env.BASE_URL}music/Radio_4.mp3` },
+        { title: "Slop-coding", url: `${import.meta.env.BASE_URL}music/Radio_5.mp3` },
     ];
     const settings = useSettingsStore();
     const index = ref(0);
