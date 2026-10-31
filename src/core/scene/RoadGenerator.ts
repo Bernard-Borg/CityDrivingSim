@@ -155,6 +155,13 @@ export class RoadGenerator {
         geometry.computeBoundingSphere();
     }
 
+    /** Returns the road's horizontal perpendicular without sampling its elevation profile. */
+    private curvePerpendicular(curve: THREE.Curve<THREE.Vector3>, t: number): THREE.Vector3 {
+        if (this.activeProfile) return this.activeProfile.perpendicularAt(t);
+        const tangent = curve.getTangent(t);
+        return new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+    }
+
     private roads: THREE.Mesh[] = [];
     private roadGroup: THREE.Group;
     private labelsGroup: THREE.Group;
@@ -989,13 +996,7 @@ export class RoadGenerator {
             // Get point on curve
             const point = curve.getPoint(t);
 
-            // Get tangent (direction) at this point
-            const tangent = curve.getTangent(t);
-
-            // Calculate perpendicular vector (for road width) - normalize to ensure consistent width
-            const perp =
-                this.activeProfile?.perpendicularAt(t) ??
-                new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+            const perp = this.curvePerpendicular(curve, t);
 
             // Calculate left and right edge points
             const leftPoint = point
@@ -1286,10 +1287,7 @@ export class RoadGenerator {
             for (let i = 0; i <= numSegments; i++) {
                 const t = i / numSegments;
                 const point = curve.getPoint(t);
-                const tangent = curve.getTangent(t);
-                const perp =
-                    this.activeProfile?.perpendicularAt(t) ??
-                    new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                const perp = this.curvePerpendicular(curve, t);
 
                 // Calculate position along the edge
                 const edgePoint = point
@@ -1408,10 +1406,7 @@ export class RoadGenerator {
             for (let j = 0; j <= numSegments; j++) {
                 const t = j / numSegments;
                 const point = curve.getPoint(t);
-                const tangent = curve.getTangent(t);
-                const perp =
-                    this.activeProfile?.perpendicularAt(t) ??
-                    new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
+                const perp = this.curvePerpendicular(curve, t);
 
                 // Accumulate arc length (distance from previous point)
                 if (lastPoint !== null) {

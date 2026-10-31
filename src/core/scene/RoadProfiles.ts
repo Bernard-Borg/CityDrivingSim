@@ -95,6 +95,7 @@ export class RoadProfile {
     startNormal?: THREE.Vector3;
     endNormal?: THREE.Vector3;
     private horizontalLength = 0;
+    private readonly horizontalCurve: THREE.CatmullRomCurve3;
     /**
      * Returns road half-width in metres at a normalized curve parameter, including endpoint tapers.
      *
@@ -132,7 +133,7 @@ export class RoadProfile {
      * @param t - Normalized curve or local interpolation parameter.
      */
     perpendicularAt(t: number): THREE.Vector3 {
-        const tangent = this.curve.getTangent(t);
+        const tangent = this.horizontalCurve.getTangent(t);
         const normal = new THREE.Vector3(-tangent.z, 0, tangent.x).normalize();
         const blend = Math.min(0.5, 15 / Math.max(1, this.horizontalLength));
         if (this.startNormal && t < blend) normal.lerp(this.startNormal, 1 - smooth(t / blend));
@@ -171,6 +172,7 @@ export class RoadProfile {
             false,
             "centripetal",
         );
+        this.horizontalCurve = path;
         this.curve = new /**
          * Adapts the horizontal road centreline to the solved vertical profile.
          */
@@ -485,8 +487,7 @@ export class RoadProfileNetwork {
         for (const list of ends.values()) {
             if (list.length !== 2) continue; // Branching intersections retain their own widths.
             const normals = list.map(({ p, start }) => {
-                const t = p.curve.getTangent(start ? 0 : 1);
-                return new THREE.Vector3(-t.z, 0, t.x).normalize();
+                return p.perpendicularAt(start ? 0 : 1);
             });
             const dot = normals[0].dot(normals[1]);
             if (Math.abs(dot) < 0.75) continue;
