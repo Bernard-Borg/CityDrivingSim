@@ -29,7 +29,7 @@ export interface RoadLevelSettings {
     overrides: Record<string, RoadLevelOverride>;
 }
 export const DEFAULT_ROAD_LEVELS: RoadLevelSettings = {
-    layerSeparation: 5,
+    layerSeparation: 3,
     tunnelCover: 2,
     tunnelHeadroom: 3.5,
     rampLength: 35,
@@ -263,10 +263,17 @@ export class RoadProfile {
             // A join plane is local to its endpoint. On switchbacks, projecting
             // onto its infinite plane can capture a remote leg and teleport its height.
             const lateral = (x - end.x) * normal.x + (z - end.z) * normal.z;
-            const endWidth = (start ? this.startHalfWidth : this.endHalfWidth) +
-                Math.max(this.input.sidewalks?.left ?? 0, this.input.sidewalks?.right ?? 0) + 0.5;
-            if (along < -0.01 || along >= span || Math.abs(lateral) > endWidth ||
-                Math.hypot(x - end.x, z - end.z) > Math.hypot(span, endWidth)) continue;
+            const endWidth =
+                (start ? this.startHalfWidth : this.endHalfWidth) +
+                Math.max(this.input.sidewalks?.left ?? 0, this.input.sidewalks?.right ?? 0) +
+                0.5;
+            if (
+                along < -0.01 ||
+                along >= span ||
+                Math.abs(lateral) > endWidth ||
+                Math.hypot(x - end.x, z - end.z) > Math.hypot(span, endWidth)
+            )
+                continue;
             const blend = 1 - smooth(Math.max(0, along) / Math.max(span, 0.001));
             const grade =
                 (neighbor.height - end.height) /
@@ -810,26 +817,37 @@ export class RoadProfileNetwork {
      * or explicit road-height overrides. Corrections lower high samples rather than invent hills.
      */
     private smoothTunnelApproaches(): void {
-        const portals = [...this.nodes.values()].filter(node => node.kinds.has("ground") && node.kinds.has("tunnel"));
+        const portals = [...this.nodes.values()].filter(
+            (node) => node.kinds.has("ground") && node.kinds.has("tunnel"),
+        );
         if (!portals.length) return;
         const reach = this.settings.tunnelRampLength * 2;
         const nearby = this.distances(portals, "ground", reach);
         const protectedNodes = new Set<Node>();
         for (const profile of this.profiles) {
             const override = this.settings.overrides[profile.input.id];
-            if (profile.input.kind === "bridge" || override &&
-                [override.startHeight, override.endHeight, override.heightOffset].some(Number.isFinite))
+            if (
+                profile.input.kind === "bridge" ||
+                (override &&
+                    [override.startHeight, override.endHeight, override.heightOffset].some(
+                        Number.isFinite,
+                    ))
+            )
                 for (const node of profile.nodes) protectedNodes.add(node);
         }
-        const eligible = new Set([...nearby.keys()].filter(node => !protectedNodes.has(node)));
+        const eligible = new Set([...nearby.keys()].filter((node) => !protectedNodes.has(node)));
         // Keep the outer boundary tied to its existing surface profile.
-        const boundary = new Set([...eligible].filter(node => node.links.some(link =>
-            link.kind === "ground" && !eligible.has(link.node))));
+        const boundary = new Set(
+            [...eligible].filter((node) =>
+                node.links.some((link) => link.kind === "ground" && !eligible.has(link.node)),
+            ),
+        );
         const queue = [...eligible];
         for (let i = 0; i < queue.length; i++) {
             const node = queue[i]!;
             for (const link of node.links) {
-                if (link.kind !== "ground" || !eligible.has(link.node) || boundary.has(link.node)) continue;
+                if (link.kind !== "ground" || !eligible.has(link.node) || boundary.has(link.node))
+                    continue;
                 const maximum = node.height + link.length * this.settings.maxGrade;
                 if (link.node.height > maximum + 1e-6) {
                     link.node.height = maximum;
@@ -848,9 +866,13 @@ export class RoadProfileNetwork {
         for (const node of this.nodes.values()) {
             if (!node.kinds.has("ground") || node.kinds.size < 2) continue;
             const offset = node.height - node.ground;
-            const length = node.kinds.has("tunnel") && !node.kinds.has("bridge")
-                ? this.settings.tunnelRampLength
-                : Math.max(this.settings.rampLength, (Math.abs(offset) * 1.5) / this.settings.maxGrade);
+            const length =
+                node.kinds.has("tunnel") && !node.kinds.has("bridge")
+                    ? this.settings.tunnelRampLength
+                    : Math.max(
+                          this.settings.rampLength,
+                          (Math.abs(offset) * 1.5) / this.settings.maxGrade,
+                      );
             for (const [neighbor, distance] of this.distances([node], "ground", length)) {
                 if (neighbor.kinds.size > 1) continue;
                 const change = offset * (1 - smooth(distance / length));

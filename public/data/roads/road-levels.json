@@ -1,6 +1,6 @@
 {
   "defaults": {
-    "layerSeparation": 5,
+    "layerSeparation": 3,
     "tunnelCover": 2,
     "tunnelHeadroom": 3.5,
     "rampLength": 35,
