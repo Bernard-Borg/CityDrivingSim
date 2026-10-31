@@ -206,6 +206,7 @@ export class SceneManager {
                 this.centerLon,
                 bounds,
                 elevation.format === "geotiff" ? elevation.meshSpacing : undefined,
+                elevation.format === "geotiff" ? elevation.smoothingPasses : undefined,
             );
             console.log(
                 `Elevation enabled: ${this.terrain.columns} x ${this.terrain.rows} terrain grid; reference ${this.terrain.referenceHeight.toFixed(1)} m AMSL`,
@@ -626,8 +627,32 @@ export class SceneManager {
                 geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
                 geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
                 geometry.setIndex(indices);
+                const originalPosition = geometry.getAttribute("position");
                 this.roadGenerator.cutTerrainGeometry(geometry);
                 this.water.cutTerrain(geometry, (x, z) => terrain.sample(x, z));
+                if (geometry.getAttribute("position") !== originalPosition) {
+                    // Reuse the sampled normal field after topology changes; computing
+                    // normals on disconnected triangles produces a faceted surface.
+                    const finalPosition = geometry.getAttribute("position");
+                    const smoothNormals = new Float32Array(finalPosition.count * 3);
+                    for (let vertex = 0; vertex < finalPosition.count; vertex++) {
+                        const gx = Math.max(0, Math.min(width, (finalPosition.getX(vertex) - terrain.bounds.minX) / terrain.stepX - col));
+                        const gz = Math.max(0, Math.min(depth, (finalPosition.getZ(vertex) - terrain.bounds.minZ) / terrain.stepZ - row));
+                        const c = Math.min(width - 1, Math.floor(gx)), r = Math.min(depth - 1, Math.floor(gz));
+                        const u = gx - c, v = gz - r;
+                        const a = (r * (width + 1) + c) * 3;
+                        let length2 = 0;
+                        for (let axis = 0; axis < 3; axis++) {
+                            const value = (normals[a + axis] * (1 - u) + normals[a + 3 + axis] * u) * (1 - v) +
+                                (normals[a + (width + 1) * 3 + axis] * (1 - u) + normals[a + (width + 2) * 3 + axis] * u) * v;
+                            smoothNormals[vertex * 3 + axis] = value;
+                            length2 += value * value;
+                        }
+                        const length = Math.sqrt(length2) || 1;
+                        for (let axis = 0; axis < 3; axis++) smoothNormals[vertex * 3 + axis] /= length;
+                    }
+                    geometry.setAttribute("normal", new THREE.BufferAttribute(smoothNormals, 3));
+                }
                 geometry.computeBoundingSphere();
                 const mesh = new THREE.Mesh(geometry, this.groundMaterial);
                 mesh.receiveShadow = true;

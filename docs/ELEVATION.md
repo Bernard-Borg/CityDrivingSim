@@ -246,3 +246,22 @@ restores the configured detailed source and its mesh spacing. HGT-only cities,
 flat cities and GeoTIFF cities without a configured fallback keep their normal
 source. Changing the preference reloads the active map, preserving latitude and
 longitude but resolving vehicle height against the newly selected terrain.
+
+
+## Quantized elevation sources
+
+The supplied Rabat TIFF is an unsigned 8-bit raster with whole-number elevations
+and no fractional scale/offset metadata. Its 1 m pixel spacing describes horizontal
+sampling, not vertical precision; it forms terraces with 1 m jumps. Rabat enables
+`smoothingPasses: 2` to soften these steps in the shared terrain height grid before
+roads, scenery and vehicle contact are prepared. It uses a separable [1, 2, 1]
+filter, bounded to 0?4 passes. The default is zero, preserving existing HGT and
+other source sampling. Radius depends on mesh spacing; two passes soften over a
+few grid cells. This modifies the reconstructed surface and can soften real sharp
+edges; it does not restore lost survey precision. Prefer a Float32 elevation export
+with fractional-metre values when the source offers one.
+
+Terrain lighting interpolates the original sampled normal field after clipping,
+rather than assigning each disconnected triangle its own face normal. This changes
+shading only: positions, cutouts and collision heights still match the shared grid.
+No extra terrain subdivision is introduced.

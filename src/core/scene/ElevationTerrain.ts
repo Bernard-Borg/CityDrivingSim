@@ -58,6 +58,8 @@ export interface TiffElevationConfig {
     crs?: "EPSG:2154" | "EPSG:32633" | "EPSG:4326";
     /** Terrain triangle spacing in metres; does not change the source raster. */
     meshSpacing?: number;
+    /** Optional 0?4 binomial filter passes over the shared height grid to soften quantized sources. */
+    smoothingPasses?: number;
     /** Optional HGT coverage for missing or out-of-bounds raster samples. */
     fallback?: HgtElevationConfig;
 }
@@ -168,6 +170,7 @@ export class ElevationTerrain {
      * @param centerLat - City origin latitude in decimal degrees.
      * @param centerLon - City origin longitude in decimal degrees.
      * @param bounds - Local horizontal bounds in metres.
+     * @param smoothingPasses - Optional quantization smoothing; zero preserves original height samples.
      * @param spacingMetres - Optional mesh spacing; omitted HGT settings retain the original 20 m grid.
      */
     constructor(
@@ -176,6 +179,7 @@ export class ElevationTerrain {
         readonly centerLon: number,
         bounds: TerrainBounds,
         spacingMetres?: number,
+        smoothingPasses = 0,
     ) {
         this.lonScale = this.latScale * Math.cos((centerLat * Math.PI) / 180);
         this.referenceHeight = tile?.sample(centerLat, centerLon) ?? 0;
@@ -220,6 +224,34 @@ export class ElevationTerrain {
                     (tile?.sample(centerLat - z / this.latScale, centerLon + x / this.lonScale) ??
                         0) - this.referenceHeight;
             }
+        this.smoothHeights(smoothingPasses);
+    }
+
+    /**
+     * Softens quantized heights with a separable [1, 2, 1] filter before scenery or physics is built.
+     * Convex weights introduce no new extrema. HGT and unconfigured sources retain their original heights.
+     * @param requestedPasses - Number of passes; bounded to four to limit slope erosion and load cost.
+     */
+    private smoothHeights(requestedPasses: number): void {
+        const passes = Number.isFinite(requestedPasses) ? Math.max(0, Math.min(4, Math.floor(requestedPasses))) : 0;
+        if (!passes) return;
+        const temporary = new Float32Array(this.heights.length);
+        for (let pass = 0; pass < passes; pass++) {
+            for (let row = 0; row < this.rows; row++) {
+                const offset = row * this.columns;
+                for (let col = 0; col < this.columns; col++)
+                    temporary[offset + col] = (this.heights[offset + Math.max(0, col - 1)] +
+                        2 * this.heights[offset + col] + this.heights[offset + Math.min(this.columns - 1, col + 1)]) / 4;
+            }
+            for (let row = 0; row < this.rows; row++) {
+                const above = Math.max(0, row - 1) * this.columns;
+                const below = Math.min(this.rows - 1, row + 1) * this.columns;
+                for (let col = 0; col < this.columns; col++) {
+                    const index = row * this.columns + col;
+                    this.heights[index] = (temporary[above + col] + 2 * temporary[index] + temporary[below + col]) / 4;
+                }
+            }
+        }
     }
 
     /**
