@@ -14,7 +14,7 @@ free-flight mode for exploring from above.
 - **Elevation:** NASA SRTM HGT and GeoTIFF terrain sources behind a common sampler,
   with a configurable HGT fallback for detailed terrain.
 - **Driving:** configurable vehicles, slope-aware handling, gravity, collisions,
-  ignition, parking brake and boost.
+  ignition and parking brake.
 - **Cameras:** third-person and first-person views, plus creative free flight.
 - **Vehicles:** Honda NSX, Jeep Gladiator and VW Golf, with animated wheels and
   steering-wheel animation where supported by the model.
@@ -74,8 +74,8 @@ off; pressing the accelerator starts the ignition automatically.
 | W / Up               | Accelerate; start ignition if off                                              |
 | S / Down             | Brake, then reverse                                                            |
 | A / D / Left / Right | Steer                                                                          |
-| Space / E, held      | Handbrake                                                                      |
-| Shift                | Boost                                                                          |
+| Space, held          | Handbrake                                                                      |
+| Q / E                | Nose down / up while airborne                                                                          |
 | I                    | Ignition / park                                                                |
 | H, held              | Horn                                                                           |
 | V                    | Switch first-person / third-person view                                        |

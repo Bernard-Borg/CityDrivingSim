@@ -90,9 +90,6 @@ export const useSimulatorStore = defineStore("simulator", () => {
                 state.heading = heading;
                 state.displayedHeading = ((heading % 360) + 360) % 360;
             });
-            simulator.onBoostUpdate((boost) => {
-                if (operation === revision) state.boostAmount = boost;
-            });
             simulator.onCoordinateUpdate((lat, lon) => {
                 if (operation === revision) state.coordinates = { lat, lon };
             });

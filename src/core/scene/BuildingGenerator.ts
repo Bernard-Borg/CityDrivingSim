@@ -5,6 +5,7 @@
 
 import { BuildingDetails } from "./BuildingDetails";
 import { ShipGenerator } from "./ShipGenerator";
+import { StadiumGenerator } from "./StadiumGenerator";
 import { selectBuildingParts } from "./BuildingParts";
 import { BuildingSurfaceIndex } from "./BuildingSurfaceIndex";
 import * as THREE from "three";
@@ -57,6 +58,8 @@ export class BuildingGenerator {
     private buildingGroup = new THREE.Group();
     private materials = createBuildingMaterials();
     private ships = new ShipGenerator();
+    /** Procedural open bowls for explicitly mapped stadium buildings. */
+    private stadiums = new StadiumGenerator();
     private details = new BuildingDetails();
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
@@ -140,6 +143,11 @@ export class BuildingGenerator {
             if (!rings[0]) continue;
             const outer = rings[0],
                 p = feature.properties;
+            if (p.building === "stadium" || p.leisure === "stadium") {
+                this.buildingGroup.add(this.stadiums.generate(outer, p, heightAt, this.collisions));
+                counts.stadium = (counts.stadium ?? 0) + 1; count++;
+                continue;
+            }
             if (p.building === 'ship' || p.building === 'houseboat') {
                 const centre = outer.reduce((sum, pt) => ({ x: sum.x + pt.x / outer.length, z: sum.z + pt.z / outer.length }), { x: 0, z: 0 });
                 let water = waterAt(centre.x, centre.z);
@@ -507,7 +515,7 @@ export class BuildingGenerator {
      */
     clear(): void {
         this.details.clear();
-        this.buildingGroup.traverse(object => { if (object instanceof THREE.Mesh) object.geometry.dispose(); });
+        this.buildingGroup.traverse(object => { if (object instanceof THREE.Mesh || object instanceof THREE.Line) object.geometry.dispose(); });
         this.buildingGroup.clear();
     }
     /**
@@ -516,6 +524,7 @@ export class BuildingGenerator {
     dispose(): void {
         this.clear();
         this.ships.dispose();
+        this.stadiums.dispose();
         this.materials.wall.dispose();
         this.materials.roof.dispose();
         this.materials.map.dispose();

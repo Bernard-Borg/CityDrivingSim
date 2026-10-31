@@ -11,7 +11,6 @@ export interface VehicleInput {
     brake: number;
     steering: number;
     handbrake: boolean;
-    boost: boolean;
     parkingBrake?: boolean;
     grounded?: boolean;
 }
@@ -26,13 +25,10 @@ export class VehiclePhysics {
     vx = 0;
     vz = 0;
     yawRate = 0;
-    boost = 100;
-    boosting = false;
     slip = 0;
     steeringAngle = 0;
     longitudinalAcceleration = 0;
     lateralAcceleration = 0;
-    private boostLocked = false;
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
      *
@@ -53,8 +49,6 @@ export class VehiclePhysics {
     reset(): void {
         this.vx = this.vz = this.yawRate = this.slip = 0;
         this.steeringAngle = this.longitudinalAcceleration = this.lateralAcceleration = 0;
-        this.boosting = false;
-        this.boostLocked = false;
     }
 
     /**
@@ -73,7 +67,6 @@ export class VehiclePhysics {
             this.steeringAngle = steer * this.config.maxSteeringAngle;
             const targetYawRate = steer * this.config.maxYawRate * 0.25;
             this.yawRate += (targetYawRate - this.yawRate) * (1 - Math.exp(-2 * dt));
-            this.boosting = false;
             this.longitudinalAcceleration = this.lateralAcceleration = 0;
             this.x += this.vx * dt;
             this.z += this.vz * dt;
@@ -101,17 +94,7 @@ export class VehiclePhysics {
             surfaceGrip = clamp(grip, 0.15, 1.5) * Math.max(0.1, cfg.gripMultiplier);
         const pedal = Math.max(input.handbrake ? 1 : 0, clamp(input.brake, 0, 1));
         const throttle = clamp(input.throttle, -1, 1) * (1 - pedal);
-        if (!input.boost) this.boostLocked = false;
-        if (this.boost < 1) this.boostLocked = true;
-        this.boosting =
-            input.boost && !this.boostLocked && throttle > 0.1 && forward >= 0 && this.boost > 1;
-        this.boost = clamp(
-            this.boost + (this.boosting ? -cfg.boostDrain : cfg.boostRecharge) * dt,
-            0,
-            100,
-        );
-        const limit =
-            (throttle < 0 ? cfg.reverseSpeed : this.boosting ? cfg.boostSpeed : cfg.maxSpeed) / 3.6;
+        const limit = (throttle < 0 ? cfg.reverseSpeed : cfg.maxSpeed) / 3.6;
         const plane = 1 + slopeX * slopeX + slopeZ * slopeZ;
         const gravityX = (-9.81 * slopeX) / plane,
             gravityZ = (-9.81 * slopeZ) / plane;
@@ -121,9 +104,7 @@ export class VehiclePhysics {
             throttle *
                 (throttle < 0
                     ? cfg.reverseAcceleration
-                    : this.boosting
-                      ? cfg.boostAcceleration
-                      : cfg.acceleration) *
+                    : cfg.acceleration) *
                 Math.max(0, 1 - Math.pow(Math.max(0, forward * Math.sign(throttle)) / limit, 4)) +
             (throttle * Math.max(0, -gravityForward * Math.sign(throttle)) * cfg.hillClimbAssist) /
                 gradeScale;

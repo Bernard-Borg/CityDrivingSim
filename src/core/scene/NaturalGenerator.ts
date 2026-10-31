@@ -1,3 +1,4 @@
+import { applyAltitudeSnow } from "./TerrainMaterial";
 /**
  * NaturalGenerator types and implementation for the city driving simulator.
  * @packageDocumentation
@@ -120,6 +121,7 @@ export class NaturalGenerator {
                             diffuseColor.rgb *= 0.94 + grain * 0.12 + coverVariation * 0.035;`,
                         );
                     };
+                    applyAltitudeSnow(material, terrain?.referenceHeight ?? 0);
                     this.materials.set(kind, material);
                 }
                 const mesh = new THREE.Mesh(geometry, material);

@@ -14,7 +14,7 @@ const AUDIO_CHANNELS = [
 ] as const;
 
 const HUD_ELEMENTS = [
-    { key: "showSpeedometer", label: "Speedometer", hint: "Speed, engine and boost instruments" },
+    { key: "showSpeedometer", label: "Speedometer", hint: "Speed and engine instruments" },
     { key: "showCompass", label: "Compass", hint: "Heading and coordinates" },
     { key: "showSearch", label: "Search", hint: "Street and coordinate search" },
 ] as const;

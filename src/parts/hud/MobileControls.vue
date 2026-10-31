@@ -23,7 +23,8 @@ const controls = computed(() =>
               ["KeyS", "Brake / R"],
               ["KeyW", "Gas"],
               ["Space", "Handbrake"],
-              ["ShiftLeft", "Boost"],
+              ["KeyQ", "Nose down"],
+              ["KeyE", "Nose up"],
           ],
 );
 

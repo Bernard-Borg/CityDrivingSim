@@ -13,12 +13,15 @@ export const useSettingsStore = defineStore("settings", () => {
     const musicVolume = useLocalStorage<number>("cityDrivingSim_radioVolume", 0.35);
     const showStreetNames = useLocalStorage<boolean>("cityDrivingSim_showStreetNames", true);
 
+    /** Touch-first devices start with a less crowded HUD; saved choices take precedence. */
+    const showHudByDefault = typeof window === "undefined" || !window.matchMedia("(pointer: coarse)").matches;
+
     /** Visibility of the driving instrument cluster. */
-    const showSpeedometer = useLocalStorage<boolean>("cityDrivingSim_showSpeedometer", true);
+    const showSpeedometer = useLocalStorage<boolean>("cityDrivingSim_showSpeedometer", showHudByDefault);
     /** Visibility of the compass and coordinates. */
-    const showCompass = useLocalStorage<boolean>("cityDrivingSim_showCompass", true);
+    const showCompass = useLocalStorage<boolean>("cityDrivingSim_showCompass", showHudByDefault);
     /** Visibility of the location search control. */
-    const showSearch = useLocalStorage<boolean>("cityDrivingSim_showSearch", true);
+    const showSearch = useLocalStorage<boolean>("cityDrivingSim_showSearch", showHudByDefault);
 
     /** Bypasses detailed GeoTIFF terrain in favour of its configured HGT fallback. */
     const forceFallbackTerrain = useLocalStorage<boolean>("cityDrivingSim_forceFallbackTerrain", false);

@@ -72,7 +72,7 @@ export class EngineSoundGenerator {
      */
     constructor(
         private config: VehicleConfig["audio"] = DEFAULT_VEHICLE.audio,
-        private MAX_CAR_SPEED = DEFAULT_VEHICLE.physics.boostSpeed,
+        private MAX_CAR_SPEED = DEFAULT_VEHICLE.physics.maxSpeed,
     ) {
         // Initialize AudioContext (may need user interaction first)
         this.initAudioContext();

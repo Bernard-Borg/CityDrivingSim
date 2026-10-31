@@ -32,6 +32,8 @@ export interface CityConfig {
     centerLon: number;
     elevation?: ElevationSource;
     buildings?: BuildingTheme;
+    /** Base terrain CSS colour; snow overrides this at 2,500 m above sea level. */
+    groundColor?: string;
 }
 
 // Available cities configuration

@@ -68,3 +68,13 @@ Use the production build for TypeScript/bundling checks. One-off in-memory scene
 inspection can check all city loads, finite geometry/instance matrices, and cleanup
 without adding test files or test infrastructure to the game. Visual review in a
 browser is still useful for placement and local OSM/SRTM inaccuracies.
+
+
+## Stadium buildings
+
+Polygons tagged `building=stadium` or `leisure=stadium` in the buildings dataset
+use an open bowl with eight stepped spectator tiers, concrete bands, a green
+playing field and basic white pitch markings. The mapped outline determines the
+stand shape and orientation, while `height` controls the stand height (12 m by
+default). Collisions follow the stand rings, leaving the playing field open.
+These are generic stadiums, not reproductions of individual venues.

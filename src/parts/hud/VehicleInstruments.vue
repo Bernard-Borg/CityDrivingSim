@@ -121,24 +121,6 @@ const ticks = computed(() =>
                         }}</span>
                     </div>
                 </div>
-                <div class="boost-label">
-                    <span>BOOST RESERVE</span
-                    ><b>{{ Math.round(state.boostAmount) }}<small>%</small></b>
-                </div>
-                <div
-                    class="boost-bars"
-                    role="meter"
-                    aria-label="Boost reserve"
-                    :aria-valuenow="Math.round(state.boostAmount)"
-                    aria-valuemin="0"
-                    aria-valuemax="100"
-                >
-                    <i
-                        v-for="n in 20"
-                        :key="n"
-                        :class="{ charged: n <= state.boostAmount / 5 }"
-                    ></i>
-                </div>
             </div>
         </div>
     </section>
@@ -248,8 +230,7 @@ const ticks = computed(() =>
 .drive-information {
     padding: 10px 12px 16px 0;
 }
-.rpm-label,
-.boost-label {
+.rpm-label {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -267,15 +248,13 @@ const ticks = computed(() =>
     color: #dcece3;
     font-size: 13px;
 }
-.rpm-bars,
-.boost-bars {
+.rpm-bars {
     display: flex;
     gap: 3px;
     margin-top: 6px;
     height: 10px;
 }
-.rpm-bars i,
-.boost-bars i {
+.rpm-bars i {
     flex: 1;
     background: #415d493d;
     border-radius: 1px;
@@ -332,30 +311,6 @@ const ticks = computed(() =>
     color: #97afa0;
     display: block;
     margin-top: 3px;
-}
-.boost-label {
-    font-size: 8px;
-    color: #c4ad86;
-}
-.boost-label b {
-    font-family: ui-monospace, monospace;
-    color: #e4c291;
-    font-size: 12px;
-}
-.boost-label small {
-    font-size: 8px;
-    margin-left: 2px;
-}
-.boost-bars {
-    height: 6px;
-    margin-top: 5px;
-}
-.boost-bars i {
-    background: #77613c33;
-}
-.boost-bars i.charged {
-    background: #d6ae72;
-    box-shadow: 0 0 6px #d6ae7222;
 }
 @media (max-width: 1050px) {
     .instrument-cluster {
@@ -430,13 +385,11 @@ const ticks = computed(() =>
     font-size: 12px;
     letter-spacing: 1px;
 }
-.rpm-label,
-.boost-label {
+.rpm-label {
     font-size: 12px;
 }
 .rpm-label small,
 .rpm-scale,
-.boost-label small,
 .drive-caption {
     font-size: 11px;
 }
@@ -444,16 +397,14 @@ const ticks = computed(() =>
     font-size: 10px;
     letter-spacing: 0;
 }
-.rpm-label b,
-.boost-label b {
+.rpm-label b {
     font-size: 16px;
 }
 @media (max-width: 420px) {
     .cluster-topline {
         font-size: 10px;
     }
-    .rpm-label,
-    .boost-label {
+.rpm-label {
         font-size: 10px;
     }
     .parking-indicator small {

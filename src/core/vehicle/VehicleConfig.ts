@@ -21,22 +21,18 @@ export interface VehicleConfig {
         /** Driver-eye offset [X, Y, Z] as fractions of the scaled model width, height and length; positive Z is forward. */
         eye: [number, number, number];
     };
-    /** Parameters for the planar vehicle dynamics and boost system. */
+    /** Parameters for the planar vehicle dynamics. */
     physics: {
         /** Normal forward speed limit in km/h. */
         maxSpeed: number;
         /** Maximum reverse speed magnitude in km/h. */
         reverseSpeed: number;
-        /** Forward speed limit while boosting, in km/h. */
-        boostSpeed: number;
         /** Base forward engine acceleration in metres per second squared. */
         acceleration: number;
         /** Fraction of uphill gravity compensated by the engine under throttle. */
         hillClimbAssist: number;
         /** Base reverse engine acceleration magnitude in metres per second squared. */
         reverseAcceleration: number;
-        /** Base engine acceleration while boosting, in metres per second squared. */
-        boostAcceleration: number;
         /** Service-brake deceleration magnitude in metres per second squared. */
         brakeDeceleration: number;
         /** Handbrake deceleration magnitude in metres per second squared. */
@@ -77,10 +73,6 @@ export interface VehicleConfig {
         engineResistance: number;
         /** Quadratic drag coefficient in inverse metres; multiplied by speed squared in SI units. */
         drag: number;
-        /** Boost charge consumed per second while active, on a 0?100 scale. */
-        boostDrain: number;
-        /** Boost charge restored per second while inactive, on a 0?100 scale. */
-        boostRecharge: number;
     };
     /** Dimensions of the simplified vehicle collision volume. */
     collision: {
@@ -180,11 +172,9 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
     physics: {
         maxSpeed: 200,
         reverseSpeed: 55,
-        boostSpeed: 250,
         acceleration: 8.5,
         hillClimbAssist: 0.65,
         reverseAcceleration: 4,
-        boostAcceleration: 15,
         brakeDeceleration: 20,
         handbrakeDeceleration: 30,
         wheelbase: 1.9,
@@ -204,8 +194,6 @@ export const DEFAULT_VEHICLE: VehicleConfig = {
         rollingResistance: 0.15,
         engineResistance: 0.18,
         drag: 0.00025,
-        boostDrain: 30,
-        boostRecharge: 15,
     },
     collision: { radius: 0.55, halfLength: 0.75, halfHeight: 0.4 },
     controls: {
@@ -251,11 +239,9 @@ const JEEP_GLADIATOR: VehicleConfig = {
     physics: {
         maxSpeed: 180,
         reverseSpeed: 50,
-        boostSpeed: 220,
         acceleration: 7.5,
         hillClimbAssist: 0.65,
         reverseAcceleration: 4,
-        boostAcceleration: 15,
         brakeDeceleration: 20,
         handbrakeDeceleration: 30,
         wheelbase: 1.9,
@@ -275,8 +261,6 @@ const JEEP_GLADIATOR: VehicleConfig = {
         rollingResistance: 0.15,
         engineResistance: 0.18,
         drag: 0.00025,
-        boostDrain: 30,
-        boostRecharge: 15,
     },
     collision: { radius: 0.55, halfLength: 0.75, halfHeight: 0.4 },
     controls: {
@@ -322,11 +306,9 @@ const VW_GOLF_MK1: VehicleConfig = {
     physics: {
         maxSpeed: 160,
         reverseSpeed: 45,
-        boostSpeed: 200,
         acceleration: 6.5,
         hillClimbAssist: 0.65,
         reverseAcceleration: 4,
-        boostAcceleration: 15,
         brakeDeceleration: 20,
         handbrakeDeceleration: 30,
         wheelbase: 1.9,
@@ -346,8 +328,6 @@ const VW_GOLF_MK1: VehicleConfig = {
         rollingResistance: 0.15,
         engineResistance: 0.18,
         drag: 0.00025,
-        boostDrain: 30,
-        boostRecharge: 15,
     },
     collision: { radius: 0.55, halfLength: 0.75, halfHeight: 0.4 },
     controls: {

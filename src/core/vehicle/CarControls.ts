@@ -22,7 +22,8 @@ export class CarControls {
         left: false,
         right: false,
         brake: false,
-        boost: false,
+        noseDown: false,
+        noseUp: false,
         handbrake: false,
     };
 
@@ -121,7 +122,7 @@ export class CarControls {
         this.soundManager = SoundManager.getInstance();
         this.engineSoundGenerator = new EngineSoundGenerator(
             car.config.audio,
-            car.config.physics.boostSpeed,
+            car.config.physics.maxSpeed,
         );
         this.roadSoundGenerator = new RoadSoundGenerator(car.config.audio);
         this.cameraZoomDistance = car.config.camera.distance;
@@ -238,12 +239,12 @@ export class CarControls {
                 this.keys.brake = true;
                 e.preventDefault();
                 break;
-            case "shift":
-                this.keys.boost = true;
+            case "q":
+                this.keys.noseDown = true;
                 e.preventDefault();
                 break;
             case "e":
-                this.keys.handbrake = true;
+                this.keys.noseUp = true;
                 e.preventDefault();
                 break;
         }
@@ -278,11 +279,11 @@ export class CarControls {
             case " ":
                 this.keys.brake = false;
                 break;
-            case "shift":
-                this.keys.boost = false;
+            case "q":
+                this.keys.noseDown = false;
                 break;
             case "e":
-                this.keys.handbrake = false;
+                this.keys.noseUp = false;
                 break;
         }
     }
@@ -377,7 +378,8 @@ export class CarControls {
         const keys = { ...this.keys, forward: this.keys.forward || !!touch.pressed.KeyW,
             backward: this.keys.backward || !!touch.pressed.KeyS, left: this.keys.left || !!touch.pressed.KeyA,
             right: this.keys.right || !!touch.pressed.KeyD, handbrake: this.keys.handbrake || !!touch.pressed.Space,
-            boost: this.keys.boost || !!touch.pressed.ShiftLeft };
+            noseDown: this.keys.noseDown || !!touch.pressed.KeyQ,
+            noseUp: this.keys.noseUp || !!touch.pressed.KeyE };
         if (this.firstPerson) this.firstPersonYawTarget = THREE.MathUtils.clamp(this.firstPersonYawTarget - touch.lookX * 0.005, -80 * Math.PI / 180, 80 * Math.PI / 180);
         else { this.cameraAngleTarget -= touch.lookX * 0.005; this.cameraPitchTarget = THREE.MathUtils.clamp(this.cameraPitchTarget + touch.lookY * 0.005, 0.05, 1.3); }
         touch.lookX = touch.lookY = 0;
@@ -457,11 +459,11 @@ export class CarControls {
         this.car.setBrake(this.brakeInput);
         this.car.setSteering(this.steeringInput * this.car.maxSteeringAngle);
 
-        // Space and E are independent held-key aliases for the same handbrake.
+        // Space holds the handbrake; Q/E are reserved for airborne pitch.
         this.car.setHandbrake(handbrake);
 
-        // Boost
-        this.car.setBoost(keys.boost && this.car.getBoostAmount() > 0);
+        // Airborne attitude control does not add propulsion.
+        this.car.setPitch(Number(keys.noseDown) - Number(keys.noseUp));
     }
 
     /**
@@ -559,7 +561,7 @@ export class CarControls {
         this.car.setThrottle(0);
         this.car.setBrake(0);
         this.car.setSteering(0);
-        this.car.setBoost(false);
+        this.car.setPitch(0);
         this.car.setHandbrake(false);
     }
 

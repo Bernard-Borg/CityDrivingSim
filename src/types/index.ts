@@ -93,7 +93,10 @@ export interface InputState {
     left: boolean;
     right: boolean;
     brake: boolean;
-    boost: boolean;
+    /** Tips the airborne vehicle nose down. */
+    noseDown: boolean;
+    /** Pulls the airborne vehicle nose up. */
+    noseUp: boolean;
     handbrake: boolean;
 }
 

@@ -1,3 +1,4 @@
+import { applyAltitudeSnow } from "./TerrainMaterial";
 import { parseCoordinates, type MapLocation } from "../LocationSearch";
 /**
  * SceneManager types and implementation for the city driving simulator.
@@ -37,6 +38,8 @@ export class SceneManager {
     private centerLon: number = 0;
     private currentCity: string = "";
     private groundGroup: THREE.Group | null = null;
+    /** City-specific terrain colour, reset on each map load. */
+    private groundColor = "#a49b80";
     private groundMaterial: THREE.MeshStandardMaterial | null = null;
     private terrain: ElevationTerrain | null = null;
     private flatBounds: TerrainBounds | null = null;
@@ -146,6 +149,7 @@ export class SceneManager {
         const config = cityStore.getCityConfig(city);
         if (!config) throw new Error(`City config not found: ${city}`);
         this.currentCity = city;
+        this.groundColor = config.groundColor ?? "#a49b80";
         this.centerLat = config.centerLat;
         this.centerLon = config.centerLon;
         await report("Loading road data", config.file);
@@ -485,13 +489,14 @@ export class SceneManager {
      */
     private createGround(): void {
         this.groundMaterial = new THREE.MeshStandardMaterial({
-            color: 0xa49b80,
+            color: this.groundColor,
             roughness: 0.9,
             metalness: 0,
             polygonOffset: true,
             polygonOffsetFactor: 2,
             polygonOffsetUnits: 2,
         });
+        applyAltitudeSnow(this.groundMaterial, this.terrain?.referenceHeight ?? 0);
         this.groundGroup = new THREE.Group();
         this.scene.add(this.groundGroup);
         if (this.terrain && !this.elevationTile) {

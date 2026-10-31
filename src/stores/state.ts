@@ -20,7 +20,6 @@ export const useStateStore = defineStore("state", () => {
     /* Game State */
     const fps = ref(0);
     const speed = ref(0);
-    const boostAmount = ref(100);
     const currentCity = ref<string | null>(null);
     const coordinates = ref({ lat: 0, lon: 0 });
 
@@ -45,7 +44,6 @@ export const useStateStore = defineStore("state", () => {
         isLoading,
         fps,
         speed,
-        boostAmount,
         currentCity,
         coordinates,
         heading,

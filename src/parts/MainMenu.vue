@@ -6,6 +6,7 @@ import { useCitiesStore } from "@/stores/cities";
 import { useVehiclesStore } from "@/stores/vehicles";
 import { useSettingsStore } from "@/stores/settings";
 import { useSimulatorStore } from "@/stores/simulator";
+import VehicleShowroom from "./VehicleShowroom.vue";
 import Settings from "./hud/Settings.vue";
 
 const TIPS = [
@@ -18,6 +19,7 @@ const TIPS = [
 ];
 
 const background = ref<HTMLElement | null>(null);
+const showroom = ref<InstanceType<typeof VehicleShowroom> | null>(null);
 const settingsDialog = ref<InstanceType<typeof Settings> | null>(null);
 const tip = ref(0);
 const moaiHovered = ref(false);
@@ -62,6 +64,15 @@ watch(
     () => [settings.shadowsEnabled, settings.renderScale] as const,
     ([shadows, scale]) => preview?.setGraphics(shadows, scale),
 );
+watch(() => vehicles.selectedId, () => {
+    preview?.dispose();
+    if (background.value) {
+        try {
+            preview = new MenuScene(background.value, VEHICLES[vehicles.selectedId] ?? DEFAULT_VEHICLE);
+            preview.setGraphics(settings.shadowsEnabled, settings.renderScale);
+        } catch (error) { console.warn("Menu preview unavailable", error); }
+    }
+});
 onMounted(() => {
     moaiSound = new Audio(`${import.meta.env.BASE_URL}sounds/Moai.mp3`);
     moaiSound.preload = "none";
@@ -123,6 +134,7 @@ onUnmounted(() => {
                     >
                     <span aria-hidden="true">→</span>
                 </button>
+                <button class="menu-button" @click="showroom?.open()"><span>Choose car</span><span aria-hidden="true">?</span></button>
                 <div class="menu-spacer" aria-hidden="true"></div>
                 <button class="menu-button settings-entry" @click="settingsDialog?.open()">
                     <span>Settings</span>
@@ -132,6 +144,7 @@ onUnmounted(() => {
                 </button>
             </nav>
         </section>
+        <VehicleShowroom ref="showroom" />
         <Settings ref="settingsDialog" hide-trigger />
     </main>
 </template>

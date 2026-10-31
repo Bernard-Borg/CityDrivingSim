@@ -77,9 +77,10 @@ export class Car {
     // Handbrake properties
     private handbrakeActive: boolean = false;
 
-    // Boost properties
-    private isBoosting: boolean = false;
-    private boostAmount: number = 100; // Boost meter (0-100)
+    /** Held airborne pitch input: positive tips the nose down. */
+    private pitchInput = 0;
+    /** Local chassis pitch accumulated while airborne. */
+    private airPitch = 0;
 
     /**
      * Initializes instance state and owned resources using the supplied dependencies.
@@ -193,7 +194,6 @@ export class Car {
                 brake: this.brakeInput,
                 steering: this.steeringAngle,
                 handbrake: this.handbrakeActive,
-                boost: this.isBoosting,
                 parkingBrake: this.engineState !== "running",
                 grounded,
             },
@@ -221,6 +221,7 @@ export class Car {
         let height = this.position.y + launchVelocity * delta - 0.5 * 9.81 * delta * delta;
         this.verticalVelocity = launchVelocity - 9.81 * delta;
         if (height <= floor) {
+            this.airPitch *= Math.exp(-10 * delta);
             if (this.verticalVelocity < -1)
                 this.landingCompression = Math.min(
                     0.14,
@@ -229,7 +230,11 @@ export class Car {
             height = floor;
             this.verticalVelocity = 0;
             this.alignToGround(road, 1 - Math.exp(-this.config.camera.terrainTiltRate * delta));
-        } else this.alignToGround(road, 0);
+        } else {
+            this.airPitch += this.pitchInput * 1.4 * delta;
+            this.airPitch = Math.atan2(Math.sin(this.airPitch), Math.cos(this.airPitch));
+            this.alignToGround(road, 0);
+        }
         this.position.set(this.physics.x, height, this.physics.z);
         const motion = this.config.bodyMotion;
         const leanResponse = 1 - Math.exp(-motion.response * delta);
@@ -257,7 +262,6 @@ export class Car {
                   ? 240
                   : 0;
         this.rpm += (targetRPM - this.rpm) * (1 - Math.exp(-7 * delta));
-        this.boostAmount = this.physics.boost;
         this.mesh.position.copy(this.position);
         this.mesh.quaternion.copy(this.rotation);
         const speedMps = this.speed / 3.6;
@@ -322,31 +326,9 @@ export class Car {
         );
     }
 
-    /**
-     * Requests boost while charge remains.
-     *
-     * @param active - Whether this vehicle control is held.
-     */
-    setBoost(active: boolean): void {
-        if (active && this.boostAmount > 0) {
-            this.isBoosting = true;
-        } else {
-            this.isBoosting = false;
-        }
-    }
-
-    /**
-     * Returns remaining boost charge on a zero-to-100 scale.
-     */
-    getBoostAmount(): number {
-        return this.boostAmount;
-    }
-
-    /**
-     * Reports whether the physics step is currently applying boost.
-     */
-    isBoostActive(): boolean {
-        return this.physics.boosting;
+    /** Sets airborne pitch input; positive lowers the nose, negative raises it. */
+    setPitch(input: number): void {
+        this.pitchInput = THREE.MathUtils.clamp(input, -1, 1);
     }
 
     /**
@@ -425,6 +407,7 @@ export class Car {
      */
     setPosition(x: number, y: number, z: number, preserveElevation = true): void {
         this.verticalVelocity = 0;
+        this.pitchInput = this.airPitch = 0;
         this.physics.x = x;
         this.physics.z = z;
         const road = this.surface(x, z, y);
@@ -481,7 +464,7 @@ export class Car {
         this.brakeInput = 0;
         this.steeringAngle = 0;
         this.handbrakeActive = false;
-        this.isBoosting = false;
+        this.pitchInput = this.airPitch = 0;
     }
 
     /**
@@ -514,6 +497,7 @@ export class Car {
         );
         // Heading stays in sync with physics in the air and on land; the normal above
         // supplies gradual contact tilt without delaying steering response.
+        target.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), this.airPitch));
         this.rotation.copy(target);
     }
 

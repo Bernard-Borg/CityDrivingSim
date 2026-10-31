@@ -265,3 +265,12 @@ Terrain lighting interpolates the original sampled normal field after clipping,
 rather than assigning each disconnected triangle its own face normal. This changes
 shading only: positions, cutouts and collision heights still match the shared grid.
 No extra terrain subdivision is introduced.
+
+
+## Ground colour and snow
+
+Each city can set `groundColor` to a CSS colour in `CITY_CONFIGS`, for example
+`groundColor: "#95866b"`. Omitted values retain the existing `#a49b80` base.
+Terrain and natural ground cover blend to white between 2,490 and 2,500 metres
+above sea level, overriding their base colours at 2,500 m and above. This is
+material shading only: it adds no terrain vertices and does not change grip.

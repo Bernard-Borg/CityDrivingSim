@@ -73,7 +73,6 @@ export class DrivingSimulator {
     private loadCompleteCallbacks: LoadCompleteCallback[] = [];
     private fpsUpdateCallbacks: SpeedUpdateCallback[] = [];
     private headingUpdateCallbacks: SpeedUpdateCallback[] = [];
-    private boostUpdateCallbacks: SpeedUpdateCallback[] = [];
     private lastFpsUpdate: number = 0;
     private fpsFrames: number = 0;
     private fps: number = 0;
@@ -473,7 +472,7 @@ export class DrivingSimulator {
                         engine,
                         rpm: this.carControls!.getRPM(),
                         maxRPM: this.vehicleConfig.audio.maxRPM,
-                        maxSpeed: this.vehicleConfig.physics.boostSpeed,
+                        maxSpeed: this.vehicleConfig.physics.maxSpeed,
                         handbrake: engine !== "running" || this.car!.isHandbrakeActive(),
                         name: this.vehicleConfig.name,
                         gear:
@@ -491,9 +490,6 @@ export class DrivingSimulator {
                 const carHeading = this.getCarHeading();
                 this.headingUpdateCallbacks.forEach((callback) => callback(carHeading));
 
-                // Update boost callbacks
-                const boostAmount = this.car.getBoostAmount();
-                this.boostUpdateCallbacks.forEach((callback) => callback(boostAmount));
 
                 // Update coordinate callbacks
                 const coords = this.sceneManager.localToLatLon(carPosition.x, carPosition.z);
@@ -683,14 +679,6 @@ export class DrivingSimulator {
         this.headingUpdateCallbacks.push(callback);
     }
 
-    /**
-     * Registers a subscriber for boost update notifications.
-     *
-     * @param callback - Subscriber invoked for the corresponding telemetry update.
-     */
-    onBoostUpdate(callback: SpeedUpdateCallback): void {
-        this.boostUpdateCallbacks.push(callback);
-    }
 
     /**
      * Registers a subscriber for coordinate update notifications.
