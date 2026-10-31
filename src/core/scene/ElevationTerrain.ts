@@ -55,7 +55,7 @@ export interface TiffElevationConfig {
     /** Asset filename under public/data/elevation. */
     file: string;
     /** Optional CRS override for exports lacking a standard EPSG GeoKey. */
-    crs?: "EPSG:2154" | "EPSG:4326";
+    crs?: "EPSG:2154" | "EPSG:32633" | "EPSG:4326";
     /** Terrain triangle spacing in metres; does not change the source raster. */
     meshSpacing?: number;
     /** Optional HGT coverage for missing or out-of-bounds raster samples. */
@@ -183,7 +183,10 @@ export class ElevationTerrain {
         // Keep all vertices inside the real tile, including the scenery margin.
         this.bounds = coverage
             ? {
-                  minX: Math.max(bounds.minX - 600, (coverage.west - centerLon) * this.lonScale + 0.01),
+                  minX: Math.max(
+                      bounds.minX - 600,
+                      (coverage.west - centerLon) * this.lonScale + 0.01,
+                  ),
                   maxX: Math.min(
                       bounds.maxX + 600,
                       (coverage.east - centerLon) * this.lonScale - 0.01,
@@ -198,8 +201,12 @@ export class ElevationTerrain {
                   ),
               }
             : { ...bounds };
-        const spacing = spacingMetres !== undefined && Number.isFinite(spacingMetres) && spacingMetres > 0
-            ? Math.max(1, spacingMetres) : tile ? 20 : 40;
+        const spacing =
+            spacingMetres !== undefined && Number.isFinite(spacingMetres) && spacingMetres > 0
+                ? Math.max(1, spacingMetres)
+                : tile
+                  ? 20
+                  : 40;
         this.columns = Math.max(2, Math.ceil((this.bounds.maxX - this.bounds.minX) / spacing) + 1);
         this.rows = Math.max(2, Math.ceil((this.bounds.maxZ - this.bounds.minZ) / spacing) + 1);
         this.stepX = (this.bounds.maxX - this.bounds.minX) / (this.columns - 1);

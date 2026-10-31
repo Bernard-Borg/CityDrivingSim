@@ -4,6 +4,7 @@ import proj4 from "proj4";
 import type { ElevationBounds, ElevationSampler, TiffElevationConfig } from "./ElevationTerrain";
 
 proj4.defs("EPSG:2154", "+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +units=m +no_defs");
+proj4.defs("EPSG:32633", "+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs +type=crs");
 
 /** Decoded single-band, north-up GeoTIFF with bilinear, NoData-aware sampling. */
 export class GeoTiffTile implements ElevationSampler {
@@ -65,8 +66,8 @@ export class GeoTiffTile implements ElevationSampler {
             const image = await tiff.getImage();
             const keys = image.getGeoKeys();
             const epsg = keys?.ProjectedCSTypeGeoKey ?? keys?.GeographicTypeGeoKey;
-            const crs = config.crs ?? (epsg === 2154 || epsg === 4326 ? `EPSG:${epsg}` : undefined);
-            if (!crs) throw new Error("Unsupported GeoTIFF CRS. Configure EPSG:2154 or EPSG:4326 explicitly.");
+            const crs = config.crs ?? (epsg === 2154 || epsg === 32633 || epsg === 4326 ? `EPSG:${epsg}` : undefined);
+            if (!crs) throw new Error("Unsupported GeoTIFF CRS. Configure EPSG:2154, EPSG:32633, or EPSG:4326 explicitly.");
             if (image.getSamplesPerPixel() !== 1) throw new Error("Elevation GeoTIFF must contain one numeric height band, not an RGB image.");
             const resolution = image.getResolution();
             if (image.getFileDirectory().getValue("ModelTransformation") ||
@@ -131,4 +132,3 @@ export class GeoTiffTile implements ElevationSampler {
         throw new Error(`No elevation data at ${lat.toFixed(6)}, ${lon.toFixed(6)}. Configure an elevation fallback or supply complete terrain coverage.`);
     }
 }
-

@@ -199,8 +199,10 @@ elevation: {
 }
 ```
 
-The TIFF loader supports single-band, north-up GeoTIFFs in WGS84 (EPSG:4326)
-or Lambert-93 (EPSG:2154), with compressed formats decoded by geotiff.js.
+The TIFF loader supports single-band, north-up GeoTIFFs in WGS84 (EPSG:4326),
+Lambert-93 (EPSG:2154), or WGS 84 / UTM zone 33N (EPSG:32633), with
+compressed formats decoded by geotiff.js. EPSG:32633 is used by Rabat's
+projected elevation raster.
 An explicit `crs` handles exports whose EPSG identifier is embedded only in a
 citation rather than a standard GeoKey. Rotated rasters and RGB images are rejected.
 Pixel-is-area and pixel-is-point alignment are respected. Valid neighbouring
